@@ -22,7 +22,7 @@ import {
   Lightbulb,
 } from "lucide-react";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
-import { SkeletonTable } from "@/components/ui/Skeleton";
+import { SkeletonTable, SkeletonStudentInfoCard, SkeletonStudentStats } from "@/components/ui/Skeleton";
 
 interface QuestionItem {
   id?: string;
@@ -163,6 +163,9 @@ export default function StudentDashboard() {
 
           {/* Assigned 6-digit Student ID Card */}
           <div className="md:col-span-4">
+            {loading ? (
+              <SkeletonStudentInfoCard />
+            ) : (
             <div className="glass-card rounded-2xl p-5 border border-border-default gradient-bg-primary/10 relative overflow-hidden">
               <div className="flex items-center justify-between">
                 <div>
@@ -181,10 +184,14 @@ export default function StudentDashboard() {
                 * Shade this exact 6-digit ID on your paper bubble sheet during exams.
               </p>
             </div>
+            )}
           </div>
         </div>
 
         {/* Stats Summary */}
+        {loading ? (
+          <SkeletonStudentStats />
+        ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 mb-8">
           <div className="glass-card rounded-2xl p-5 border border-border-default flex items-center justify-between">
             <div>
@@ -212,6 +219,7 @@ export default function StudentDashboard() {
             </div>
           </div>
         </div>
+        )}
 
         {/* Portal Tabs: My Grades vs Study Reviewers */}
         <div className="flex items-center gap-2 mb-6 border-b border-border-default pb-2">

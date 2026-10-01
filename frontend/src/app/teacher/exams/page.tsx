@@ -8,7 +8,6 @@ import { teacher as teacherApi } from "@/lib/api";
 import {
   FileSpreadsheet,
   Plus,
-  Download,
   Globe,
   Lock,
   Copy,
@@ -896,9 +895,9 @@ export default function TeacherExamsPage() {
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
                 {exams.map((exam) => {
                   const isOwner = exam.is_owner !== undefined ? exam.is_owner : true;
-                  const pdfUrl = teacherApi.getBubbleSheetUrl(exam.id);
                   const isToggling = togglingVisibilityId === exam.id;
                   const questionCount = exam.questions?.filter((q) => q.question_text?.trim()).length || 0;
+                  const isLocked = exam.is_public;
 
                   return (
                     <div
@@ -975,35 +974,45 @@ export default function TeacherExamsPage() {
                       <div className="mt-6 space-y-2 pt-4 border-t border-border-default">
                         {isOwner && (
                           <div className="grid grid-cols-2 gap-2">
-                            {/* Edit Answer Keys */}
+                            {/* Edit / View Answer Keys */}
                             <button
-                              onClick={() => openEditBuilder(exam, "keys")}
-                              className="flex items-center justify-center gap-1.5 rounded-xl bg-surface-overlay border border-border-default py-2 text-xs font-semibold text-text-primary hover:bg-surface-subtle transition-colors"
+                              onClick={() => !isLocked && openEditBuilder(exam, "keys")}
+                              disabled={isLocked}
+                              className={`flex items-center justify-center gap-1.5 rounded-xl border py-2 text-xs font-semibold transition-colors ${
+                                isLocked
+                                  ? "bg-surface-base border-border-default text-text-faint cursor-not-allowed"
+                                  : "bg-surface-overlay border-border-default text-text-primary hover:bg-surface-subtle"
+                              }`}
+                              title={isLocked ? "Make exam Private to edit keys" : "Edit answer keys"}
                             >
-                              <KeyRound className="h-3.5 w-3.5 text-tan" />
-                              Edit Keys
+                              {isLocked ? (
+                                <Lock className="h-3.5 w-3.5 text-text-faint" />
+                              ) : (
+                                <KeyRound className="h-3.5 w-3.5 text-tan" />
+                              )}
+                              {isLocked ? "Keys Locked" : "Edit Keys"}
                             </button>
 
                             {/* Questionnaire Modal Button */}
                             <button
-                              onClick={() => openQuestionnaireModal(exam)}
-                              className="flex items-center justify-center gap-1.5 rounded-xl bg-steel/15 border border-steel-border py-2 text-xs font-bold text-tan-light hover:bg-steel/25 transition-all"
+                              onClick={() => !isLocked && openQuestionnaireModal(exam)}
+                              disabled={isLocked}
+                              className={`flex items-center justify-center gap-1.5 rounded-xl border py-2 text-xs font-bold transition-all ${
+                                isLocked
+                                  ? "bg-surface-base border-border-default text-text-faint cursor-not-allowed"
+                                  : "bg-steel/15 border-steel-border text-tan-light hover:bg-steel/25"
+                              }`}
+                              title={isLocked ? "Make exam Private to edit questionnaire" : "Edit questionnaire"}
                             >
-                              <BookOpen className="h-3.5 w-3.5" />
-                              Questionnaire
+                              {isLocked ? (
+                                <Lock className="h-3.5 w-3.5 text-text-faint" />
+                              ) : (
+                                <BookOpen className="h-3.5 w-3.5" />
+                              )}
+                              {isLocked ? "Locked" : "Questionnaire"}
                             </button>
                           </div>
                         )}
-
-                        {/* PDF Download Button */}
-                        <a
-                          href={pdfUrl}
-                          download={`bubble_sheet_${exam.id}.pdf`}
-                          className="flex items-center justify-center gap-2 rounded-xl bg-surface-overlay border border-border-default py-2 text-xs font-semibold text-text-secondary hover:bg-surface-subtle hover:text-text-primary transition-colors"
-                        >
-                          <Download className="h-3.5 w-3.5 text-tan" />
-                          Download Bubble Sheet PDF
-                        </a>
 
                         {!isOwner && exam.is_public && (
                           <button

@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
-import { SkeletonTable } from "@/components/ui/Skeleton";
+import { SkeletonTable, SkeletonSectionGrid } from "@/components/ui/Skeleton";
 import { ConfirmModal } from "@/components/ConfirmModal";
 
 interface SectionItem {
@@ -357,10 +357,7 @@ export default function TeacherSectionsPage() {
             </div>
 
             {loading ? (
-              <div className="flex items-center justify-center py-12 text-text-muted">
-                <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                Loading sections...
-              </div>
+              <SkeletonSectionGrid count={3} />
             ) : sections.length === 0 ? (
               <div className="glass-card rounded-2xl p-12 text-center border border-border-default">
                 <School className="mx-auto h-12 w-12 text-text-faint mb-3" />

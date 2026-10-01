@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
 import Link from "next/link";
-import { SkeletonStatCards } from "@/components/ui/Skeleton";
+import { SkeletonStatCards, SkeletonWorkflowCards } from "@/components/ui/Skeleton";
 
 export default function TeacherDashboard() {
   const { user, loading: authLoading } = useAuth();
@@ -96,6 +96,9 @@ export default function TeacherDashboard() {
 
         {/* Quick Action Cards */}
         <h2 className="text-lg font-bold text-text-primary mb-4">Core Workflows</h2>
+        {loading ? (
+          <SkeletonWorkflowCards count={3} />
+        ) : (
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {/* Card 1: Sections */}
           <Link
@@ -163,6 +166,7 @@ export default function TeacherDashboard() {
             </div>
           </Link>
         </div>
+        )}
       </main>
 
       <PasswordChangeModal
