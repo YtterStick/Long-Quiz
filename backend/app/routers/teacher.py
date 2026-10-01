@@ -1,0 +1,1050 @@
+"""Teacher routes: sections, students, exams, scanning, gradebook."""
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, func, and_
+from sqlalchemy.orm import selectinload
+from typing import Optional
+from app.database import get_db
+from app.models import (
+    User, Teacher, Student, Section, Exam, ExamAnswerKey, ExamQuestion,
+    ExamSubmission, SubmissionAnswer, Role
+)
+from app.schemas import (
+    SectionCreate, SectionUpdate, SectionOut,
+    StudentCreate, StudentOut, StudentBulkCreateResponse,
+    ExamCreate, ExamUpdate, ExamOut, AnswerKeyItem,
+    QuestionItem, QuestionOut, QuestionnaireUpdate, ExamVisibilityUpdate,
+    SubmissionOut, SubmissionOverride,
+    TeacherDashboardStats, ItemAnalysis, GradeItem
+)
+from app.auth import hash_password
+from app.deps import require_role
+from app.utils import generate_temp_password, generate_username, generate_student_number, parse_student_csv
+
+router = APIRouter(prefix="/api/teacher", tags=["Teacher"])
+
+
+async def _get_teacher(user: User, db: AsyncSession) -> Teacher:
+    """Helper to get the Teacher profile for the current user."""
+    result = await db.execute(select(Teacher).where(Teacher.user_id == user.id))
+    teacher = result.scalar_one_or_none()
+    if not teacher:
+        raise HTTPException(status_code=404, detail="Teacher profile not found")
+    return teacher
+
+
+# ─── Dashboard ────────────────────────────────────────────────
+
+@router.get("/dashboard", response_model=TeacherDashboardStats)
+async def get_dashboard(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    teacher = await _get_teacher(current_user, db)
+
+    sections = await db.execute(select(func.count(Section.id)).where(Section.teacher_id == teacher.id))
+    students = await db.execute(
+        select(func.count(Student.id)).join(Section).where(Section.teacher_id == teacher.id)
+    )
+    exams = await db.execute(select(func.count(Exam.id)).where(Exam.teacher_id == teacher.id))
+    subs = await db.execute(
+        select(func.count(ExamSubmission.id)).join(Exam).where(Exam.teacher_id == teacher.id)
+    )
+
+    return TeacherDashboardStats(
+        total_sections=sections.scalar_one(),
+        total_students=students.scalar_one(),
+        total_exams=exams.scalar_one(),
+        total_submissions=subs.scalar_one(),
+    )
+
+
+# ─── Sections ─────────────────────────────────────────────────
+
+@router.get("/sections", response_model=list[SectionOut])
+async def list_sections(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    teacher = await _get_teacher(current_user, db)
+    result = await db.execute(
+        select(Section)
+        .where(Section.teacher_id == teacher.id)
+        .order_by(Section.created_at.desc())
+    )
+    sections = result.scalars().all()
+
+    out = []
+    for s in sections:
+        count_result = await db.execute(
+            select(func.count(Student.id)).where(Student.section_id == s.id)
+        )
+        count = count_result.scalar_one()
+        out.append(SectionOut(
+            id=s.id, name=s.name, subject=s.subject,
+            teacher_id=s.teacher_id, created_at=s.created_at,
+            student_count=count,
+        ))
+    return out
+
+
+@router.post("/sections", response_model=SectionOut)
+async def create_section(
+    body: SectionCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    teacher = await _get_teacher(current_user, db)
+    section = Section(name=body.name, subject=body.subject, teacher_id=teacher.id)
+    db.add(section)
+    await db.flush()
+    return SectionOut(
+        id=section.id, name=section.name, subject=section.subject,
+        teacher_id=section.teacher_id, created_at=section.created_at,
+        student_count=0,
+    )
+
+
+@router.put("/sections/{section_id}", response_model=SectionOut)
+async def update_section(
+    section_id: str,
+    body: SectionUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    teacher = await _get_teacher(current_user, db)
+    result = await db.execute(
+        select(Section).where(Section.id == section_id, Section.teacher_id == teacher.id)
+    )
+    section = result.scalar_one_or_none()
+    if not section:
+        raise HTTPException(status_code=404, detail="Section not found")
+
+    if body.name is not None:
+        section.name = body.name
+    if body.subject is not None:
+        section.subject = body.subject
+    await db.flush()
+
+    count_result = await db.execute(
+        select(func.count(Student.id)).where(Student.section_id == section.id)
+    )
+    return SectionOut(
+        id=section.id, name=section.name, subject=section.subject,
+        teacher_id=section.teacher_id, created_at=section.created_at,
+        student_count=count_result.scalar_one(),
+    )
+
+
+@router.delete("/sections/{section_id}")
+async def delete_section(
+    section_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    teacher = await _get_teacher(current_user, db)
+    result = await db.execute(
+        select(Section).where(Section.id == section_id, Section.teacher_id == teacher.id)
+    )
+    section = result.scalar_one_or_none()
+    if not section:
+        raise HTTPException(status_code=404, detail="Section not found")
+    await db.delete(section)
+    await db.flush()
+    return {"message": "Section deleted successfully"}
+
+
+# ─── Students ─────────────────────────────────────────────────
+
+@router.get("/sections/{section_id}/students", response_model=list[StudentOut])
+async def list_students(
+    section_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    teacher = await _get_teacher(current_user, db)
+    # Verify section ownership
+    sec = await db.execute(
+        select(Section).where(Section.id == section_id, Section.teacher_id == teacher.id)
+    )
+    if not sec.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Section not found")
+
+    result = await db.execute(
+        select(Student)
+        .options(selectinload(Student.user))
+        .where(Student.section_id == section_id)
+        .order_by(Student.student_number)
+    )
+    return result.scalars().all()
+
+
+@router.post("/sections/{section_id}/students", response_model=StudentOut)
+async def add_student(
+    section_id: str,
+    body: StudentCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    teacher = await _get_teacher(current_user, db)
+    sec = await db.execute(
+        select(Section).where(Section.id == section_id, Section.teacher_id == teacher.id)
+    )
+    if not sec.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Section not found")
+
+    temp_password = generate_temp_password()
+    username = body.username or generate_username(body.first_name, body.last_name)
+
+    # Ensure unique username
+    suffix = 0
+    orig_username = username
+    while True:
+        exists = await db.execute(select(User).where(User.username == username))
+        if not exists.scalar_one_or_none():
+            break
+        suffix += 1
+        username = f"{orig_username}{suffix}"
+
+    # Generate unique student number
+    student_number = generate_student_number()
+    while True:
+        exists = await db.execute(select(Student).where(Student.student_number == student_number))
+        if not exists.scalar_one_or_none():
+            break
+        student_number = generate_student_number()
+
+    user = User(
+        username=username,
+        password_hash=hash_password(temp_password),
+        role=Role.STUDENT,
+        first_name=body.first_name,
+        last_name=body.last_name,
+        must_change_password=True,
+    )
+    db.add(user)
+    await db.flush()
+
+    student = Student(
+        user_id=user.id,
+        student_number=student_number,
+        section_id=section_id,
+    )
+    db.add(student)
+    await db.flush()
+
+    # Reload with relationship
+    result = await db.execute(
+        select(Student).options(selectinload(Student.user)).where(Student.id == student.id)
+    )
+    student_out = result.scalar_one()
+    out = StudentOut.model_validate(student_out)
+    out.temp_password = temp_password
+    return out
+
+
+@router.post("/sections/{section_id}/students/csv", response_model=StudentBulkCreateResponse)
+async def add_students_csv(
+    section_id: str,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Bulk-add students from a CSV file with columns: first_name, last_name."""
+    teacher = await _get_teacher(current_user, db)
+    sec = await db.execute(
+        select(Section).where(Section.id == section_id, Section.teacher_id == teacher.id)
+    )
+    if not sec.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Section not found")
+
+    content = await file.read()
+    rows = parse_student_csv(content)
+
+    created_students = []
+    for first_name, last_name in rows:
+        temp_password = generate_temp_password()
+        username = generate_username(first_name, last_name)
+
+        suffix = 0
+        orig_username = username
+        while True:
+            exists = await db.execute(select(User).where(User.username == username))
+            if not exists.scalar_one_or_none():
+                break
+            suffix += 1
+            username = f"{orig_username}{suffix}"
+
+        student_number = generate_student_number()
+        while True:
+            exists = await db.execute(select(Student).where(Student.student_number == student_number))
+            if not exists.scalar_one_or_none():
+                break
+            student_number = generate_student_number()
+
+        user = User(
+            username=username,
+            password_hash=hash_password(temp_password),
+            role=Role.STUDENT,
+            first_name=first_name,
+            last_name=last_name,
+            must_change_password=True,
+        )
+        db.add(user)
+        await db.flush()
+
+        student = Student(
+            user_id=user.id,
+            student_number=student_number,
+            section_id=section_id,
+        )
+        db.add(student)
+        await db.flush()
+
+        result = await db.execute(
+            select(Student).options(selectinload(Student.user)).where(Student.id == student.id)
+        )
+        student_obj = result.scalar_one()
+        out = StudentOut.model_validate(student_obj)
+        out.temp_password = temp_password
+        created_students.append(out)
+
+    return StudentBulkCreateResponse(created=len(created_students), students=created_students)
+
+
+@router.delete("/students/{student_id}")
+async def delete_student(
+    student_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    teacher = await _get_teacher(current_user, db)
+    result = await db.execute(
+        select(Student)
+        .join(Section)
+        .where(Student.id == student_id, Section.teacher_id == teacher.id)
+    )
+    student = result.scalar_one_or_none()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    # Delete user (cascades to student)
+    user_result = await db.execute(select(User).where(User.id == student.user_id))
+    user = user_result.scalar_one()
+    await db.delete(user)
+    await db.flush()
+    return {"message": "Student deleted successfully"}
+
+
+# ─── Exams ────────────────────────────────────────────────────
+
+@router.get("/exams", response_model=list[ExamOut])
+async def list_exams(
+    include_public: bool = Query(False, description="Include public exams from other teachers"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    teacher = await _get_teacher(current_user, db)
+    options = [selectinload(Exam.answer_keys), selectinload(Exam.questions)]
+    if include_public:
+        query = select(Exam).options(*options).where(
+            (Exam.teacher_id == teacher.id) | (Exam.is_public == True)
+        )
+    else:
+        query = select(Exam).options(*options).where(
+            Exam.teacher_id == teacher.id
+        )
+    result = await db.execute(query.order_by(Exam.created_at.desc()))
+    exams = result.scalars().all()
+    out = []
+    for exam in exams:
+        item = ExamOut.model_validate(exam)
+        item.is_owner = (exam.teacher_id == teacher.id)
+        out.append(item)
+    return out
+
+
+@router.post("/exams", response_model=ExamOut)
+async def create_exam(
+    body: ExamCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    teacher = await _get_teacher(current_user, db)
+
+    exam = Exam(
+        teacher_id=teacher.id,
+        title=body.title,
+        total_questions=body.total_questions,
+        is_public=body.is_public,
+    )
+    db.add(exam)
+    await db.flush()
+
+    for ak in body.answer_keys:
+        key = ExamAnswerKey(
+            exam_id=exam.id,
+            question_number=ak.question_number,
+            correct_option=ak.correct_option,
+        )
+        db.add(key)
+
+    if body.questions:
+        for q in body.questions:
+            db.add(ExamQuestion(
+                exam_id=exam.id,
+                question_number=q.question_number,
+                question_text=q.question_text,
+                option_a=q.option_a,
+                option_b=q.option_b,
+                option_c=q.option_c,
+                option_d=q.option_d,
+                explanation=q.explanation,
+            ))
+    await db.flush()
+
+    result = await db.execute(
+        select(Exam).options(selectinload(Exam.answer_keys), selectinload(Exam.questions)).where(Exam.id == exam.id)
+    )
+    return result.scalar_one()
+
+
+@router.get("/exams/{exam_id}", response_model=ExamOut)
+async def get_exam(
+    exam_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    teacher = await _get_teacher(current_user, db)
+    result = await db.execute(
+        select(Exam).options(selectinload(Exam.answer_keys), selectinload(Exam.questions)).where(
+            Exam.id == exam_id,
+            (Exam.teacher_id == teacher.id) | (Exam.is_public == True)
+        )
+    )
+    exam = result.scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    return exam
+
+
+@router.put("/exams/{exam_id}", response_model=ExamOut)
+async def update_exam(
+    exam_id: str,
+    body: ExamUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    teacher = await _get_teacher(current_user, db)
+    result = await db.execute(
+        select(Exam).options(selectinload(Exam.answer_keys), selectinload(Exam.questions)).where(
+            Exam.id == exam_id, Exam.teacher_id == teacher.id
+        )
+    )
+    exam = result.scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+
+    if body.title is not None:
+        exam.title = body.title
+    if body.total_questions is not None:
+        exam.total_questions = body.total_questions
+    if body.is_public is not None:
+        exam.is_public = body.is_public
+
+    if body.answer_keys is not None:
+        for key in exam.answer_keys:
+            await db.delete(key)
+        await db.flush()
+
+        for ak in body.answer_keys:
+            db.add(ExamAnswerKey(
+                exam_id=exam.id,
+                question_number=ak.question_number,
+                correct_option=ak.correct_option,
+            ))
+        await db.flush()
+
+    if body.questions is not None:
+        for q in exam.questions:
+            await db.delete(q)
+        await db.flush()
+
+        for q in body.questions:
+            db.add(ExamQuestion(
+                exam_id=exam.id,
+                question_number=q.question_number,
+                question_text=q.question_text,
+                option_a=q.option_a,
+                option_b=q.option_b,
+                option_c=q.option_c,
+                option_d=q.option_d,
+                explanation=q.explanation,
+            ))
+        await db.flush()
+
+    result = await db.execute(
+        select(Exam).options(selectinload(Exam.answer_keys), selectinload(Exam.questions)).where(Exam.id == exam.id)
+    )
+    return result.scalar_one()
+
+
+@router.patch("/exams/{exam_id}/visibility", response_model=ExamOut)
+async def toggle_exam_visibility(
+    exam_id: str,
+    body: ExamVisibilityUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Toggle an exam between Public (visible to students with reviewer) and Private."""
+    teacher = await _get_teacher(current_user, db)
+    result = await db.execute(
+        select(Exam).options(selectinload(Exam.answer_keys), selectinload(Exam.questions)).where(
+            Exam.id == exam_id, Exam.teacher_id == teacher.id
+        )
+    )
+    exam = result.scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+
+    exam.is_public = body.is_public
+    await db.flush()
+    return exam
+
+
+@router.put("/exams/{exam_id}/questionnaire", response_model=list[QuestionOut])
+async def update_questionnaire(
+    exam_id: str,
+    body: QuestionnaireUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Save or update the questionnaire (questions, choices, explanations) for an exam separately from the answer keys."""
+    teacher = await _get_teacher(current_user, db)
+    result = await db.execute(
+        select(Exam).options(selectinload(Exam.questions)).where(
+            Exam.id == exam_id, Exam.teacher_id == teacher.id
+        )
+    )
+    exam = result.scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+
+    for q in exam.questions:
+        await db.delete(q)
+    await db.flush()
+
+    for q in body.questions:
+        db.add(ExamQuestion(
+            exam_id=exam.id,
+            question_number=q.question_number,
+            question_text=q.question_text,
+            option_a=q.option_a,
+            option_b=q.option_b,
+            option_c=q.option_c,
+            option_d=q.option_d,
+            explanation=q.explanation,
+        ))
+    await db.flush()
+
+    result = await db.execute(
+        select(ExamQuestion).where(ExamQuestion.exam_id == exam.id).order_by(ExamQuestion.question_number)
+    )
+    return result.scalars().all()
+
+
+@router.get("/exams/{exam_id}/questionnaire", response_model=list[QuestionOut])
+async def get_questionnaire(
+    exam_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Retrieve questionnaire for an exam."""
+    teacher = await _get_teacher(current_user, db)
+    result = await db.execute(
+        select(Exam).where(
+            Exam.id == exam_id,
+            (Exam.teacher_id == teacher.id) | (Exam.is_public == True)
+        )
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Exam not found")
+
+    result = await db.execute(
+        select(ExamQuestion).where(ExamQuestion.exam_id == exam_id).order_by(ExamQuestion.question_number)
+    )
+    return result.scalars().all()
+
+
+@router.delete("/exams/{exam_id}")
+async def delete_exam(
+    exam_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    teacher = await _get_teacher(current_user, db)
+    result = await db.execute(
+        select(Exam).where(Exam.id == exam_id, Exam.teacher_id == teacher.id)
+    )
+    exam = result.scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    await db.delete(exam)
+    await db.flush()
+    return {"message": "Exam deleted successfully"}
+
+
+@router.post("/exams/{exam_id}/clone", response_model=ExamOut)
+async def clone_exam(
+    exam_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Clone a public exam (including answer keys and questionnaire) into the current teacher's exams."""
+    teacher = await _get_teacher(current_user, db)
+    result = await db.execute(
+        select(Exam).options(
+            selectinload(Exam.answer_keys),
+            selectinload(Exam.questions)
+        ).where(
+            Exam.id == exam_id, Exam.is_public == True
+        )
+    )
+    source = result.scalar_one_or_none()
+    if not source:
+        raise HTTPException(status_code=404, detail="Public exam not found")
+
+    new_exam = Exam(
+        teacher_id=teacher.id,
+        title=f"{source.title} (Copy)",
+        total_questions=source.total_questions,
+        is_public=False,
+    )
+    db.add(new_exam)
+    await db.flush()
+
+    for key in source.answer_keys:
+        db.add(ExamAnswerKey(
+            exam_id=new_exam.id,
+            question_number=key.question_number,
+            correct_option=key.correct_option,
+        ))
+
+    for q in source.questions:
+        db.add(ExamQuestion(
+            exam_id=new_exam.id,
+            question_number=q.question_number,
+            question_text=q.question_text,
+            option_a=q.option_a,
+            option_b=q.option_b,
+            option_c=q.option_c,
+            option_d=q.option_d,
+            explanation=q.explanation,
+        ))
+    await db.flush()
+
+    result = await db.execute(
+        select(Exam).options(
+            selectinload(Exam.answer_keys),
+            selectinload(Exam.questions)
+        ).where(Exam.id == new_exam.id)
+    )
+    return result.scalar_one()
+
+
+# ─── PDF Generation ───────────────────────────────────────────
+
+@router.get("/exams/{exam_id}/bubble-sheet")
+async def generate_bubble_sheet(
+    exam_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Generate a printable PDF bubble sheet for the exam."""
+    from fastapi.responses import StreamingResponse
+    from app.services.pdf_generator import generate_bubble_sheet_pdf
+
+    teacher = await _get_teacher(current_user, db)
+    result = await db.execute(
+        select(Exam).where(Exam.id == exam_id, Exam.teacher_id == teacher.id)
+    )
+    exam = result.scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+
+    pdf_bytes = generate_bubble_sheet_pdf(exam.title, exam.total_questions)
+
+    return StreamingResponse(
+        iter([pdf_bytes]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="bubble_sheet_{exam_id}.pdf"'},
+    )
+
+
+@router.get("/blank-bubble-sheet")
+async def generate_blank_bubble_sheet(
+    questions: int = Query(50, description="Total questions"),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Generate a generic printable PDF bubble sheet."""
+    from fastapi.responses import StreamingResponse
+    from app.services.pdf_generator import generate_bubble_sheet_pdf
+
+    pdf_bytes = generate_bubble_sheet_pdf("Blank Answer Sheet", questions)
+
+    return StreamingResponse(
+        iter([pdf_bytes]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="blank_bubble_sheet.pdf"'},
+    )
+
+
+# ─── OMR Scanning ─────────────────────────────────────────────
+
+@router.post("/scan-key")
+async def scan_answer_key(
+    file: UploadFile = File(...),
+    total_questions: int = Query(50),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Upload a scanned bubble sheet image to extract answers without saving to DB."""
+    from app.omr.scanner import process_omr_sheet
+
+    image_bytes = await file.read()
+    try:
+        omr_result = process_omr_sheet(image_bytes, total_questions)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"OMR processing failed: {str(e)}")
+
+    # Return the dictionary of detected answers
+    return {"answers": omr_result["answers"]}
+
+
+@router.post("/exams/{exam_id}/scan", response_model=SubmissionOut)
+async def scan_sheet(
+    exam_id: str,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Upload a scanned bubble sheet image and process it through the OMR pipeline."""
+    from app.omr.scanner import process_omr_sheet
+    from app.services.gdrive_service import upload_to_gdrive
+
+    teacher = await _get_teacher(current_user, db)
+
+    # Verify exam ownership
+    result = await db.execute(
+        select(Exam).options(selectinload(Exam.answer_keys)).where(
+            Exam.id == exam_id, Exam.teacher_id == teacher.id
+        )
+    )
+    exam = result.scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+
+    if not exam.answer_keys:
+        raise HTTPException(status_code=400, detail="Exam has no answer keys defined")
+
+    # Read image
+    image_bytes = await file.read()
+
+    # Run OMR pipeline
+    try:
+        omr_result = process_omr_sheet(image_bytes, exam.total_questions)
+    except Exception as e:
+        raise HTTPException(status_code=422, detail=f"OMR processing failed: {str(e)}")
+
+    # Find student by detected student number
+    student_number = omr_result["student_number"]
+    result = await db.execute(
+        select(Student).options(selectinload(Student.user)).where(
+            Student.student_number == student_number
+        )
+    )
+    student = result.scalar_one_or_none()
+    if not student:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No student found with student number {student_number}"
+        )
+
+    # Upload image to Google Drive
+    try:
+        image_url = upload_to_gdrive(image_bytes, f"scan_{exam_id}_{student_number}.jpg")
+    except Exception:
+        image_url = None  # Continue without image URL if GDrive fails
+
+    # Build answer key lookup
+    key_map = {ak.question_number: ak.correct_option for ak in exam.answer_keys}
+
+    # Grade and create submission
+    total_score = 0
+    answers = []
+    for q_num, detected in omr_result["answers"].items():
+        q_int = int(q_num)
+        correct = key_map.get(q_int, "")
+        is_correct = detected == correct if detected else False
+        if is_correct:
+            total_score += 1
+        answers.append({
+            "question_number": q_int,
+            "shaded_option": detected,
+            "is_correct": is_correct,
+        })
+
+    submission = ExamSubmission(
+        exam_id=exam.id,
+        student_id=student.id,
+        total_score=total_score,
+        max_score=exam.total_questions,
+        scanned_image_url=image_url,
+        is_published=False,
+    )
+    db.add(submission)
+    await db.flush()
+
+    for ans in answers:
+        db.add(SubmissionAnswer(
+            submission_id=submission.id,
+            question_number=ans["question_number"],
+            shaded_option=ans["shaded_option"],
+            is_correct=ans["is_correct"],
+        ))
+    await db.flush()
+
+    # Reload with relationships
+    result = await db.execute(
+        select(ExamSubmission)
+        .options(
+            selectinload(ExamSubmission.answers),
+            selectinload(ExamSubmission.student).selectinload(Student.user),
+            selectinload(ExamSubmission.exam).selectinload(Exam.answer_keys),
+        )
+        .where(ExamSubmission.id == submission.id)
+    )
+    return result.scalar_one()
+
+
+# ─── Submissions ──────────────────────────────────────────────
+
+@router.get("/exams/{exam_id}/submissions", response_model=list[SubmissionOut])
+async def list_submissions(
+    exam_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    teacher = await _get_teacher(current_user, db)
+    result = await db.execute(
+        select(ExamSubmission)
+        .options(
+            selectinload(ExamSubmission.answers),
+            selectinload(ExamSubmission.student).selectinload(Student.user),
+        )
+        .join(Exam)
+        .where(Exam.id == exam_id, Exam.teacher_id == teacher.id)
+        .order_by(ExamSubmission.scanned_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.put("/submissions/{submission_id}/override", response_model=SubmissionOut)
+async def override_submission(
+    submission_id: str,
+    body: SubmissionOverride,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Manually override detected answers for a submission."""
+    teacher = await _get_teacher(current_user, db)
+
+    result = await db.execute(
+        select(ExamSubmission)
+        .options(
+            selectinload(ExamSubmission.answers),
+            selectinload(ExamSubmission.exam).selectinload(Exam.answer_keys),
+        )
+        .join(Exam)
+        .where(ExamSubmission.id == submission_id, Exam.teacher_id == teacher.id)
+    )
+    submission = result.scalar_one_or_none()
+    if not submission or not submission.exam:
+        raise HTTPException(status_code=404, detail="Submission or exam not found")
+
+    key_map = {ak.question_number: ak.correct_option for ak in submission.exam.answer_keys}
+
+    # Delete old answers
+    for ans in submission.answers:
+        await db.delete(ans)
+    await db.flush()
+
+    total_score = 0
+    for item in body.answers:
+        correct = key_map.get(item.question_number, "")
+        is_correct = item.correct_option == correct
+        if is_correct:
+            total_score += 1
+        db.add(SubmissionAnswer(
+            submission_id=submission.id,
+            question_number=item.question_number,
+            shaded_option=item.correct_option,
+            is_correct=is_correct,
+        ))
+
+    submission.total_score = total_score
+    await db.flush()
+
+    result = await db.execute(
+        select(ExamSubmission)
+        .options(
+            selectinload(ExamSubmission.answers),
+            selectinload(ExamSubmission.student).selectinload(Student.user),
+            selectinload(ExamSubmission.exam).selectinload(Exam.answer_keys),
+        )
+        .where(ExamSubmission.id == submission.id)
+    )
+    return result.scalar_one()
+
+
+@router.put("/submissions/{submission_id}/publish")
+async def publish_submission(
+    submission_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    teacher = await _get_teacher(current_user, db)
+    result = await db.execute(
+        select(ExamSubmission).join(Exam).where(
+            ExamSubmission.id == submission_id, Exam.teacher_id == teacher.id
+        )
+    )
+    submission = result.scalar_one_or_none()
+    if not submission:
+        raise HTTPException(status_code=404, detail="Submission not found")
+
+    submission.is_published = True
+    await db.flush()
+    return {"message": "Grades published successfully"}
+
+
+@router.put("/exams/{exam_id}/publish-all")
+async def publish_all_submissions(
+    exam_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Publish all submissions for an exam."""
+    teacher = await _get_teacher(current_user, db)
+    result = await db.execute(
+        select(ExamSubmission).join(Exam).where(
+            Exam.id == exam_id, Exam.teacher_id == teacher.id
+        )
+    )
+    submissions = result.scalars().all()
+    for s in submissions:
+        s.is_published = True
+    await db.flush()
+    return {"message": f"Published {len(submissions)} submissions"}
+
+
+# ─── Gradebook / Analytics ────────────────────────────────────
+
+@router.get("/exams/{exam_id}/analytics", response_model=list[ItemAnalysis])
+async def get_item_analysis(
+    exam_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Get per-question item analysis for an exam."""
+    teacher = await _get_teacher(current_user, db)
+
+    result = await db.execute(
+        select(ExamSubmission)
+        .options(selectinload(ExamSubmission.answers))
+        .join(Exam)
+        .where(Exam.id == exam_id, Exam.teacher_id == teacher.id)
+    )
+    submissions = result.scalars().all()
+
+    if not submissions:
+        return []
+
+    # Aggregate by question
+    question_data = {}
+    for sub in submissions:
+        for ans in sub.answers:
+            qn = ans.question_number
+            if qn not in question_data:
+                question_data[qn] = {"correct": 0, "total": 0, "options": {}}
+            question_data[qn]["total"] += 1
+            if ans.is_correct:
+                question_data[qn]["correct"] += 1
+            opt = ans.shaded_option or "BLANK"
+            question_data[qn]["options"][opt] = question_data[qn]["options"].get(opt, 0) + 1
+
+    analysis = []
+    for qn in sorted(question_data.keys()):
+        d = question_data[qn]
+        analysis.append(ItemAnalysis(
+            question_number=qn,
+            correct_count=d["correct"],
+            total_count=d["total"],
+            correct_percentage=round(d["correct"] / d["total"] * 100, 1) if d["total"] else 0,
+            option_distribution=d["options"],
+        ))
+    return analysis
+
+
+@router.get("/sections/{section_id}/gradebook")
+async def get_section_gradebook(
+    section_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Get grade summary for all students in a section."""
+    teacher = await _get_teacher(current_user, db)
+    sec = await db.execute(
+        select(Section).where(Section.id == section_id, Section.teacher_id == teacher.id)
+    )
+    if not sec.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Section not found")
+
+    result = await db.execute(
+        select(Student)
+        .options(
+            selectinload(Student.user),
+            selectinload(Student.submissions).selectinload(ExamSubmission.exam),
+        )
+        .where(Student.section_id == section_id)
+        .order_by(Student.student_number)
+    )
+    students = result.scalars().all()
+
+    gradebook = []
+    for student in students:
+        if not student.user:
+            continue
+        published_subs = [s for s in student.submissions if s.is_published and s.exam]
+        avg_score = (
+            sum(s.total_score for s in published_subs) / len(published_subs)
+            if published_subs else 0
+        )
+        gradebook.append({
+            "student_id": student.id,
+            "student_number": student.student_number,
+            "name": f"{student.user.first_name} {student.user.last_name}",
+            "total_exams_taken": len(published_subs),
+            "average_score": round(avg_score, 1),
+            "exams": [
+                {
+                    "exam_title": s.exam.title,
+                    "score": s.total_score,
+                    "max_score": s.max_score,
+                    "percentage": round(s.total_score / s.max_score * 100, 1) if s.max_score else 0,
+                }
+                for s in published_subs
+                if s.exam
+            ],
+        })
+    return gradebook

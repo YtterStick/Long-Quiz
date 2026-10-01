@@ -1,0 +1,6 @@
+# Pyrefly configuration
+search_path = [
+    "backend"
+]
+
+check-unannotated-defs = false

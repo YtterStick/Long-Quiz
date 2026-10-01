@@ -1,0 +1,238 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────────────────────
+   LongQuiz Design System — Dual Theme (Light Default / Dark)
+   Warm Neutral Palette based on:
+   #9BB4C0 (Steel) · #E1D0B3 (Cream) · #A18D6D (Tan) · #703B3B (Burgundy)
+   ───────────────────────────────────────────────────────────── */
+
+@layer base {
+  :root {
+    /* Surface palette — Warm Light Neutrals (Default) */
+    --color-surface-base: #f8f7f4;
+    --color-surface-raised: #ffffff;
+    --color-surface-overlay: #f2ede4;
+    --color-surface-subtle: #e8e2d5;
+    --color-surface-muted: #ded6c7;
+
+    /* Border palette */
+    --color-border-default: #e2d9cb;
+    --color-border-subtle: #ebe4d8;
+    --color-border-emphasis: #c8bdab;
+
+    /* Text palette */
+    --color-text-primary: #1e1b18;
+    --color-text-secondary: #4f4a43;
+    --color-text-muted: #7c756b;
+    --color-text-faint: #a89f93;
+
+    /* Accent: Steel Blue — calibrated for light background contrast */
+    --color-steel: #4a6f82;
+    --color-steel-light: #638a9e;
+    --color-steel-dim: #345363;
+    --color-steel-ghost: rgba(74, 111, 130, 0.10);
+    --color-steel-border: rgba(74, 111, 130, 0.25);
+
+    /* Accent: Cream — warm attention & badges */
+    --color-cream: #8a6d3b;
+    --color-cream-light: #a6864f;
+    --color-cream-dim: #6e552c;
+    --color-cream-ghost: rgba(138, 109, 59, 0.10);
+    --color-cream-border: rgba(138, 109, 59, 0.25);
+
+    /* Accent: Tan — secondary accents */
+    --color-tan: #7a6648;
+    --color-tan-light: #967f5d;
+    --color-tan-dim: #5e4d34;
+    --color-tan-ghost: rgba(122, 102, 72, 0.10);
+    --color-tan-border: rgba(122, 102, 72, 0.25);
+
+    /* Accent: Burgundy — danger & errors */
+    --color-burgundy: #853636;
+    --color-burgundy-light: #9e4545;
+    --color-burgundy-dim: #6b2828;
+    --color-burgundy-ghost: rgba(133, 54, 54, 0.10);
+    --color-burgundy-border: rgba(133, 54, 54, 0.25);
+
+    /* Semantic: Sage Green — success */
+    --color-sage: #366642;
+    --color-sage-light: #4a7e57;
+    --color-sage-dim: #254e30;
+    --color-sage-ghost: rgba(54, 102, 66, 0.10);
+    --color-sage-border: rgba(54, 102, 66, 0.25);
+
+    /* Base theme tokens */
+    --background: 40 18% 97%;
+    --foreground: 30 11% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 30 11% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 30 11% 11%;
+    --primary: 201 27% 40%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 38 23% 87%;
+    --secondary-foreground: 30 11% 11%;
+    --muted: 38 23% 92%;
+    --muted-foreground: 34 7% 45%;
+    --accent: 38 23% 87%;
+    --accent-foreground: 30 11% 11%;
+    --destructive: 0 45% 37%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 38 23% 84%;
+    --input: 38 23% 84%;
+    --ring: 201 27% 40%;
+    --radius: 0.75rem;
+
+    --card-bg-glass: rgba(255, 255, 255, 0.88);
+    --card-shadow: 0 4px 20px -2px rgba(40, 30, 20, 0.06);
+    --card-hover-shadow: 0 10px 30px -4px rgba(74, 111, 130, 0.15);
+  }
+
+  .dark {
+    /* Surface palette — Warm Dark Neutrals */
+    --color-surface-base: #0f0e12;
+    --color-surface-raised: #17161b;
+    --color-surface-overlay: #1e1c23;
+    --color-surface-subtle: #262430;
+    --color-surface-muted: #312e3a;
+
+    /* Border palette */
+    --color-border-default: #2e2b36;
+    --color-border-subtle: #3b3745;
+    --color-border-emphasis: #4e4959;
+
+    /* Text palette */
+    --color-text-primary: #ece8e1;
+    --color-text-secondary: #b5afa5;
+    --color-text-muted: #8a8490;
+    --color-text-faint: #635e69;
+
+    /* Accent: Steel Blue */
+    --color-steel: #9bb4c0;
+    --color-steel-light: #b5cad4;
+    --color-steel-dim: #7a9aaa;
+    --color-steel-ghost: rgba(155, 180, 192, 0.10);
+    --color-steel-border: rgba(155, 180, 192, 0.22);
+
+    /* Accent: Cream */
+    --color-cream: #e1d0b3;
+    --color-cream-light: #efe3cf;
+    --color-cream-dim: #c4b498;
+    --color-cream-ghost: rgba(225, 208, 179, 0.10);
+    --color-cream-border: rgba(225, 208, 179, 0.22);
+
+    /* Accent: Tan */
+    --color-tan: #a18d6d;
+    --color-tan-light: #baa888;
+    --color-tan-dim: #8a7858;
+    --color-tan-ghost: rgba(161, 141, 109, 0.10);
+    --color-tan-border: rgba(161, 141, 109, 0.22);
+
+    /* Accent: Burgundy */
+    --color-burgundy: #703b3b;
+    --color-burgundy-light: #955555;
+    --color-burgundy-dim: #5a2e2e;
+    --color-burgundy-ghost: rgba(112, 59, 59, 0.12);
+    --color-burgundy-border: rgba(112, 59, 59, 0.28);
+
+    /* Semantic: Success */
+    --color-sage: #7a9e82;
+    --color-sage-light: #96b89e;
+    --color-sage-dim: #5f7f66;
+    --color-sage-ghost: rgba(122, 158, 130, 0.10);
+    --color-sage-border: rgba(122, 158, 130, 0.22);
+
+    /* Base theme tokens */
+    --background: 270 10% 5%;
+    --foreground: 35 20% 92%;
+    --card: 270 10% 7%;
+    --card-foreground: 35 20% 92%;
+    --popover: 270 10% 7%;
+    --popover-foreground: 35 20% 92%;
+    --primary: 200 20% 68%;
+    --primary-foreground: 35 20% 92%;
+    --secondary: 270 10% 14%;
+    --secondary-foreground: 35 20% 92%;
+    --muted: 270 10% 14%;
+    --muted-foreground: 280 5% 54%;
+    --accent: 270 10% 14%;
+    --accent-foreground: 35 20% 92%;
+    --destructive: 0 31% 33%;
+    --destructive-foreground: 35 20% 92%;
+    --border: 270 10% 14%;
+    --input: 270 10% 14%;
+    --ring: 200 20% 68%;
+
+    --card-bg-glass: rgba(23, 22, 27, 0.78);
+    --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.28);
+    --card-hover-shadow: 0 12px 40px 0 rgba(155, 180, 192, 0.08);
+  }
+}
+
+body {
+  background-color: var(--color-surface-base);
+  color: var(--color-text-primary);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+/* Glassmorphism card styles */
+.glass-card {
+  background: var(--card-bg-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--color-border-default);
+  box-shadow: var(--card-shadow);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.glass-card-hover {
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card-hover:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-steel-border);
+  box-shadow: var(--card-hover-shadow);
+}
+
+/* Gradient texts */
+.gradient-text {
+  background: linear-gradient(135deg, var(--color-cream) 0%, var(--color-tan) 60%, var(--color-steel) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gradient-text-emerald {
+  background: linear-gradient(135deg, var(--color-sage) 0%, var(--color-sage-dim) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Primary button gradient */
+.gradient-bg-primary {
+  background: linear-gradient(135deg, var(--color-steel-dim) 0%, var(--color-steel) 100%);
+  color: #ffffff !important;
+}
+
+.gradient-bg-primary:hover {
+  background: linear-gradient(135deg, var(--color-steel) 0%, var(--color-steel-light) 100%);
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-surface-base);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface-muted);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-border-emphasis);
+}
