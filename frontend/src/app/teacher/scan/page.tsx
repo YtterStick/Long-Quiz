@@ -48,6 +48,11 @@ interface SubmissionResult {
     id: string;
     student_number: number;
     user: { first_name: string; last_name: string };
+    section?: {
+      id: string;
+      name: string;
+      subject?: string;
+    } | null;
   };
 }
 
@@ -331,13 +336,18 @@ export default function TeacherScanPage() {
                 {/* Result Header */}
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border-default pb-5">
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <h2 className="text-xl font-bold text-text-primary">
                         {result.student.user.first_name} {result.student.user.last_name}
                       </h2>
                       <span className="rounded-full bg-sage-ghost px-2.5 py-0.5 text-xs font-mono font-bold text-sage border border-sage-border">
-                        ID: {result.student.student_number}
+                        ID: 02000{String(result.student.student_number).padStart(6, "0")}
                       </span>
+                      {result.student.section && (
+                        <span className="rounded-full bg-steel/15 px-2.5 py-0.5 text-xs font-semibold text-steel-light border border-steel/30">
+                          Section: {result.student.section.name}{result.student.section.subject ? ` (${result.student.section.subject})` : ""}
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-text-muted mt-1">
                       Scanned at {new Date(result.scanned_at).toLocaleTimeString()}

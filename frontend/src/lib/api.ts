@@ -135,7 +135,7 @@ export const admin = {
   }>>("/api/admin/teachers"),
 
   createTeacher: (data: {
-    username: string;
+    username?: string;
     first_name: string;
     last_name: string;
     role: string;
@@ -190,6 +190,7 @@ export const teacher = {
       id: string;
       user_id: string;
       student_number: number;
+      full_student_id?: string;
       section_id: string;
       user: {
         id: string;
@@ -204,7 +205,54 @@ export const teacher = {
       temp_password?: string;
     }>>(`/api/teacher/sections/${sectionId}/students`),
 
-  addStudent: (sectionId: string, data: { first_name: string; last_name: string; username?: string }) =>
+  listAllStudents: (params?: { search?: string; unassigned_only?: boolean }) => {
+    const q = new URLSearchParams();
+    if (params?.search) q.append("search", params.search);
+    if (params?.unassigned_only) q.append("unassigned_only", "true");
+    const queryStr = q.toString() ? `?${q.toString()}` : "";
+    return request<Array<{
+      id: string;
+      user_id: string;
+      student_number: number;
+      full_student_id?: string;
+      section_id?: string | null;
+      section?: {
+        id: string;
+        name: string;
+        subject: string;
+      } | null;
+      user: {
+        id: string;
+        username: string;
+        first_name: string;
+        last_name: string;
+        role: string;
+        is_active: boolean;
+        must_change_password: boolean;
+        created_at: string;
+      };
+      temp_password?: string;
+    }>>(`/api/teacher/students${queryStr}`);
+  },
+
+  createStudent: (data: { first_name: string; last_name: string; student_number?: number | string; username?: string; section_id?: string }) =>
+    request<{
+      id: string;
+      user_id: string;
+      student_number: number;
+      full_student_id?: string;
+      section_id?: string | null;
+      user: { username: string };
+      temp_password?: string;
+    }>(`/api/teacher/students`, { method: "POST", body: data }),
+
+  enrollStudent: (sectionId: string, studentId: string) =>
+    request(`/api/teacher/sections/${sectionId}/enroll`, { method: "POST", body: { student_id: studentId } }),
+
+  unenrollStudent: (sectionId: string, studentId: string) =>
+    request(`/api/teacher/sections/${sectionId}/students/${studentId}`, { method: "DELETE" }),
+
+  addStudent: (sectionId: string, data: { first_name: string; last_name: string; student_number?: number | string; username?: string }) =>
     request(`/api/teacher/sections/${sectionId}/students`, { method: "POST", body: data }),
 
   addStudentsCSV: (sectionId: string, file: File) => {
@@ -425,6 +473,8 @@ export const student = {
   getDashboard: () =>
     request<{
       student_number: number;
+      full_student_id?: string;
+      static_prefix?: string;
       section_id: string;
       first_name: string;
       last_name: string;

@@ -36,7 +36,7 @@ export function SkeletonTable({ rows = 5 }: { rows?: number }) {
       </div>
       <div className="space-y-3 pt-2">
         {Array.from({ length: rows }).map((_, i) => (
-          <div key={i} className="flex items-center justify-between py-3 border-b border-border-default/40">
+          <div key={i} className="flex items-center justify-between py-3 border-b border-border-subtle">
             <Skeleton className="h-4 w-1/4" />
             <Skeleton className="h-4 w-1/5" />
             <Skeleton className="h-4 w-1/6" />
@@ -64,7 +64,7 @@ export function SkeletonExamGrid({ count = 3 }: { count?: number }) {
             <Skeleton className="h-3.5 w-28" />
           </div>
           <Skeleton className="h-3.5 w-full" />
-          <div className="pt-4 border-t border-border-default/40">
+          <div className="pt-4 border-t border-border-subtle">
             <div className="grid grid-cols-2 gap-2">
               <Skeleton className="h-9 w-full rounded-xl" />
               <Skeleton className="h-9 w-full rounded-xl" />
@@ -90,7 +90,7 @@ export function SkeletonSectionGrid({ count = 3 }: { count?: number }) {
             <Skeleton className="h-4 w-4 rounded" />
             <Skeleton className="h-3.5 w-32" />
           </div>
-          <div className="pt-4 border-t border-border-default/40">
+          <div className="pt-4 border-t border-border-subtle">
             <Skeleton className="h-10 w-full rounded-xl" />
           </div>
         </div>

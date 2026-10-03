@@ -1,7 +1,13 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 import { ThemeProvider } from "@/lib/theme-context";
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  interactiveWidget: "resizes-content",
+};
 
 export const metadata: Metadata = {
   title: "LongQuiz",
@@ -22,7 +28,7 @@ export default function RootLayout({
             __html: `
               (function() {
                 try {
-                  const saved = localStorage.getItem('longquiz_theme');
+                  var saved = localStorage.getItem('longquiz_theme');
                   if (saved === 'dark') {
                     document.documentElement.classList.add('dark');
                   } else {

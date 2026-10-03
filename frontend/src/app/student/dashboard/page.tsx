@@ -71,6 +71,8 @@ interface PublicReviewerItem {
 
 interface StudentInfo {
   student_number: number;
+  full_student_id?: string;
+  static_prefix?: string;
   section_id: string;
   first_name: string;
   last_name: string;
@@ -161,7 +163,7 @@ export default function StudentDashboard() {
             </p>
           </div>
 
-          {/* Assigned 6-digit Student ID Card */}
+          {/* Assigned Student ID Card */}
           <div className="md:col-span-4">
             {loading ? (
               <SkeletonStudentInfoCard />
@@ -170,10 +172,18 @@ export default function StudentDashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-tan-light">
-                    Your Assigned OMR Student ID
+                    Your Assigned Student ID
                   </p>
-                  <p className="text-3xl font-extrabold font-mono text-sage mt-1 tracking-widest">
-                    {info?.student_number || "------"}
+                  <div className="mt-1 flex items-baseline gap-1 font-mono">
+                    <span className="text-sm font-semibold text-text-muted">
+                      {info?.static_prefix || "02000"}-
+                    </span>
+                    <span className="text-2xl font-extrabold text-sage tracking-wider">
+                      {info?.student_number ? String(info.student_number).padStart(6, "0") : "------"}
+                    </span>
+                  </div>
+                  <p className="text-[11px] font-mono text-tan mt-0.5">
+                    Full ID: {info?.full_student_id || `02000${String(info?.student_number || "").padStart(6, "0")}`}
                   </p>
                 </div>
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sage-ghost text-sage border border-sage-border">
@@ -181,7 +191,7 @@ export default function StudentDashboard() {
                 </div>
               </div>
               <p className="text-[10px] text-text-muted mt-3">
-                * Shade this exact 6-digit ID on your paper bubble sheet during exams.
+                * Shade the 6-digit OMR digit (<strong className="text-sage">{info?.student_number ? String(info.student_number).padStart(6, "0") : "------"}</strong>) on your paper bubble sheet during exams.
               </p>
             </div>
             )}
@@ -192,37 +202,37 @@ export default function StudentDashboard() {
         {loading ? (
           <SkeletonStudentStats />
         ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 mb-8">
-          <div className="glass-card rounded-2xl p-5 border border-border-default flex items-center justify-between">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 mb-6 sm:mb-8">
+          <div className="glass-card rounded-2xl p-3.5 sm:p-5 border border-border-default flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-text-muted uppercase tracking-wider">
-                Public Graded Exams
+              <p className="text-[10px] sm:text-xs font-semibold text-text-muted uppercase tracking-wider">
+                Public Graded
               </p>
-              <h3 className="mt-1 text-2xl font-bold text-text-primary">{info?.total_exams || 0}</h3>
+              <h3 className="mt-0.5 sm:mt-1 text-xl sm:text-2xl font-bold text-text-primary">{info?.total_exams || 0}</h3>
             </div>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-tan-ghost text-tan">
-              <FileCheck className="h-5 w-5" />
+            <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-tan-ghost text-tan">
+              <FileCheck className="h-4 w-4 sm:h-5 sm:w-5" />
             </div>
           </div>
 
-          <div className="glass-card rounded-2xl p-5 border border-border-default flex items-center justify-between">
+          <div className="glass-card rounded-2xl p-3.5 sm:p-5 border border-border-default flex items-center justify-between">
             <div>
-              <p className="text-xs font-medium text-text-muted uppercase tracking-wider">
-                Overall Average Percentage
+              <p className="text-[10px] sm:text-xs font-semibold text-text-muted uppercase tracking-wider">
+                Average Score
               </p>
-              <h3 className="mt-1 text-2xl font-bold text-sage">
+              <h3 className="mt-0.5 sm:mt-1 text-xl sm:text-2xl font-bold text-sage">
                 {info?.average_percentage || 0}%
               </h3>
             </div>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sage-ghost text-sage">
-              <Award className="h-5 w-5" />
+            <div className="flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-xl bg-sage-ghost text-sage">
+              <Award className="h-4 w-4 sm:h-5 sm:w-5" />
             </div>
           </div>
         </div>
         )}
 
         {/* Portal Tabs: My Grades vs Study Reviewers */}
-        <div className="flex items-center gap-2 mb-6 border-b border-border-default pb-2">
+        <div className="flex items-center gap-2 mb-6 border-b border-border-default pb-2 overflow-x-auto no-scrollbar whitespace-nowrap">
           <button
             onClick={() => setActiveTab("grades")}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${

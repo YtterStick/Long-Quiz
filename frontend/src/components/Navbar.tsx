@@ -112,7 +112,9 @@ export function Navbar({ onOpenPasswordModal }: NavbarProps) {
 
           {/* Right Controls: Theme Toggle & User Profile */}
           <div className="flex items-center gap-2.5">
-            <ThemeToggle />
+            <div className="hidden sm:block">
+              <ThemeToggle />
+            </div>
 
             {/* User Profile Dropdown */}
             <div className="relative" ref={dropdownRef}>

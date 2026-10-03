@@ -1,7 +1,7 @@
 """Pydantic request/response schemas for all API endpoints."""
 
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Union
 from datetime import datetime
 from app.models import Role
 
@@ -91,19 +91,28 @@ class SectionOut(BaseModel):
 class StudentCreate(BaseModel):
     first_name: str
     last_name: str
+    student_number: Optional[Union[int, str]] = None  # 6-digit OMR ID or 02000-prefixed ID
     username: Optional[str] = None  # Auto-generated if not set
+    section_id: Optional[str] = None  # Optional; student can exist without section
+
+
+class EnrollStudent(BaseModel):
+    student_id: str
 
 
 class StudentCSVRow(BaseModel):
     first_name: str
     last_name: str
+    student_number: Optional[Union[int, str]] = None
 
 
 class StudentOut(BaseModel):
     id: str
     user_id: str
     student_number: int
+    full_student_id: Optional[str] = None  # e.g. "02000282222"
     section_id: Optional[str] = None
+    section: Optional[SectionOut] = None
     user: UserOut
     temp_password: Optional[str] = None  # Only returned on creation
 

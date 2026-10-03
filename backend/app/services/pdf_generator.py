@@ -92,9 +92,9 @@ def _info_block(c, y_top):
     _box(c, lx, y_bot, total_w, block_h, lw=0.6)
     _vline(c, lx + left_w, y_bot, y_top, w=0.6)
 
-    # ── Student Number Grid ──────────────
-    NUM_COLS = 10
-    BR = 1.15 * mm
+    # ── Student Number Grid (6 OMR Digits, static prefix 02000) ──────
+    NUM_COLS = 6
+    BR = 1.35 * mm
     usable_w = left_w - 6 * mm
     col_w = usable_w / NUM_COLS
     pad_left = lx + 3.5 * mm
@@ -102,8 +102,8 @@ def _info_block(c, y_top):
     # Blue banner
     c.setFillColor(LBLUE)
     c.rect(lx, y_top - 4.5 * mm, left_w, 4.5 * mm, fill=1, stroke=0)
-    c.setFont("Helvetica-Bold", 5.5); c.setFillColor(white)
-    c.drawCentredString(lx + left_w / 2, y_top - 3.2 * mm, "STUDENT NUMBER")
+    c.setFont("Helvetica-Bold", 5.2); c.setFillColor(white)
+    c.drawCentredString(lx + left_w / 2, y_top - 3.2 * mm, "STUDENT ID (OMR: 02000-XXXXXX)")
 
     # Checkbox row (write-in boxes)
     box_y = y_top - 4.5 * mm - 4.0 * mm

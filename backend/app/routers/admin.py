@@ -59,16 +59,29 @@ async def create_teacher(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_role(Role.ADMIN)),
 ):
-    """Create a new teacher account."""
-    # Check uniqueness
-    existing = await db.execute(select(User).where(User.username == body.username))
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Username already exists")
+    """Create a new teacher account with username first_name.last_name (e.g. andrei.dilag)."""
+    from app.utils import generate_teacher_username
+
+    username = (
+        body.username.strip()
+        if body.username and body.username.strip()
+        else generate_teacher_username(body.first_name, body.last_name)
+    )
+
+    # Ensure unique username
+    suffix = 0
+    orig_username = username
+    while True:
+        exists = await db.execute(select(User).where(User.username == username))
+        if not exists.scalar_one_or_none():
+            break
+        suffix += 1
+        username = f"{orig_username}{suffix}"
 
     temp_password = body.password or generate_temp_password()
 
     user = User(
-        username=body.username,
+        username=username,
         password_hash=hash_password(temp_password),
         role=Role.TEACHER,
         first_name=body.first_name,

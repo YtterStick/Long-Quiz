@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, or_, update, String
 from sqlalchemy.orm import selectinload
 from typing import Optional
 from app.database import get_db
@@ -12,7 +12,7 @@ from app.models import (
 )
 from app.schemas import (
     SectionCreate, SectionUpdate, SectionOut,
-    StudentCreate, StudentOut, StudentBulkCreateResponse,
+    StudentCreate, StudentOut, StudentBulkCreateResponse, EnrollStudent,
     ExamCreate, ExamUpdate, ExamOut, AnswerKeyItem,
     QuestionItem, QuestionOut, QuestionnaireUpdate, ExamVisibilityUpdate,
     SubmissionOut, SubmissionOverride,
@@ -20,7 +20,16 @@ from app.schemas import (
 )
 from app.auth import hash_password
 from app.deps import require_role
-from app.utils import generate_temp_password, generate_username, generate_student_number, parse_student_csv
+from app.utils import (
+    generate_temp_password,
+    generate_username,
+    generate_student_username,
+    generate_student_number,
+    parse_student_csv,
+    clean_student_omr_number,
+    format_full_student_id,
+    STATIC_STUDENT_PREFIX,
+)
 
 router = APIRouter(prefix="/api/teacher", tags=["Teacher"])
 
@@ -150,6 +159,11 @@ async def delete_section(
     section = result.scalar_one_or_none()
     if not section:
         raise HTTPException(status_code=404, detail="Section not found")
+
+    # Unassign all students in this section so their accounts and submissions are preserved
+    await db.execute(
+        update(Student).where(Student.section_id == section_id).values(section_id=None)
+    )
     await db.delete(section)
     await db.flush()
     return {"message": "Section deleted successfully"}
@@ -157,45 +171,82 @@ async def delete_section(
 
 # ─── Students ─────────────────────────────────────────────────
 
-@router.get("/sections/{section_id}/students", response_model=list[StudentOut])
-async def list_students(
-    section_id: str,
+@router.get("/students", response_model=list[StudentOut])
+async def list_all_students(
+    search: Optional[str] = Query(None),
+    unassigned_only: bool = Query(False),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(Role.TEACHER)),
 ):
-    teacher = await _get_teacher(current_user, db)
-    # Verify section ownership
-    sec = await db.execute(
-        select(Section).where(Section.id == section_id, Section.teacher_id == teacher.id)
-    )
-    if not sec.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Section not found")
-
-    result = await db.execute(
+    """
+    List all students registered in the application.
+    Supports searching by name, username, or student number.
+    Can filter by unassigned_only=True.
+    """
+    stmt = (
         select(Student)
-        .options(selectinload(Student.user))
-        .where(Student.section_id == section_id)
-        .order_by(Student.student_number)
+        .options(selectinload(Student.user), selectinload(Student.section))
+        .join(User, Student.user_id == User.id)
     )
+    if unassigned_only:
+        stmt = stmt.where(Student.section_id.is_(None))
+    if search:
+        s = f"%{search.strip()}%"
+        stmt = stmt.where(
+            or_(
+                User.first_name.ilike(s),
+                User.last_name.ilike(s),
+                User.username.ilike(s),
+                func.cast(Student.student_number, String).ilike(s),
+            )
+        )
+    stmt = stmt.order_by(Student.student_number)
+    result = await db.execute(stmt)
     return result.scalars().all()
 
 
-@router.post("/sections/{section_id}/students", response_model=StudentOut)
-async def add_student(
-    section_id: str,
+@router.post("/students", response_model=StudentOut)
+async def create_student(
     body: StudentCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(Role.TEACHER)),
 ):
+    """
+    Register a student into the system.
+    Can be created independently without a section roster (section_id=None).
+    """
     teacher = await _get_teacher(current_user, db)
-    sec = await db.execute(
-        select(Section).where(Section.id == section_id, Section.teacher_id == teacher.id)
-    )
-    if not sec.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Section not found")
+
+    section_id = body.section_id
+    if section_id:
+        sec = await db.execute(
+            select(Section).where(Section.id == section_id, Section.teacher_id == teacher.id)
+        )
+        if not sec.scalar_one_or_none():
+            raise HTTPException(status_code=404, detail="Section not found")
+
+    # Determine student number (6-digit OMR ID)
+    if body.student_number is not None and str(body.student_number).strip():
+        try:
+            student_number = clean_student_omr_number(body.student_number)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        exists = await db.execute(select(Student).where(Student.student_number == student_number))
+        if exists.scalar_one_or_none():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Student ID with OMR digit {student_number:06d} ({STATIC_STUDENT_PREFIX}{student_number:06d}) already exists."
+            )
+    else:
+        student_number = generate_student_number()
+        while True:
+            exists = await db.execute(select(Student).where(Student.student_number == student_number))
+            if not exists.scalar_one_or_none():
+                break
+            student_number = generate_student_number()
 
     temp_password = generate_temp_password()
-    username = body.username or generate_username(body.first_name, body.last_name)
+    username = body.username or generate_student_username(body.last_name, student_number)
 
     # Ensure unique username
     suffix = 0
@@ -206,14 +257,6 @@ async def add_student(
             break
         suffix += 1
         username = f"{orig_username}{suffix}"
-
-    # Generate unique student number
-    student_number = generate_student_number()
-    while True:
-        exists = await db.execute(select(Student).where(Student.student_number == student_number))
-        if not exists.scalar_one_or_none():
-            break
-        student_number = generate_student_number()
 
     user = User(
         username=username,
@@ -234,9 +277,112 @@ async def add_student(
     db.add(student)
     await db.flush()
 
-    # Reload with relationship
     result = await db.execute(
-        select(Student).options(selectinload(Student.user)).where(Student.id == student.id)
+        select(Student)
+        .options(selectinload(Student.user), selectinload(Student.section))
+        .where(Student.id == student.id)
+    )
+    student_out = result.scalar_one()
+    out = StudentOut.model_validate(student_out)
+    out.temp_password = temp_password
+    return out
+
+
+@router.get("/sections/{section_id}/students", response_model=list[StudentOut])
+async def list_students(
+    section_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    teacher = await _get_teacher(current_user, db)
+    # Verify section ownership
+    sec = await db.execute(
+        select(Section).where(Section.id == section_id, Section.teacher_id == teacher.id)
+    )
+    if not sec.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Section not found")
+
+    result = await db.execute(
+        select(Student)
+        .options(selectinload(Student.user), selectinload(Student.section))
+        .where(Student.section_id == section_id)
+        .order_by(Student.student_number)
+    )
+    return result.scalars().all()
+
+
+@router.post("/sections/{section_id}/students", response_model=StudentOut)
+async def add_student(
+    section_id: str,
+    body: StudentCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    teacher = await _get_teacher(current_user, db)
+    sec = await db.execute(
+        select(Section).where(Section.id == section_id, Section.teacher_id == teacher.id)
+    )
+    if not sec.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Section not found")
+
+    # Determine student number (6-digit OMR ID) first so it can form the guaranteed unique username
+    if body.student_number is not None and str(body.student_number).strip():
+        try:
+            student_number = clean_student_omr_number(body.student_number)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        exists = await db.execute(select(Student).where(Student.student_number == student_number))
+        if exists.scalar_one_or_none():
+            raise HTTPException(
+                status_code=400,
+                detail=f"Student ID with OMR digit {student_number:06d} ({STATIC_STUDENT_PREFIX}{student_number:06d}) already exists."
+            )
+    else:
+        student_number = generate_student_number()
+        while True:
+            exists = await db.execute(select(Student).where(Student.student_number == student_number))
+            if not exists.scalar_one_or_none():
+                break
+            student_number = generate_student_number()
+
+    temp_password = generate_temp_password()
+    # Student username format: {last_name}.{student_number} (e.g. dilag.282222)
+    username = body.username or generate_student_username(body.last_name, student_number)
+
+    # Ensure unique username
+    suffix = 0
+    orig_username = username
+    while True:
+        exists = await db.execute(select(User).where(User.username == username))
+        if not exists.scalar_one_or_none():
+            break
+        suffix += 1
+        username = f"{orig_username}{suffix}"
+
+    user = User(
+        username=username,
+        password_hash=hash_password(temp_password),
+        role=Role.STUDENT,
+        first_name=body.first_name,
+        last_name=body.last_name,
+        must_change_password=True,
+    )
+    db.add(user)
+    await db.flush()
+
+    student = Student(
+        user_id=user.id,
+        student_number=student_number,
+        section_id=section_id,
+    )
+    db.add(student)
+    await db.flush()
+
+    # Reload with user and section relationships
+    result = await db.execute(
+        select(Student)
+        .options(selectinload(Student.user), selectinload(Student.section))
+        .where(Student.id == student.id)
     )
     student_out = result.scalar_one()
     out = StudentOut.model_validate(student_out)
@@ -251,7 +397,7 @@ async def add_students_csv(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(Role.TEACHER)),
 ):
-    """Bulk-add students from a CSV file with columns: first_name, last_name."""
+    """Bulk-add students from a CSV file with columns: first_name, last_name, [student_id / student_number]."""
     teacher = await _get_teacher(current_user, db)
     sec = await db.execute(
         select(Section).where(Section.id == section_id, Section.teacher_id == teacher.id)
@@ -263,9 +409,27 @@ async def add_students_csv(
     rows = parse_student_csv(content)
 
     created_students = []
-    for first_name, last_name in rows:
+    used_numbers = set()
+    for first_name, last_name, csv_id in rows:
+        student_number = None
+        if csv_id is not None and csv_id not in used_numbers:
+            exists = await db.execute(select(Student).where(Student.student_number == csv_id))
+            if not exists.scalar_one_or_none():
+                student_number = csv_id
+                used_numbers.add(csv_id)
+
+        if student_number is None:
+            student_number = generate_student_number()
+            while True:
+                exists = await db.execute(select(Student).where(Student.student_number == student_number))
+                if not exists.scalar_one_or_none() and student_number not in used_numbers:
+                    break
+                student_number = generate_student_number()
+            used_numbers.add(student_number)
+
         temp_password = generate_temp_password()
-        username = generate_username(first_name, last_name)
+        # Student username format: {last_name}.{student_number} (e.g. dilag.282222)
+        username = generate_student_username(last_name, student_number)
 
         suffix = 0
         orig_username = username
@@ -275,13 +439,6 @@ async def add_students_csv(
                 break
             suffix += 1
             username = f"{orig_username}{suffix}"
-
-        student_number = generate_student_number()
-        while True:
-            exists = await db.execute(select(Student).where(Student.student_number == student_number))
-            if not exists.scalar_one_or_none():
-                break
-            student_number = generate_student_number()
 
         user = User(
             username=username,
@@ -303,7 +460,9 @@ async def add_students_csv(
         await db.flush()
 
         result = await db.execute(
-            select(Student).options(selectinload(Student.user)).where(Student.id == student.id)
+            select(Student)
+            .options(selectinload(Student.user), selectinload(Student.section))
+            .where(Student.id == student.id)
         )
         student_obj = result.scalar_one()
         out = StudentOut.model_validate(student_obj)
@@ -313,17 +472,81 @@ async def add_students_csv(
     return StudentBulkCreateResponse(created=len(created_students), students=created_students)
 
 
+@router.post("/sections/{section_id}/enroll", response_model=StudentOut)
+async def enroll_student(
+    section_id: str,
+    body: EnrollStudent,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Enroll an existing student into a section."""
+    teacher = await _get_teacher(current_user, db)
+    sec = await db.execute(
+        select(Section).where(Section.id == section_id, Section.teacher_id == teacher.id)
+    )
+    if not sec.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Section not found")
+
+    result = await db.execute(
+        select(Student)
+        .options(selectinload(Student.user), selectinload(Student.section))
+        .where(Student.id == body.student_id)
+    )
+    student = result.scalar_one_or_none()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    student.section_id = section_id
+    await db.flush()
+
+    result = await db.execute(
+        select(Student)
+        .options(selectinload(Student.user), selectinload(Student.section))
+        .where(Student.id == student.id)
+    )
+    return result.scalar_one()
+
+
+@router.delete("/sections/{section_id}/students/{student_id}")
+async def unenroll_student(
+    section_id: str,
+    student_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """
+    Remove/unenroll a student from a section roster.
+    CRITICAL: Does NOT delete the student account or submissions.
+    Only sets student.section_id = None so their account, credentials, and grades remain safe.
+    """
+    teacher = await _get_teacher(current_user, db)
+    sec = await db.execute(
+        select(Section).where(Section.id == section_id, Section.teacher_id == teacher.id)
+    )
+    if not sec.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Section not found")
+
+    result = await db.execute(
+        select(Student).where(Student.id == student_id, Student.section_id == section_id)
+    )
+    student = result.scalar_one_or_none()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found in this section")
+
+    student.section_id = None
+    await db.flush()
+    return {"message": "Student unenrolled from section successfully"}
+
+
 @router.delete("/students/{student_id}")
 async def delete_student(
     student_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(Role.TEACHER)),
 ):
-    teacher = await _get_teacher(current_user, db)
+    """Permanently delete a student account and user from the system."""
     result = await db.execute(
-        select(Student)
-        .join(Section)
-        .where(Student.id == student_id, Section.teacher_id == teacher.id)
+        select(Student).where(Student.id == student_id)
     )
     student = result.scalar_one_or_none()
     if not student:
@@ -331,8 +554,11 @@ async def delete_student(
 
     # Delete user (cascades to student)
     user_result = await db.execute(select(User).where(User.id == student.user_id))
-    user = user_result.scalar_one()
-    await db.delete(user)
+    user = user_result.scalar_one_or_none()
+    if user:
+        await db.delete(user)
+    else:
+        await db.delete(student)
     await db.flush()
     return {"message": "Student deleted successfully"}
 
@@ -452,6 +678,12 @@ async def update_exam(
         exam.total_questions = body.total_questions
     if body.is_public is not None:
         exam.is_public = body.is_public
+        if body.is_public:
+            subs_res = await db.execute(
+                select(ExamSubmission).where(ExamSubmission.exam_id == exam.id)
+            )
+            for s in subs_res.scalars().all():
+                s.is_published = True
 
     if body.answer_keys is not None:
         for key in exam.answer_keys:
@@ -509,6 +741,12 @@ async def toggle_exam_visibility(
         raise HTTPException(status_code=404, detail="Exam not found")
 
     exam.is_public = body.is_public
+    if body.is_public:
+        subs_res = await db.execute(
+            select(ExamSubmission).where(ExamSubmission.exam_id == exam.id)
+        )
+        for s in subs_res.scalars().all():
+            s.is_published = True
     await db.flush()
     return exam
 
@@ -759,7 +997,9 @@ async def scan_sheet(
     # Find student by detected student number
     student_number = omr_result["student_number"]
     result = await db.execute(
-        select(Student).options(selectinload(Student.user)).where(
+        select(Student)
+        .options(selectinload(Student.user), selectinload(Student.section))
+        .where(
             Student.student_number == student_number
         )
     )
@@ -800,7 +1040,7 @@ async def scan_sheet(
         total_score=total_score,
         max_score=exam.total_questions,
         scanned_image_url=image_url,
-        is_published=False,
+        is_published=exam.is_public,
     )
     db.add(submission)
     await db.flush()
@@ -820,6 +1060,7 @@ async def scan_sheet(
         .options(
             selectinload(ExamSubmission.answers),
             selectinload(ExamSubmission.student).selectinload(Student.user),
+            selectinload(ExamSubmission.student).selectinload(Student.section),
             selectinload(ExamSubmission.exam).selectinload(Exam.answer_keys),
         )
         .where(ExamSubmission.id == submission.id)
@@ -841,6 +1082,7 @@ async def list_submissions(
         .options(
             selectinload(ExamSubmission.answers),
             selectinload(ExamSubmission.student).selectinload(Student.user),
+            selectinload(ExamSubmission.student).selectinload(Student.section),
         )
         .join(Exam)
         .where(Exam.id == exam_id, Exam.teacher_id == teacher.id)
@@ -900,6 +1142,7 @@ async def override_submission(
         .options(
             selectinload(ExamSubmission.answers),
             selectinload(ExamSubmission.student).selectinload(Student.user),
+            selectinload(ExamSubmission.student).selectinload(Student.section),
             selectinload(ExamSubmission.exam).selectinload(Exam.answer_keys),
         )
         .where(ExamSubmission.id == submission.id)
@@ -1025,7 +1268,10 @@ async def get_section_gradebook(
     for student in students:
         if not student.user:
             continue
-        published_subs = [s for s in student.submissions if s.is_published and s.exam]
+        published_subs = [
+            s for s in student.submissions
+            if (s.is_published or (s.exam and s.exam.is_public)) and s.exam
+        ]
         avg_score = (
             sum(s.total_score for s in published_subs) / len(published_subs)
             if published_subs else 0

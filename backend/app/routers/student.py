@@ -2,12 +2,13 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, or_
 from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models import User, Student, ExamSubmission, Exam, ExamAnswerKey, ExamQuestion, Role
 from app.schemas import GradeItem, SubmissionAnswerOut, AnswerKeyOut, QuestionOut, ExamOut
 from app.deps import require_role
+from app.utils import format_full_student_id, STATIC_STUDENT_PREFIX
 
 router = APIRouter(prefix="/api/student", tags=["Student"])
 
@@ -25,7 +26,7 @@ async def get_dashboard(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(Role.STUDENT)),
 ):
-    """Get student dashboard info: only counts exams that the teacher made public."""
+    """Get student dashboard info: only counts exams that the teacher made public or published."""
     student = await _get_student(current_user, db)
 
     result = await db.execute(
@@ -33,13 +34,15 @@ async def get_dashboard(
         .join(Exam, ExamSubmission.exam_id == Exam.id)
         .where(
             ExamSubmission.student_id == student.id,
-            Exam.is_public == True,
+            or_(Exam.is_public == True, ExamSubmission.is_published == True),
         )
     )
     submissions = result.scalars().all()
 
     return {
         "student_number": student.student_number,
+        "full_student_id": format_full_student_id(student.student_number),
+        "static_prefix": STATIC_STUDENT_PREFIX,
         "section_id": student.section_id,
         "first_name": current_user.first_name,
         "last_name": current_user.last_name,
@@ -72,7 +75,7 @@ async def get_grades(
         )
         .where(
             ExamSubmission.student_id == student.id,
-            Exam.is_public == True,
+            or_(Exam.is_public == True, ExamSubmission.is_published == True),
         )
         .order_by(ExamSubmission.scanned_at.desc())
     )

@@ -60,6 +60,11 @@ class Student(Base):
     section: Mapped[Optional["Section"]] = relationship("Section", back_populates="students")
     submissions: Mapped[List["ExamSubmission"]] = relationship("ExamSubmission", back_populates="student", cascade="all, delete-orphan")
 
+    @property
+    def full_student_id(self) -> str:
+        return f"02000{self.student_number:06d}"
+
+
 
 class Section(Base):
     __tablename__ = "sections"

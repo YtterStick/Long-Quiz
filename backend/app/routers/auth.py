@@ -15,8 +15,25 @@ router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 @router.post("/login", response_model=TokenResponse)
 async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Authenticate user and return JWT token."""
-    result = await db.execute(select(User).where(User.username == body.username))
+    input_username = body.username.strip()
+    result = await db.execute(select(User).where(User.username == input_username))
     user = result.scalar_one_or_none()
+
+    if user is None:
+        # Check if the input is a Student ID or numerical OMR ID
+        try:
+            from app.utils import clean_student_omr_number
+            from app.models import Student
+            st_num = clean_student_omr_number(input_username)
+            student_res = await db.execute(
+                select(Student).where(Student.student_number == st_num)
+            )
+            student = student_res.scalar_one_or_none()
+            if student:
+                user_res = await db.execute(select(User).where(User.id == student.user_id))
+                user = user_res.scalar_one_or_none()
+        except ValueError:
+            pass
 
     if user is None:
         raise HTTPException(

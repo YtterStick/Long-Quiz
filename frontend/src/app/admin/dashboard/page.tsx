@@ -66,6 +66,7 @@ export default function AdminDashboard() {
   const [newFirstName, setNewFirstName] = useState("");
   const [newLastName, setNewLastName] = useState("");
   const [newUsername, setNewUsername] = useState("");
+  const [usernameManuallyEdited, setUsernameManuallyEdited] = useState(false);
   const [createdCredentials, setCreatedCredentials] = useState<{
     username: string;
     password: string;
@@ -124,15 +125,31 @@ export default function AdminDashboard() {
     };
   }, [user]);
 
+  const updateTeacherUsernameSuggestion = (first: string, last: string) => {
+    if (!usernameManuallyEdited) {
+      const cleanFirst = first.toLowerCase().replace(/[^a-z0-9]/g, "");
+      const cleanLast = last.toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (cleanFirst && cleanLast) {
+        setNewUsername(`${cleanFirst}.${cleanLast}`);
+      } else if (cleanFirst) {
+        setNewUsername(cleanFirst);
+      } else if (cleanLast) {
+        setNewUsername(cleanLast);
+      } else {
+        setNewUsername("");
+      }
+    }
+  };
+
   const handleCreateTeacher = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
     try {
       const res = await adminApi.createTeacher({
-        first_name: newFirstName,
-        last_name: newLastName,
-        username: newUsername,
+        first_name: newFirstName.trim(),
+        last_name: newLastName.trim(),
+        username: newUsername.trim() || undefined,
         role: "TEACHER",
       });
       setCreatedCredentials({
@@ -142,6 +159,7 @@ export default function AdminDashboard() {
       setNewFirstName("");
       setNewLastName("");
       setNewUsername("");
+      setUsernameManuallyEdited(false);
       await fetchData();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to create teacher");
@@ -428,8 +446,12 @@ export default function AdminDashboard() {
                     type="text"
                     required
                     value={newFirstName}
-                    onChange={(e) => setNewFirstName(e.target.value)}
-                    placeholder="e.g. Maria"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setNewFirstName(val);
+                      updateTeacherUsernameSuggestion(val, newLastName);
+                    }}
+                    placeholder="e.g. Andrei"
                     className="w-full rounded-xl border border-border-emphasis bg-surface-base px-3.5 py-2.5 text-sm text-text-primary focus:border-steel focus:outline-none"
                   />
                 </div>
@@ -439,27 +461,38 @@ export default function AdminDashboard() {
                     type="text"
                     required
                     value={newLastName}
-                    onChange={(e) => setNewLastName(e.target.value)}
-                    placeholder="e.g. Santos"
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setNewLastName(val);
+                      updateTeacherUsernameSuggestion(newFirstName, val);
+                    }}
+                    placeholder="e.g. Dilag"
                     className="w-full rounded-xl border border-border-emphasis bg-surface-base px-3.5 py-2.5 text-sm text-text-primary focus:border-steel focus:outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-text-secondary mb-1">Username</label>
+                  <label className="block text-xs font-semibold text-text-secondary mb-1">
+                    Username <span className="text-text-muted font-normal">(e.g. andrei.dilag)</span>
+                  </label>
                   <input
                     type="text"
-                    required
                     value={newUsername}
-                    onChange={(e) => setNewUsername(e.target.value)}
-                    placeholder="e.g. maria.santos"
-                    className="w-full rounded-xl border border-border-emphasis bg-surface-base px-3.5 py-2.5 text-sm text-text-primary focus:border-steel focus:outline-none"
+                    onChange={(e) => {
+                      setUsernameManuallyEdited(true);
+                      setNewUsername(e.target.value);
+                    }}
+                    placeholder="e.g. andrei.dilag (auto-generated if empty)"
+                    className="w-full rounded-xl border border-border-emphasis bg-surface-base px-3.5 py-2.5 text-sm text-text-primary focus:border-steel focus:outline-none font-mono"
                   />
                 </div>
 
                 <div className="flex gap-3 pt-2">
                   <button
                     type="button"
-                    onClick={() => setIsAddModalOpen(false)}
+                    onClick={() => {
+                      setIsAddModalOpen(false);
+                      setUsernameManuallyEdited(false);
+                    }}
                     className="w-1/2 rounded-xl border border-border-emphasis bg-surface-subtle py-2.5 text-xs font-semibold text-text-secondary hover:bg-surface-muted"
                   >
                     Cancel
