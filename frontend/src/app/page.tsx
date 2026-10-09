@@ -11,12 +11,7 @@ import {
   Loader2,
   Eye,
   EyeOff,
-  Sparkles,
-  Shield,
-  School,
   GraduationCap,
-  CheckCircle2,
-  HelpCircle,
 } from "lucide-react";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
 import { ForgotPasswordModal } from "@/components/ForgotPasswordModal";
@@ -126,15 +121,6 @@ export default function LoginPage() {
         {/* Left Decorative Column (Desktop) */}
         <div className="hidden lg:flex flex-col items-center justify-center flex-1 max-w-md pr-8 animate-in fade-in slide-in-from-left-6 duration-700">
           <ExamSheetIllustration className="w-80 h-80 drop-shadow-xl" />
-          <div className="mt-4 text-center">
-            <h3 className="text-base font-bold text-text-primary flex items-center justify-center gap-1.5">
-              <Sparkles className="h-4 w-4 text-tan" />
-              Automated OMR Bubble Grading
-            </h3>
-            <p className="text-xs text-text-muted mt-1 max-w-xs leading-relaxed">
-              Fast camera & photo scanning with instant score calculation and item analysis.
-            </p>
-          </div>
         </div>
 
         {/* Center: Main Elevated Login Card */}
@@ -262,15 +248,6 @@ export default function LoginPage() {
         {/* Right Decorative Column (Desktop) */}
         <div className="hidden lg:flex flex-col items-center justify-center flex-1 max-w-md pl-8 animate-in fade-in slide-in-from-right-6 duration-700">
           <StudentDeskIllustration className="w-80 h-80 drop-shadow-xl" />
-          <div className="mt-4 text-center">
-            <h3 className="text-base font-bold text-text-primary flex items-center justify-center gap-1.5">
-              <CheckCircle2 className="h-4 w-4 text-sage" />
-              Interactive Study Reviewers
-            </h3>
-            <p className="text-xs text-text-muted mt-1 max-w-xs leading-relaxed">
-              Explore shared reviewer question banks, answer keys, and take online proctored practice quizzes.
-            </p>
-          </div>
         </div>
       </div>
 
