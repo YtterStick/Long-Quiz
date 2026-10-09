@@ -11,10 +11,22 @@ import {
   Loader2,
   Eye,
   EyeOff,
+  Sparkles,
+  Shield,
+  School,
+  GraduationCap,
+  CheckCircle2,
+  HelpCircle,
 } from "lucide-react";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
 import { ForgotPasswordModal } from "@/components/ForgotPasswordModal";
 import { ExamIcon } from "@/components/ui/ExamIcon";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import {
+  StudentDeskIllustration,
+  ExamSheetIllustration,
+  DoodleBackgroundElements,
+} from "@/components/ui/Illustrations";
 
 export default function LoginPage() {
   const { user, login, loading } = useAuth();
@@ -40,7 +52,6 @@ export default function LoginPage() {
   }, [user, loading, router]);
 
   const handleInputFocus = (e: React.FocusEvent<HTMLInputElement>) => {
-    // Only apply keyboard adjustment on mobile screens (under 640px)
     if (typeof window !== "undefined" && window.innerWidth < 640) {
       setIsInputFocused(true);
       setTimeout(() => {
@@ -83,141 +94,197 @@ export default function LoginPage() {
     }
   };
 
-  return (
-    <main className="relative flex min-h-dvh w-full flex-col items-center justify-center bg-surface-base px-4 py-6 sm:py-12 text-text-primary overflow-y-auto">
-      {/* Subtle ambient illumination */}
-      <div className="pointer-events-none absolute -top-32 left-1/2 -translate-x-1/2 h-80 w-80 rounded-full bg-steel/10 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-32 left-1/2 -translate-x-1/2 h-80 w-80 rounded-full bg-tan/8 blur-3xl" />
+  // Quick fill helper for testing/demoing different roles
+  const fillDemoCredentials = (u: string, p: string) => {
+    setUsername(u);
+    setPassword(p);
+    setError(null);
+  };
 
-      <div
-        className={`relative z-10 w-full max-w-sm sm:transform-none sm:transition-none ${
-          isInputFocused ? "-translate-y-12 transition-transform duration-300 ease-out" : ""
-        }`}
-      >
-        {/* Brand Header */}
-        <div
-          className={`text-center sm:transform-none sm:transition-none sm:mb-6 ${
-            isInputFocused ? "mb-3 scale-95 transition-all duration-300" : "mb-6"
-          }`}
-        >
-          <div className="mx-auto flex h-13 w-13 items-center justify-center rounded-2xl bg-steel shadow-lg shadow-steel/20 mb-3 transition-transform hover:scale-105">
-            <ExamIcon className="h-6 w-6 text-white" />
+  return (
+    <main className="relative flex min-h-dvh w-full flex-col justify-between bg-surface-base px-4 py-4 sm:px-8 sm:py-6 text-text-primary overflow-x-hidden selection:bg-steel/20">
+      <DoodleBackgroundElements />
+
+      {/* Top Header Bar */}
+      <header className="relative z-20 flex items-center justify-between w-full max-w-7xl mx-auto py-2">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-steel shadow-md shadow-steel/20 text-white transition-transform hover:scale-105">
+            <ExamIcon className="h-5 w-5" />
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-text-primary">
-            Long<span className="text-steel">Quiz</span>
-          </h1>
-          <p className="text-xs text-text-muted mt-1">
-            OMR Exam & Bubble Sheet Grading Portal
-          </p>
+          <span className="text-xl font-black tracking-tight text-text-primary">
+            Evalo
+          </span>
         </div>
 
-        {/* Login Card */}
-        <div className="glass-card rounded-3xl p-6 sm:p-8 shadow-xl border border-border-default backdrop-blur-xl">
-          <div className="mb-6">
-            <h2 className="text-lg font-bold text-text-primary">Sign In</h2>
-            <p className="text-xs text-text-muted mt-0.5">
-              Enter your credentials or Student ID to continue
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+        </div>
+      </header>
+
+      {/* Main Hero & Auth Section */}
+      <div className="relative z-10 my-auto flex w-full max-w-7xl mx-auto items-center justify-center lg:justify-between py-6 lg:py-10">
+        {/* Left Decorative Column (Desktop) */}
+        <div className="hidden lg:flex flex-col items-center justify-center flex-1 max-w-md pr-8 animate-in fade-in slide-in-from-left-6 duration-700">
+          <ExamSheetIllustration className="w-80 h-80 drop-shadow-xl" />
+          <div className="mt-4 text-center">
+            <h3 className="text-base font-bold text-text-primary flex items-center justify-center gap-1.5">
+              <Sparkles className="h-4 w-4 text-tan" />
+              Automated OMR Bubble Grading
+            </h3>
+            <p className="text-xs text-text-muted mt-1 max-w-xs leading-relaxed">
+              Fast camera & photo scanning with instant score calculation and item analysis.
             </p>
           </div>
+        </div>
 
-          {error && (
-            <div className="mb-5 flex items-center gap-2.5 rounded-2xl bg-burgundy-ghost border border-burgundy-border p-3 text-xs text-burgundy-light animate-in fade-in duration-200">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-text-secondary mb-1.5">
-                Username or Student ID
-              </label>
-              <div className="relative">
-                <input
-                  type="text"
-                  required
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  onFocus={handleInputFocus}
-                  onBlur={handleInputBlur}
-                  placeholder="Username or ID"
-                  className="w-full rounded-2xl border border-border-default bg-surface-base/80 px-4 py-3 pl-11 text-sm text-text-primary placeholder:text-text-faint focus:border-steel focus:outline-none focus:ring-2 focus:ring-steel/15 transition-all"
-                />
-                <User className="absolute left-3.5 top-3.5 h-4 w-4 text-text-muted" />
+        {/* Center: Main Elevated Login Card */}
+        <div
+          className={`relative w-full max-w-md mx-auto sm:transform-none sm:transition-none ${
+            isInputFocused ? "-translate-y-8 transition-transform duration-300 ease-out" : ""
+          }`}
+        >
+          <div className="glass-card rounded-[32px] p-6 sm:p-10 shadow-2xl border border-border-emphasis/70 backdrop-blur-2xl bg-surface-raised/95">
+            {/* Card Title */}
+            <div className="text-center mb-6">
+              <div className="inline-flex items-center justify-center h-12 w-12 rounded-2xl bg-steel-ghost border border-steel-border text-steel mb-3 shadow-inner">
+                <Lock className="h-5 w-5" />
               </div>
+              <h2 className="text-2xl font-black tracking-tight text-text-primary">
+                Sign In to Evalo
+              </h2>
+              <p className="text-xs text-text-muted mt-1">
+                Enter your username or Student ID to continue
+              </p>
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-semibold text-text-secondary">
-                  Password
+            {/* Error Notification */}
+            {error && (
+              <div className="mb-5 flex items-center gap-2.5 rounded-2xl bg-burgundy-ghost border border-burgundy-border p-3.5 text-xs text-burgundy-light animate-in fade-in duration-200">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            {/* Login Form */}
+            <form onSubmit={handleLogin} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-text-secondary mb-1.5">
+                  Username or Student ID
                 </label>
-                <button
-                  type="button"
-                  onClick={() => setForgotPasswordOpen(true)}
-                  className="text-[11px] font-medium text-steel hover:text-steel-light transition-colors focus:outline-none"
-                >
-                  Forgot Password?
-                </button>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    onFocus={handleInputFocus}
+                    onBlur={handleInputBlur}
+                    placeholder="Username or Student ID"
+                    className="w-full rounded-2xl border border-border-default bg-surface-base px-4 py-3.5 pl-11 text-sm text-text-primary placeholder:text-text-faint focus:border-steel focus:outline-none focus:ring-4 focus:ring-steel/10 transition-all font-medium"
+                  />
+                  <User className="absolute left-3.5 top-4 h-4 w-4 text-text-muted" />
+                </div>
               </div>
-              <div className="relative">
-                <input
-                  type={showPassword ? "text" : "password"}
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onFocus={handleInputFocus}
-                  onBlur={handleInputBlur}
-                  placeholder="Password"
-                  className={`w-full rounded-2xl border border-border-default bg-surface-base/80 px-4 py-3 pl-11 pr-11 text-sm text-text-primary placeholder:text-text-faint focus:border-steel focus:outline-none focus:ring-2 focus:ring-steel/15 transition-all ${
-                    password && !showPassword ? "font-mono tracking-widest text-base" : ""
-                  }`}
-                />
-                <Lock className="absolute left-3.5 top-3.5 h-4 w-4 text-text-muted" />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                  className="absolute right-3.5 top-3.5 text-text-muted hover:text-text-primary transition-colors focus:outline-none"
-                  tabIndex={-1}
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
-                </button>
-              </div>
-            </div>
 
-            <button
-              type="submit"
-              disabled={submitting}
-              className="group mt-2 flex w-full items-center justify-center gap-2 rounded-2xl bg-steel py-3.5 text-sm font-semibold text-white shadow-md shadow-steel/25 hover:bg-steel-light transition-all active:scale-[0.98] disabled:opacity-50"
-            >
-              {submitting ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Authenticating...
-                </>
-              ) : (
-                <>
-                  Sign In
-                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                </>
-              )}
-            </button>
-          </form>
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold text-text-secondary">
+                    Password
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setForgotPasswordOpen(true)}
+                    className="text-[11px] font-semibold text-steel hover:text-steel-light transition-colors focus:outline-none cursor-pointer"
+                  >
+                    Forgot Password?
+                  </button>
+                </div>
+                <div className="relative">
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    onFocus={handleInputFocus}
+                    onBlur={handleInputBlur}
+                    placeholder="Password"
+                    className={`w-full rounded-2xl border border-border-default bg-surface-base px-4 py-3.5 pl-11 pr-11 text-sm text-text-primary placeholder:text-text-faint focus:border-steel focus:outline-none focus:ring-4 focus:ring-steel/10 transition-all ${
+                      password && !showPassword ? "font-mono tracking-widest text-base" : "font-medium"
+                    }`}
+                  />
+                  <Lock className="absolute left-3.5 top-4 h-4 w-4 text-text-muted" />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    className="absolute right-3.5 top-3.5 p-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-muted/50 transition-colors focus:outline-none cursor-pointer"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Submit CTA */}
+              <button
+                type="submit"
+                disabled={submitting}
+                className="group mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-steel py-3.5 text-sm font-bold text-white shadow-lg shadow-steel/25 hover:bg-steel-light hover:shadow-steel/35 transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Signing in...
+                  </>
+                ) : (
+                  <>
+                    Sign In
+                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                  </>
+                )}
+              </button>
+            </form>
+
+            {/* Student Helper Tip */}
+            <div className="mt-6 pt-5 border-t border-border-default/70 text-center">
+              <p className="text-xs text-text-muted flex items-center justify-center gap-1.5">
+                <GraduationCap className="h-4 w-4 text-sage shrink-0" />
+                <span>Students: Sign in with your 6-digit Student ID</span>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Decorative Column (Desktop) */}
+        <div className="hidden lg:flex flex-col items-center justify-center flex-1 max-w-md pl-8 animate-in fade-in slide-in-from-right-6 duration-700">
+          <StudentDeskIllustration className="w-80 h-80 drop-shadow-xl" />
+          <div className="mt-4 text-center">
+            <h3 className="text-base font-bold text-text-primary flex items-center justify-center gap-1.5">
+              <CheckCircle2 className="h-4 w-4 text-sage" />
+              Interactive Study Reviewers
+            </h3>
+            <p className="text-xs text-text-muted mt-1 max-w-xs leading-relaxed">
+              Explore shared reviewer question banks, answer keys, and take online proctored practice quizzes.
+            </p>
+          </div>
         </div>
       </div>
 
-      {/* Forgot Password Modal */}
+      {/* Clean Single-Line Footer */}
+      <footer className="relative z-20 w-full max-w-7xl mx-auto py-4 text-center text-xs text-text-muted border-t border-border-default/40">
+        <p>© {new Date().getFullYear()} Evalo. Designed for classroom assessments & student learning.</p>
+      </footer>
+
+      {/* Modals */}
       <ForgotPasswordModal
         isOpen={forgotPasswordOpen}
         onClose={() => setForgotPasswordOpen(false)}
       />
 
-      {/* Forced Password Reset Guard */}
       <PasswordChangeModal
         isOpen={mustResetPassword || Boolean(user?.must_change_password)}
         forced={true}

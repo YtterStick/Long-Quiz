@@ -235,7 +235,7 @@ export function ForgotPasswordModal({ isOpen, onClose }: ForgotPasswordModalProp
                   <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-steel/20 text-[10px] font-bold text-steel">
                     1
                   </span>
-                  <span>Contact your LongQuiz System Administrator (<strong className="text-steel">admin</strong>).</span>
+                  <span>Contact your Evalo System Administrator (<strong className="text-steel">admin</strong>).</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-steel/20 text-[10px] font-bold text-steel">

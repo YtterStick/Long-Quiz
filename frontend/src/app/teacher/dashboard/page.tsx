@@ -316,130 +316,180 @@ export default function TeacherDashboard() {
         </div>
 
         {/* ============================================================== */}
-        {/* DESKTOP VIEW (hidden sm:block) — Unaltered Original Layout    */}
+        {/* DESKTOP VIEW (hidden sm:block)                                 */}
         {/* ============================================================== */}
-        <div className="hidden sm:block">
-          {/* Welcome Header */}
-          <div className="mb-8">
-            <h1 className="text-2xl font-bold tracking-tight text-text-primary sm:text-3xl flex items-center gap-2">
-              Welcome back,{" "}
-              {authLoading || !user?.first_name ? (
-                <span className="inline-block h-8 w-32 rounded-lg bg-surface-muted animate-pulse align-middle" />
-              ) : (
-                <span className="gradient-text">{user.first_name}</span>
-              )}
-              !
-            </h1>
-            <p className="text-sm text-text-muted mt-1">
-              Manage your class sections, create exam answer keys, print bubble sheets, and grade answer sheets.
-            </p>
+        <div className="hidden sm:block space-y-8">
+          {/* Welcome Header Hero Banner */}
+          <div className="relative overflow-hidden rounded-[32px] border border-border-emphasis/60 bg-surface-raised p-8 shadow-xl">
+            <div className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-steel/10 blur-3xl" />
+            <div className="pointer-events-none absolute -right-4 -bottom-10 h-48 w-48 rounded-full bg-tan/10 blur-2xl" />
+
+            <div className="relative z-10 flex items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="rounded-full bg-tan-ghost px-3 py-0.5 text-[11px] font-bold text-tan border border-tan-border">
+                    Teacher Workspace
+                  </span>
+                  <span className="text-xs text-text-muted font-medium">Academic Year 2026</span>
+                </div>
+                <h1 className="text-2xl lg:text-3xl font-black tracking-tight text-text-primary flex items-center gap-2">
+                  Welcome back,{" "}
+                  {authLoading || !user?.first_name ? (
+                    <span className="inline-block h-8 w-32 rounded-lg bg-surface-muted animate-pulse align-middle" />
+                  ) : (
+                    <span className="gradient-text">{user.first_name}</span>
+                  )}
+                  ! 👋
+                </h1>
+                <p className="text-xs sm:text-sm text-text-muted mt-1.5 max-w-2xl leading-relaxed">
+                  Manage your class rosters, generate and clone exams, launch live proctored lobbies, and grade bubble sheets with OpenCV.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <Link
+                  href="/teacher/scan"
+                  className="flex items-center gap-2 rounded-2xl bg-steel px-5 py-3 text-xs font-bold text-white shadow-lg shadow-steel/25 hover:bg-steel-light hover:shadow-steel/35 transition-all active:scale-95 cursor-pointer"
+                >
+                  <ScanLine className="h-4 w-4" />
+                  Scan Bubble Sheet
+                </Link>
+              </div>
+            </div>
           </div>
 
           {/* Stats Grid */}
-          {loading ? (
-            <SkeletonStatCards count={4} />
-          ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-              <StatCard
-                title="My Sections"
-                value={stats.total_sections}
-                icon={School}
-                color="tan"
-              />
-              <StatCard
-                title="Enrolled Students"
-                value={stats.total_students}
-                icon={GraduationCap}
-                color="steel"
-              />
-              <StatCard
-                title="Created Exams"
-                value={stats.total_exams}
-                icon={FileSpreadsheet}
-                color="sage"
-              />
-              <StatCard
-                title="Graded Submissions"
-                value={stats.total_submissions}
-                icon={ScanLine}
-                color="cream"
-              />
+          <div>
+            <div className="flex items-center justify-between mb-3 px-1">
+              <span className="text-xs font-bold text-text-muted uppercase tracking-wider">
+                Overview Metrics
+              </span>
             </div>
-          )}
+            {loading ? (
+              <SkeletonStatCards count={4} />
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <StatCard
+                  title="My Sections"
+                  value={stats.total_sections}
+                  subtitle="Active assigned classes"
+                  badge="Classes"
+                  icon={School}
+                  color="tan"
+                />
+                <StatCard
+                  title="Enrolled Students"
+                  value={stats.total_students}
+                  subtitle="Total student roster"
+                  badge="Students"
+                  icon={GraduationCap}
+                  color="steel"
+                />
+                <StatCard
+                  title="Created Exams"
+                  value={stats.total_exams}
+                  subtitle="Answer keys & quizzes"
+                  badge="Exams"
+                  icon={FileSpreadsheet}
+                  color="sage"
+                />
+                <StatCard
+                  title="Graded Submissions"
+                  value={stats.total_submissions}
+                  subtitle="OMR sheets scored"
+                  badge="Scored"
+                  icon={ScanLine}
+                  color="cream"
+                />
+              </div>
+            )}
+          </div>
 
           {/* Quick Action Cards */}
-          <h2 className="text-lg font-bold text-text-primary mb-4">Core Workflows</h2>
-          {loading ? (
-            <SkeletonWorkflowCards count={3} />
-          ) : (
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {/* Card 1: Sections */}
-              <Link
-                href="/teacher/sections"
-                className="glass-card glass-card-hover group rounded-2xl p-6 flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-tan-ghost text-tan border border-tan-border mb-4">
-                    <School className="h-6 w-6" />
-                  </div>
-                  <h3 className="text-lg font-bold text-text-primary group-hover:text-tan-light transition-colors">
-                    Section & Student Roster
-                  </h3>
-                  <p className="text-xs text-text-muted mt-2">
-                    Create sections (e.g. BSIT 3-A), add students manually or via CSV upload, and generate 6-digit Student IDs.
-                  </p>
-                </div>
-                <div className="mt-6 flex items-center gap-2 text-xs font-semibold text-tan">
-                  Manage Sections
-                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                </div>
-              </Link>
-
-              {/* Card 2: Exams */}
-              <Link
-                href="/teacher/exams"
-                className="glass-card glass-card-hover group rounded-2xl p-6 flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-steel-ghost text-steel border border-steel-border mb-4">
-                    <FileCheck className="h-6 w-6" />
-                  </div>
-                  <h3 className="text-lg font-bold text-text-primary group-hover:text-steel-light transition-colors">
-                    Exams & PDF Bubble Sheets
-                  </h3>
-                  <p className="text-xs text-text-muted mt-2">
-                    Create exams (1-50 questions), define A-E answer keys, clone public exams, and download printable PDF bubble sheets.
-                  </p>
-                </div>
-                <div className="mt-6 flex items-center gap-2 text-xs font-semibold text-steel">
-                  Manage Exams & Keys
-                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                </div>
-              </Link>
-
-              {/* Card 3: Scan Sheet */}
-              <Link
-                href="/teacher/scan"
-                className="glass-card glass-card-hover group rounded-2xl p-6 flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sage-ghost text-sage border border-sage-border mb-4">
-                    <ScanLine className="h-6 w-6" />
-                  </div>
-                  <h3 className="text-lg font-bold text-text-primary group-hover:text-sage-light transition-colors">
-                    OMR Scanner & Grading
-                  </h3>
-                  <p className="text-xs text-text-muted mt-2">
-                    Upload scanned sheet photos, run OpenCV auto-grading, inspect shaded anomalies, manually override scores, and publish.
-                  </p>
-                </div>
-                <div className="mt-6 flex items-center gap-2 text-xs font-semibold text-sage">
-                  Scan & Grade Sheet
-                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                </div>
-              </Link>
+          <div>
+            <div className="flex items-center justify-between mb-4 px-1">
+              <h2 className="text-base font-bold text-text-primary">Core Workflows & Modules</h2>
+              <span className="text-xs text-text-muted">3 active modules</span>
             </div>
-          )}
+
+            {loading ? (
+              <SkeletonWorkflowCards count={3} />
+            ) : (
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                {/* Card 1: Sections */}
+                <Link
+                  href="/teacher/sections"
+                  className="glass-card glass-card-hover group rounded-[28px] p-7 flex flex-col justify-between border border-border-default hover:border-tan/40 transition-all duration-300 shadow-sm hover:shadow-xl"
+                >
+                  <div>
+                    <div className="flex h-13 w-13 items-center justify-center rounded-2xl bg-tan-ghost text-tan border border-tan-border mb-5 group-hover:scale-110 transition-transform shadow-inner">
+                      <School className="h-6 w-6" />
+                    </div>
+                    <h3 className="text-lg font-bold text-text-primary group-hover:text-tan transition-colors">
+                      Section & Student Roster
+                    </h3>
+                    <p className="text-xs text-text-muted mt-2 leading-relaxed">
+                      Create class sections, import students via CSV, assign class exams, and monitor live proctored lobbies in real-time.
+                    </p>
+                  </div>
+                  <div className="mt-8 flex items-center justify-between pt-4 border-t border-border-default/60">
+                    <span className="text-xs font-bold text-tan">Manage Sections</span>
+                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-tan-ghost text-tan group-hover:translate-x-1 transition-transform">
+                      <ArrowRight className="h-4 w-4" />
+                    </div>
+                  </div>
+                </Link>
+
+                {/* Card 2: Exams */}
+                <Link
+                  href="/teacher/exams"
+                  className="glass-card glass-card-hover group rounded-[28px] p-7 flex flex-col justify-between border border-border-default hover:border-steel/40 transition-all duration-300 shadow-sm hover:shadow-xl"
+                >
+                  <div>
+                    <div className="flex h-13 w-13 items-center justify-center rounded-2xl bg-steel-ghost text-steel border border-steel-border mb-5 group-hover:scale-110 transition-transform shadow-inner">
+                      <FileCheck className="h-6 w-6" />
+                    </div>
+                    <h3 className="text-lg font-bold text-text-primary group-hover:text-steel transition-colors">
+                      Exams & Bubble Sheets
+                    </h3>
+                    <p className="text-xs text-text-muted mt-2 leading-relaxed">
+                      Design exams (1-50 questions), configure A-E answer keys, attach explanations, and download printable PDF bubble sheets.
+                    </p>
+                  </div>
+                  <div className="mt-8 flex items-center justify-between pt-4 border-t border-border-default/60">
+                    <span className="text-xs font-bold text-steel">Manage Exams & Keys</span>
+                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-steel-ghost text-steel group-hover:translate-x-1 transition-transform">
+                      <ArrowRight className="h-4 w-4" />
+                    </div>
+                  </div>
+                </Link>
+
+                {/* Card 3: Scan Sheet */}
+                <Link
+                  href="/teacher/scan"
+                  className="glass-card glass-card-hover group rounded-[28px] p-7 flex flex-col justify-between border border-border-default hover:border-sage/40 transition-all duration-300 shadow-sm hover:shadow-xl"
+                >
+                  <div>
+                    <div className="flex h-13 w-13 items-center justify-center rounded-2xl bg-sage-ghost text-sage border border-sage-border mb-5 group-hover:scale-110 transition-transform shadow-inner">
+                      <ScanLine className="h-6 w-6" />
+                    </div>
+                    <h3 className="text-lg font-bold text-text-primary group-hover:text-sage transition-colors">
+                      OMR Scanner & Grading
+                    </h3>
+                    <p className="text-xs text-text-muted mt-2 leading-relaxed">
+                      Capture or upload paper bubble sheet photos, run automated OpenCV bubble mark detection, and publish grades with one click.
+                    </p>
+                  </div>
+                  <div className="mt-8 flex items-center justify-between pt-4 border-t border-border-default/60">
+                    <span className="text-xs font-bold text-sage">Scan & Grade Sheets</span>
+                    <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-sage-ghost text-sage group-hover:translate-x-1 transition-transform">
+                      <ArrowRight className="h-4 w-4" />
+                    </div>
+                  </div>
+                </Link>
+              </div>
+            )}
+          </div>
         </div>
       </main>
 

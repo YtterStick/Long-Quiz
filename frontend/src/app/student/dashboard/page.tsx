@@ -741,45 +741,62 @@ export default function StudentDashboard() {
     <div className="min-h-screen bg-surface-base text-text-primary">
       <Navbar onOpenPasswordModal={() => setPasswordModalOpen(true)} />
 
-      <main className="mx-auto max-w-7xl px-3 sm:px-6 py-5 sm:py-8 pb-24 sm:pb-12">
-        {/* Streamlined Header (No box cards) */}
-        <div className="flex items-center justify-between gap-3 mb-5 pt-1">
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-text-primary">
-              Welcome back, {user?.first_name ? `${user.first_name} ${user.last_name || ""}`.trim() : "Student"}!
-            </h1>
-            <p className="text-xs text-text-muted mt-0.5">
-              {user?.username ? `@${user.username}` : "Student Portal"} • Track your exams, grades, and study reviewers
-            </p>
-          </div>
+      <main className="mx-auto max-w-7xl px-3 sm:px-6 py-5 sm:py-8 pb-24 sm:pb-12 space-y-6">
+        {/* Elevated Student Header Hero Banner */}
+        <div className="relative overflow-hidden rounded-[28px] border border-border-emphasis/60 bg-surface-raised p-6 sm:p-7 shadow-lg">
+          <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-sage/10 blur-3xl" />
+          <div className="pointer-events-none absolute -right-4 -bottom-10 h-36 w-36 rounded-full bg-steel/10 blur-2xl" />
 
-          {info && info.average_percentage !== undefined && (
-            <div className="flex items-center gap-2 rounded-xl bg-surface-overlay border border-border-default px-3 py-1.5 shadow-xs shrink-0">
-              <Award className="h-4 w-4 text-sage shrink-0" />
-              <div className="text-right">
-                <span className="block text-[9px] font-bold uppercase tracking-wider text-text-muted leading-tight">Average</span>
-                <span className="text-sm font-extrabold text-sage font-mono leading-tight">{info.average_percentage}%</span>
+          <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <span className="rounded-full bg-sage-ghost px-3 py-0.5 text-[10px] font-bold text-sage border border-sage-border">
+                  Student Portal
+                </span>
+                {info && (info.full_student_id || info.student_number) && (
+                  <span className="rounded-full bg-steel-ghost px-3 py-0.5 text-[10px] font-bold text-steel font-mono border border-steel-border">
+                    ID: {info.full_student_id || info.student_number}
+                  </span>
+                )}
               </div>
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-black tracking-tight text-text-primary">
+                Welcome back, {user?.first_name ? `${user.first_name} ${user.last_name || ""}`.trim() : "Student"}! 👋
+              </h1>
+              <p className="text-xs text-text-muted mt-1 max-w-xl">
+                Take live proctored online exams, review graded bubble sheet results, and explore public study reviewer question banks.
+              </p>
             </div>
-          )}
+
+            {info && info.average_percentage !== undefined && (
+              <div className="flex items-center gap-3 rounded-2xl bg-surface-base border border-border-default p-3.5 shadow-sm shrink-0 self-start sm:self-auto">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sage-ghost text-sage border border-sage-border shadow-inner">
+                  <Award className="h-5 w-5" />
+                </div>
+                <div className="text-left sm:text-right">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-text-muted">Overall Average</span>
+                  <span className="text-lg font-black text-sage font-mono">{info.average_percentage}%</span>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Modern Segmented Tab Switcher */}
-        <div className="mb-6 p-1.5 rounded-2xl bg-surface-subtle/80 backdrop-blur-md border border-border-default grid grid-cols-3 gap-1 shadow-inner">
+        <div className="p-1.5 rounded-[22px] bg-surface-raised border border-border-default grid grid-cols-3 gap-1.5 shadow-sm">
           <button
             type="button"
             onClick={() => handleTabSelect("available")}
-            className={`flex items-center justify-center gap-1.5 py-2.5 sm:py-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center justify-center gap-2 py-3 rounded-[16px] text-xs font-bold transition-all cursor-pointer ${
               activeTab === "available"
                 ? "bg-steel text-white shadow-md shadow-steel/25"
-                : "text-text-muted hover:text-text-primary hover:bg-surface-base"
+                : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
             }`}
           >
-            <PenTool className="h-3.5 w-3.5 shrink-0" />
+            <PenTool className="h-4 w-4 shrink-0" />
             <span className="hidden sm:inline">Available Exams</span>
             <span className="sm:hidden">Exams</span>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
-              activeTab === "available" ? "bg-white/20 text-white" : "bg-surface-overlay text-text-muted"
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+              activeTab === "available" ? "bg-white/20 text-white" : "bg-surface-subtle text-text-muted"
             }`}>
               {availableExams.length}
             </span>
@@ -788,17 +805,17 @@ export default function StudentDashboard() {
           <button
             type="button"
             onClick={() => handleTabSelect("grades")}
-            className={`flex items-center justify-center gap-1.5 py-2.5 sm:py-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center justify-center gap-2 py-3 rounded-[16px] text-xs font-bold transition-all cursor-pointer ${
               activeTab === "grades"
                 ? "bg-steel text-white shadow-md shadow-steel/25"
-                : "text-text-muted hover:text-text-primary hover:bg-surface-base"
+                : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
             }`}
           >
-            <Award className="h-3.5 w-3.5 shrink-0" />
+            <Award className="h-4 w-4 shrink-0" />
             <span className="hidden sm:inline">My Graded Exams</span>
             <span className="sm:hidden">Results</span>
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-mono ${
-              activeTab === "grades" ? "bg-white/20 text-white" : "bg-surface-overlay text-text-muted"
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+              activeTab === "grades" ? "bg-white/20 text-white" : "bg-surface-subtle text-text-muted"
             }`}>
               {grades.length}
             </span>
@@ -807,13 +824,13 @@ export default function StudentDashboard() {
           <button
             type="button"
             onClick={() => handleTabSelect("reviewers")}
-            className={`flex items-center justify-center gap-1.5 py-2.5 sm:py-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center justify-center gap-2 py-3 rounded-[16px] text-xs font-bold transition-all cursor-pointer ${
               activeTab === "reviewers"
                 ? "bg-steel text-white shadow-md shadow-steel/25"
-                : "text-text-muted hover:text-text-primary hover:bg-surface-base"
+                : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
             }`}
           >
-            <BookOpen className="h-3.5 w-3.5 shrink-0" />
+            <BookOpen className="h-4 w-4 shrink-0" />
             <span className="hidden sm:inline">Study Reviewers</span>
             <span className="sm:hidden">Reviewers</span>
           </button>
@@ -821,8 +838,8 @@ export default function StudentDashboard() {
 
         {/* TAB 0: Available Online Exams */}
         {activeTab === "available" && (
-          <div className="glass-card rounded-2xl p-4 sm:p-6 border border-border-default">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+          <div className="glass-card rounded-[28px] p-5 sm:p-7 border border-border-default shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
               <div>
                 <h2 className="text-lg font-bold text-text-primary flex items-center gap-2">
                   <PenTool className="h-5 w-5 text-steel-light" />
@@ -842,8 +859,10 @@ export default function StudentDashboard() {
             {loading ? (
               <SkeletonTable rows={3} />
             ) : availableExams.length === 0 ? (
-              <div className="py-14 text-center space-y-3">
-                <BookOpen className="mx-auto h-12 w-12 text-text-faint" />
+              <div className="py-16 text-center space-y-3">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-surface-subtle border border-border-default text-text-faint">
+                  <BookOpen className="h-8 w-8" />
+                </div>
                 <h3 className="text-base font-bold text-text-primary">No Online Exams Released Yet</h3>
                 <p className="text-xs text-text-muted max-w-md mx-auto">
                   When your teachers publish question prompts and multiple-choice choices, they will appear here ready for you to answer.

@@ -82,27 +82,29 @@ export function Navbar({ onOpenPasswordModal }: NavbarProps) {
                 <ExamIcon className="h-5 w-5" />
               </div>
               <div>
-                <span className="text-xl font-extrabold tracking-tight text-text-primary">
-                  Long<span className="text-steel">Quiz</span>
+                <span className="text-xl font-black tracking-tight text-text-primary">
+                  Evalo
                 </span>
               </div>
             </Link>
 
             {/* Desktop Navigation Links */}
             {user.role === "TEACHER" && (
-              <nav className="hidden sm:flex items-center gap-1 ml-6 border-l border-border-default pl-6">
+              <nav className="hidden sm:flex items-center gap-1.5 ml-6 border-l border-border-default pl-6">
                 {teacherNav.map((item) => {
                   const isActive = pathname === item.href;
+                  const Icon = item.icon;
                   return (
                     <Link
                       key={item.href}
                       href={item.href}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                      className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all duration-150 ${
                         isActive
-                          ? "bg-surface-subtle text-text-primary shadow-sm"
-                          : "text-text-muted hover:text-text-secondary hover:bg-surface-overlay"
+                          ? "bg-steel text-white shadow-sm shadow-steel/25"
+                          : "text-text-muted hover:text-text-primary hover:bg-surface-subtle/80"
                       }`}
                     >
+                      <Icon className="h-3.5 w-3.5" />
                       {item.label}
                     </Link>
                   );

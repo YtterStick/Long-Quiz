@@ -10,9 +10,9 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: "LongQuiz",
+  title: "Evalo — Assessment & Student Review Portal",
   description:
-    "End-to-End Optical Mark Recognition system powered by Next.js, FastAPI, OpenCV, and Google Drive.",
+    "Modern classroom assessment, automated OMR grading, and interactive study reviewer portal.",
 };
 
 export default function RootLayout({
