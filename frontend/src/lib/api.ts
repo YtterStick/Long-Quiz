@@ -4,6 +4,9 @@
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+/** What students see once grades are released for a class exam. */
+export type ReleaseMode = "FULL" | "SCORES_ONLY";
+
 interface RequestOptions {
   method?: string;
   body?: unknown;
@@ -98,6 +101,16 @@ export const auth = {
       body: { current_password: currentPassword, new_password: newPassword },
     }),
 
+  requestStudentPasswordReset: (identifier: string) =>
+    request<{
+      message: string;
+      student_name: string;
+      student_id: string;
+    }>("/api/auth/student-reset-request", {
+      method: "POST",
+      body: { identifier },
+    }),
+
   getMe: () => request<{
     id: string;
     username: string;
@@ -184,6 +197,133 @@ export const teacher = {
   deleteSection: (id: string) =>
     request("/api/teacher/sections/" + id, { method: "DELETE" }),
 
+  // Section Exams (Class Exam Administration)
+  listSectionExams: (sectionId: string) =>
+    request<Array<{
+      id: string;
+      section_id: string;
+      exam_id: string;
+      is_online_active: boolean;
+      is_grades_released: boolean;
+      is_started?: boolean;
+      release_mode?: ReleaseMode;
+      created_at: string;
+      exam?: {
+        id: string;
+        title: string;
+        total_questions: number;
+        is_public: boolean;
+        answer_keys: Array<{ id: string; question_number: number; correct_option: string }>;
+        questions?: Array<{
+          id: string;
+          question_number: number;
+          question_text: string;
+          option_a?: string | null;
+          option_b?: string | null;
+          option_c?: string | null;
+          option_d?: string | null;
+          explanation?: string | null;
+        }>;
+      };
+      submission_count: number;
+      average_score?: number | null;
+      max_score?: number | null;
+    }>>(`/api/teacher/sections/${sectionId}/exams`),
+
+  assignExamToSection: (sectionId: string, examId: string) =>
+    request<{
+      id: string;
+      section_id: string;
+      exam_id: string;
+      is_online_active: boolean;
+      is_grades_released: boolean;
+      created_at: string;
+    }>(`/api/teacher/sections/${sectionId}/exams`, {
+      method: "POST",
+      body: { exam_id: examId },
+    }),
+
+  unassignExamFromSection: (sectionId: string, examId: string) =>
+    request(`/api/teacher/sections/${sectionId}/exams/${examId}`, {
+      method: "DELETE",
+    }),
+
+  toggleSectionExamOnline: (sectionId: string, examId: string, is_online_active?: boolean) =>
+    request<{
+      id: string;
+      section_id: string;
+      exam_id: string;
+      is_online_active: boolean;
+      is_grades_released: boolean;
+      created_at: string;
+    }>(`/api/teacher/sections/${sectionId}/exams/${examId}/toggle-online`, {
+      method: "PUT",
+      body: is_online_active !== undefined ? { is_online_active } : undefined,
+    }),
+
+  toggleSectionExamGrades: (
+    sectionId: string,
+    examId: string,
+    is_grades_released?: boolean,
+    release_mode?: ReleaseMode
+  ) =>
+    request<{
+      id: string;
+      section_id: string;
+      exam_id: string;
+      is_online_active: boolean;
+      is_grades_released: boolean;
+      release_mode: ReleaseMode;
+      created_at: string;
+    }>(`/api/teacher/sections/${sectionId}/exams/${examId}/toggle-grades`, {
+      method: "PUT",
+      body:
+        is_grades_released !== undefined || release_mode !== undefined
+          ? { is_grades_released, release_mode }
+          : undefined,
+    }),
+
+  allowStudentRetake: (sectionId: string, examId: string, studentId: string, reset_violations = true) =>
+    request<{ message: string; student_id: string; next_attempt: number; had_submission: boolean }>(
+      `/api/teacher/sections/${sectionId}/exams/${examId}/students/${studentId}/allow-retake`,
+      { method: "POST", body: { reset_violations } }
+    ),
+
+  startSectionExam: (sectionId: string, examId: string, is_started: boolean) =>
+    request<{ is_started: boolean; is_online_active: boolean }>(
+      `/api/teacher/sections/${sectionId}/exams/${examId}/start`,
+      { method: "PUT", body: { is_started } }
+    ),
+
+  monitorSectionExam: (sectionId: string, examId: string) =>
+    request<{
+      is_online_active: boolean;
+      is_started: boolean;
+      total_students: number;
+      counts: { in_lobby: number; ready: number; taking: number; submitted: number; not_joined: number };
+      students: Array<{
+        student_id: string;
+        student_number: number;
+        name: string;
+        status: "NOT_JOINED" | "DISCONNECTED" | "IN_LOBBY" | "TAKING" | "SUBMITTED";
+        is_fullscreen: boolean;
+        is_focused: boolean;
+        violations: number;
+        tab_switches: number;
+        fullscreen_exits: number;
+        attempt_number: number;
+        retakes_granted: number;
+        auto_submitted: boolean;
+        is_online_submission: boolean;
+        last_seen: string | null;
+        submission_id: string | null;
+        total_score: number | null;
+        max_score: number | null;
+        submitted_at: string | null;
+        answers: Array<{ question_number: number; shaded_option: string | null; is_correct: boolean }>;
+      }>;
+    }>(`/api/teacher/sections/${sectionId}/exams/${examId}/monitor`),
+
   // Students
   listStudents: (sectionId: string) =>
     request<Array<{
@@ -203,6 +343,7 @@ export const teacher = {
         created_at: string;
       };
       temp_password?: string;
+      has_pending_reset_request?: boolean;
     }>>(`/api/teacher/sections/${sectionId}/students`),
 
   listAllStudents: (params?: { search?: string; unassigned_only?: boolean }) => {
@@ -232,6 +373,7 @@ export const teacher = {
         created_at: string;
       };
       temp_password?: string;
+      has_pending_reset_request?: boolean;
     }>>(`/api/teacher/students${queryStr}`);
   },
 
@@ -258,7 +400,17 @@ export const teacher = {
   addStudentsCSV: (sectionId: string, file: File) => {
     const formData = new FormData();
     formData.append("file", file);
-    return request(`/api/teacher/sections/${sectionId}/students/csv`, {
+    return request<{ created: number; students: any[] }>(`/api/teacher/sections/${sectionId}/students/upload`, {
+      method: "POST",
+      body: formData,
+      isFormData: true,
+    });
+  },
+
+  importStudentsExcel: (sectionId: string, file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return request<{ created: number; students: any[] }>(`/api/teacher/sections/${sectionId}/students/upload`, {
       method: "POST",
       body: formData,
       isFormData: true,
@@ -267,6 +419,39 @@ export const teacher = {
 
   deleteStudent: (studentId: string) =>
     request(`/api/teacher/students/${studentId}`, { method: "DELETE" }),
+
+  // Password Reset Management
+  listPasswordResetRequests: () =>
+    request<Array<{
+      id: string;
+      student_id: string;
+      status: string;
+      created_at: string;
+      resolved_at?: string | null;
+      student_name: string;
+      student_username: string;
+      student_number: number;
+      full_student_id: string;
+      section_name?: string | null;
+      section_subject?: string | null;
+    }>>("/api/teacher/password-reset-requests"),
+
+  resetStudentPassword: (studentId: string) =>
+    request<{
+      student_id: string;
+      student_name: string;
+      username: string;
+      full_student_id: string;
+      temp_password: string;
+      message: string;
+    }>(`/api/teacher/students/${studentId}/reset-password`, {
+      method: "POST",
+    }),
+
+  dismissPasswordResetRequest: (requestId: string) =>
+    request<{ message: string }>(`/api/teacher/password-reset-requests/${requestId}/dismiss`, {
+      method: "POST",
+    }),
 
   // Exams
   listExams: (includePublic = false) =>
@@ -367,10 +552,34 @@ export const teacher = {
   toggleExamVisibility: (examId: string, is_public: boolean) => request<{
     id: string;
     is_public: boolean;
+    is_online_active: boolean;
+    is_grades_released: boolean;
   }>(`/api/teacher/exams/${examId}/visibility`, {
     method: "PATCH",
     body: { is_public },
   }),
+
+  toggleExamOnline: (examId: string, is_online_active?: boolean) =>
+    request<{
+      id: string;
+      is_public: boolean;
+      is_online_active: boolean;
+      is_grades_released: boolean;
+    }>(`/api/teacher/exams/${examId}/toggle-online`, {
+      method: "PUT",
+      body: is_online_active !== undefined ? { is_online_active } : undefined,
+    }),
+
+  toggleExamGradesRelease: (examId: string, is_grades_released?: boolean) =>
+    request<{
+      id: string;
+      is_public: boolean;
+      is_online_active: boolean;
+      is_grades_released: boolean;
+    }>(`/api/teacher/exams/${examId}/toggle-grades-release`, {
+      method: "PUT",
+      body: is_grades_released !== undefined ? { is_grades_released } : undefined,
+    }),
 
   deleteExam: (id: string) =>
     request(`/api/teacher/exams/${id}`, { method: "DELETE" }),
@@ -535,6 +744,92 @@ export const student = {
         explanation?: string | null;
       }>;
     }>>("/api/student/reviewer/public-exams"),
+
+  listAvailableExams: () =>
+    request<Array<{
+      id: string;
+      title: string;
+      total_questions: number;
+      is_public: boolean;
+      created_at: string;
+      teacher_name: string;
+      question_count: number;
+      has_submitted: boolean;
+      submission_id?: string | null;
+      total_score?: number | null;
+      max_score?: number | null;
+      percentage?: number | null;
+      submitted_at?: string | null;
+    }>>("/api/student/available-exams"),
+
+  getExamForTaking: (examId: string) =>
+    request<{
+      id: string;
+      title: string;
+      total_questions: number;
+      is_public: boolean;
+      created_at: string;
+      teacher_name: string;
+      has_submitted: boolean;
+      submission_id?: string | null;
+      total_score?: number | null;
+      max_score?: number | null;
+      percentage?: number | null;
+      questions: Array<{
+        question_number: number;
+        question_text: string;
+        option_a?: string | null;
+        option_b?: string | null;
+        option_c?: string | null;
+        option_d?: string | null;
+      }>;
+    }>(`/api/student/exams/${examId}`),
+
+  submitExamOnline: (
+    examId: string,
+    data: {
+      answers: Array<{
+        question_number: number;
+        selected_option: string;
+      }>;
+      auto_submitted?: boolean;
+    }
+  ) =>
+    request<{
+      message: string;
+      submission_id: string;
+      exam_id: string;
+      exam_title: string;
+      has_submitted?: boolean;
+      is_grades_released?: boolean;
+      total_score?: number | null;
+      max_score?: number | null;
+      percentage?: number | null;
+      submitted_at?: string;
+    }>(`/api/student/exams/${examId}/submit`, {
+      method: "POST",
+      body: data,
+    }),
+
+  pingLobby: (
+    examId: string,
+    data: {
+      is_fullscreen: boolean;
+      is_focused: boolean;
+      violation?: boolean;
+      violation_type?: "TAB" | "FULLSCREEN";
+    }
+  ) =>
+    request<{
+      status: "CLOSED" | "WAITING" | "STARTED" | "SUBMITTED";
+      title: string;
+      total_questions: number;
+      teacher_name: string;
+    }>(`/api/student/exams/${examId}/lobby`, {
+      method: "POST",
+      body: data,
+    }),
 };
 
 export { ApiError };
+

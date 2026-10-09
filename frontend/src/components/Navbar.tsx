@@ -22,6 +22,7 @@ import { ExamIcon } from "@/components/ui/ExamIcon";
 import { MobileNav } from "@/components/MobileNav";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { NotificationBell } from "@/components/NotificationBell";
 import { useTheme } from "@/lib/theme-context";
 
 interface NavbarProps {
@@ -110,8 +111,10 @@ export function Navbar({ onOpenPasswordModal }: NavbarProps) {
             )}
           </div>
 
-          {/* Right Controls: Theme Toggle & User Profile */}
+          {/* Right Controls: Notification Bell, Theme Toggle & User Profile */}
           <div className="flex items-center gap-2.5">
+            {user.role === "TEACHER" && <NotificationBell />}
+
             <div className="hidden sm:block">
               <ThemeToggle />
             </div>

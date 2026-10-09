@@ -67,8 +67,14 @@ export default function TeacherDashboard() {
                 </span>
                 <span className="text-xs text-text-muted">Classroom Portal</span>
               </div>
-              <h1 className="text-xl font-extrabold text-text-primary mt-1.5">
-                Hello, <span className="gradient-text">{user?.first_name}</span> 👋
+              <h1 className="text-xl font-extrabold text-text-primary mt-1.5 flex items-center gap-1.5">
+                Hello,{" "}
+                {authLoading || !user?.first_name ? (
+                  <span className="inline-block h-6 w-24 rounded-lg bg-surface-muted animate-pulse align-middle" />
+                ) : (
+                  <span className="gradient-text">{user.first_name}</span>
+                )}{" "}
+                👋
               </h1>
               <p className="text-xs text-text-muted mt-0.5">Quick access to your grading & exams</p>
             </div>
@@ -102,7 +108,11 @@ export default function TeacherDashboard() {
                 <FileCheck className="h-5 w-5" />
               </div>
               <span className="text-xs font-bold text-text-primary">Exams</span>
-              <span className="text-[10px] text-steel font-medium">{stats.total_exams} Active</span>
+              {loading ? (
+                <span className="inline-block h-3.5 w-12 rounded bg-surface-muted/60 animate-pulse mt-0.5" />
+              ) : (
+                <span className="text-[10px] text-steel font-medium">{stats.total_exams} Active</span>
+              )}
             </Link>
 
             <Link
@@ -113,7 +123,11 @@ export default function TeacherDashboard() {
                 <School className="h-5 w-5" />
               </div>
               <span className="text-xs font-bold text-text-primary">Sections</span>
-              <span className="text-[10px] text-tan font-medium">{stats.total_sections} Classes</span>
+              {loading ? (
+                <span className="inline-block h-3.5 w-12 rounded bg-surface-muted/60 animate-pulse mt-0.5" />
+              ) : (
+                <span className="text-[10px] text-tan font-medium">{stats.total_sections} Classes</span>
+              )}
             </Link>
           </div>
 
@@ -121,13 +135,39 @@ export default function TeacherDashboard() {
           <div>
             <div className="flex items-center justify-between mb-2 px-1">
               <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Class Overview</span>
-              <span className="text-[11px] text-text-faint font-mono">Live stats</span>
+              <span className="text-[11px] text-text-faint font-mono">
+                {loading ? "Loading stats..." : "Live stats"}
+              </span>
             </div>
             {loading ? (
               <div className="grid grid-cols-2 gap-2">
-                {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className="glass-card rounded-2xl p-3.5 h-20 animate-pulse bg-surface-subtle" />
-                ))}
+                {[
+                  { title: "Sections", subtitle: "Active Classes", icon: School },
+                  { title: "Students", subtitle: "Enrolled Total", icon: GraduationCap },
+                  { title: "Exams", subtitle: "Answer Keys", icon: FileSpreadsheet },
+                  { title: "Graded", subtitle: "Papers Scored", icon: ScanLine },
+                ].map((item, i) => {
+                  const Icon = item.icon;
+                  return (
+                    <div
+                      key={i}
+                      className="glass-card rounded-2xl p-3 border border-border-default/70 flex items-center justify-between"
+                    >
+                      <div className="space-y-1.5 flex-1 min-w-0 pr-2">
+                        <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wider block">
+                          {item.title}
+                        </span>
+                        <div className="h-6 w-11 rounded-lg bg-surface-muted animate-pulse" />
+                        <span className="text-[10px] text-text-faint font-medium block">
+                          {item.subtitle}
+                        </span>
+                      </div>
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-surface-subtle border border-border-subtle/80 opacity-60">
+                        <Icon className="h-4 w-4 text-text-muted" />
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-2">
@@ -211,9 +251,13 @@ export default function TeacherDashboard() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 text-text-muted">
-                  <span className="text-[10px] font-semibold text-tan bg-tan-ghost px-2 py-0.5 rounded-full border border-tan-border">
-                    {stats.total_sections}
-                  </span>
+                  {loading ? (
+                    <span className="inline-block h-4 w-7 rounded-full bg-surface-muted/70 animate-pulse" />
+                  ) : (
+                    <span className="text-[10px] font-semibold text-tan bg-tan-ghost px-2 py-0.5 rounded-full border border-tan-border">
+                      {stats.total_sections}
+                    </span>
+                  )}
                   <ChevronRight className="h-4 w-4" />
                 </div>
               </Link>
@@ -232,9 +276,13 @@ export default function TeacherDashboard() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 text-text-muted">
-                  <span className="text-[10px] font-semibold text-steel bg-steel-ghost px-2 py-0.5 rounded-full border border-steel-border">
-                    {stats.total_exams}
-                  </span>
+                  {loading ? (
+                    <span className="inline-block h-4 w-7 rounded-full bg-surface-muted/70 animate-pulse" />
+                  ) : (
+                    <span className="text-[10px] font-semibold text-steel bg-steel-ghost px-2 py-0.5 rounded-full border border-steel-border">
+                      {stats.total_exams}
+                    </span>
+                  )}
                   <ChevronRight className="h-4 w-4" />
                 </div>
               </Link>
@@ -253,9 +301,13 @@ export default function TeacherDashboard() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5 text-text-muted">
-                  <span className="text-[10px] font-semibold text-sage bg-sage-ghost px-2 py-0.5 rounded-full border border-sage-border">
-                    {stats.total_submissions}
-                  </span>
+                  {loading ? (
+                    <span className="inline-block h-4 w-7 rounded-full bg-surface-muted/70 animate-pulse" />
+                  ) : (
+                    <span className="text-[10px] font-semibold text-sage bg-sage-ghost px-2 py-0.5 rounded-full border border-sage-border">
+                      {stats.total_submissions}
+                    </span>
+                  )}
                   <ChevronRight className="h-4 w-4" />
                 </div>
               </Link>
@@ -269,8 +321,14 @@ export default function TeacherDashboard() {
         <div className="hidden sm:block">
           {/* Welcome Header */}
           <div className="mb-8">
-            <h1 className="text-2xl font-bold tracking-tight text-text-primary sm:text-3xl">
-              Welcome back, <span className="gradient-text">{user?.first_name}</span>!
+            <h1 className="text-2xl font-bold tracking-tight text-text-primary sm:text-3xl flex items-center gap-2">
+              Welcome back,{" "}
+              {authLoading || !user?.first_name ? (
+                <span className="inline-block h-8 w-32 rounded-lg bg-surface-muted animate-pulse align-middle" />
+              ) : (
+                <span className="gradient-text">{user.first_name}</span>
+              )}
+              !
             </h1>
             <p className="text-sm text-text-muted mt-1">
               Manage your class sections, create exam answer keys, print bubble sheets, and grade answer sheets.

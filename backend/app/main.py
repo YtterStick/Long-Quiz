@@ -10,7 +10,7 @@ from sqlalchemy import text, select
 from app.config import get_settings
 from app.database import engine
 from app.models import Base
-from app.routers import auth, admin, teacher, student
+from app.routers import auth, admin, teacher, student, lobby
 
 settings = get_settings()
 
@@ -24,6 +24,19 @@ async def lifespan(app: FastAPI):
     logger.info("Starting up — creating database tables...")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        if "postgresql" in settings.DATABASE_URL:
+            for stmt in (
+                "ALTER TABLE section_exams ADD COLUMN IF NOT EXISTS is_started BOOLEAN NOT NULL DEFAULT FALSE",
+                "ALTER TABLE section_exams ADD COLUMN IF NOT EXISTS release_mode VARCHAR NOT NULL DEFAULT 'FULL'",
+                "ALTER TABLE exam_lobby_entries ADD COLUMN IF NOT EXISTS tab_switches INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE exam_lobby_entries ADD COLUMN IF NOT EXISTS fullscreen_exits INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE exam_lobby_entries ADD COLUMN IF NOT EXISTS retakes_granted INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE exam_submissions ADD COLUMN IF NOT EXISTS tab_switches INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE exam_submissions ADD COLUMN IF NOT EXISTS fullscreen_exits INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE exam_submissions ADD COLUMN IF NOT EXISTS attempt_number INTEGER NOT NULL DEFAULT 1",
+                "ALTER TABLE exam_submissions ADD COLUMN IF NOT EXISTS auto_submitted BOOLEAN NOT NULL DEFAULT FALSE",
+            ):
+                await conn.execute(text(stmt))
 
     # Seed default accounts if they don't exist
     from app.database import async_session_factory
@@ -131,6 +144,8 @@ app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(teacher.router)
 app.include_router(student.router)
+app.include_router(lobby.teacher_router)
+app.include_router(lobby.student_router)
 
 
 @app.get("/api/health")

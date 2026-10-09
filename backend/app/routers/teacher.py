@@ -1,20 +1,23 @@
-"""Teacher routes: sections, students, exams, scanning, gradebook."""
-
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_, update, String
-from sqlalchemy.orm import selectinload
+from sqlalchemy import select, func, and_, or_, update, delete, String
+from sqlalchemy.orm import selectinload, joinedload
 from typing import Optional
 from app.database import get_db
 from app.models import (
     User, Teacher, Student, Section, Exam, ExamAnswerKey, ExamQuestion,
-    ExamSubmission, SubmissionAnswer, Role
+    ExamSubmission, SubmissionAnswer, Role, PasswordResetRequest, ResetRequestStatus,
+    SectionExam, ExamLobbyEntry
 )
 from app.schemas import (
     SectionCreate, SectionUpdate, SectionOut,
     StudentCreate, StudentOut, StudentBulkCreateResponse, EnrollStudent,
+    PasswordResetRequestOut, StudentResetPasswordResponse,
     ExamCreate, ExamUpdate, ExamOut, AnswerKeyItem,
     QuestionItem, QuestionOut, QuestionnaireUpdate, ExamVisibilityUpdate,
+    ExamOnlineToggle, ExamGradesReleaseToggle,
+    AssignExamToSection, SectionExamOut, SectionExamOnlineToggle, SectionExamGradesToggle,
     SubmissionOut, SubmissionOverride,
     TeacherDashboardStats, ItemAnalysis, GradeItem
 )
@@ -26,6 +29,7 @@ from app.utils import (
     generate_student_username,
     generate_student_number,
     parse_student_csv,
+    parse_student_file,
     clean_student_omr_number,
     format_full_student_id,
     STATIC_STUDENT_PREFIX,
@@ -84,16 +88,19 @@ async def list_sections(
     )
     sections = result.scalars().all()
 
+    counts_res = await db.execute(
+        select(Student.section_id, func.count(Student.id))
+        .where(Student.section_id.in_([s.id for s in sections]))
+        .group_by(Student.section_id)
+    ) if sections else None
+    counts = dict(counts_res.all()) if counts_res is not None else {}
+
     out = []
     for s in sections:
-        count_result = await db.execute(
-            select(func.count(Student.id)).where(Student.section_id == s.id)
-        )
-        count = count_result.scalar_one()
         out.append(SectionOut(
             id=s.id, name=s.name, subject=s.subject,
             teacher_id=s.teacher_id, created_at=s.created_at,
-            student_count=count,
+            student_count=counts.get(s.id, 0),
         ))
     return out
 
@@ -169,6 +176,326 @@ async def delete_section(
     return {"message": "Section deleted successfully"}
 
 
+# ─── Section Exams (Class Exam Administration) ─────────────────
+
+@router.get("/sections/{section_id}/exams", response_model=list[SectionExamOut])
+async def list_section_exams(
+    section_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """List all exams assigned to this section with online active, grade release status, and class score stats."""
+    teacher = await _get_teacher(current_user, db)
+    sec_res = await db.execute(
+        select(Section).where(Section.id == section_id, Section.teacher_id == teacher.id)
+    )
+    if not sec_res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Section not found")
+
+    result = await db.execute(
+        select(SectionExam)
+        .options(
+            selectinload(SectionExam.exam).selectinload(Exam.answer_keys),
+            selectinload(SectionExam.exam).selectinload(Exam.questions),
+        )
+        .where(SectionExam.section_id == section_id)
+        .order_by(SectionExam.created_at.desc())
+    )
+    section_exams = result.scalars().all()
+
+    # Get student IDs in this section
+    # Single aggregate query for all exams (avoids N+1 round trips)
+    stats_res = await db.execute(
+        select(
+            ExamSubmission.exam_id,
+            func.count(ExamSubmission.id),
+            func.avg(ExamSubmission.total_score),
+        )
+        .where(
+            ExamSubmission.student_id.in_(
+                select(Student.id).where(Student.section_id == section_id)
+            )
+        )
+        .group_by(ExamSubmission.exam_id)
+    )
+    stats = {row[0]: (row[1], row[2]) for row in stats_res.all()}
+
+    out = []
+    for se in section_exams:
+        if not se.exam:
+            continue
+
+        sub_count, avg_raw = stats.get(se.exam_id, (0, None))
+        avg_score = round(float(avg_raw), 1) if avg_raw is not None else None
+
+        out.append(SectionExamOut(
+            id=se.id,
+            section_id=se.section_id,
+            exam_id=se.exam_id,
+            is_online_active=se.is_online_active,
+            is_grades_released=se.is_grades_released,
+            is_started=se.is_started,
+            release_mode=se.release_mode or "FULL",
+            created_at=se.created_at,
+            exam=ExamOut.model_validate(se.exam),
+            submission_count=sub_count,
+            average_score=avg_score,
+            max_score=se.exam.total_questions,
+        ))
+
+    return out
+
+
+@router.post("/sections/{section_id}/exams", response_model=SectionExamOut)
+async def assign_exam_to_section(
+    section_id: str,
+    body: AssignExamToSection,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Assign an existing exam to this class/section."""
+    teacher = await _get_teacher(current_user, db)
+    sec_res = await db.execute(
+        select(Section).where(Section.id == section_id, Section.teacher_id == teacher.id)
+    )
+    if not sec_res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Section not found")
+
+    exam_res = await db.execute(
+        select(Exam).where(Exam.id == body.exam_id)
+    )
+    exam = exam_res.scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+
+    # Check if already assigned
+    existing_res = await db.execute(
+        select(SectionExam).where(
+            SectionExam.section_id == section_id,
+            SectionExam.exam_id == body.exam_id,
+        )
+    )
+    existing = existing_res.scalar_one_or_none()
+    if existing:
+        result = await db.execute(
+            select(SectionExam)
+            .options(
+                selectinload(SectionExam.exam).selectinload(Exam.answer_keys),
+                selectinload(SectionExam.exam).selectinload(Exam.questions),
+            )
+            .where(SectionExam.id == existing.id)
+        )
+        se = result.scalar_one()
+        return SectionExamOut(
+            id=se.id,
+            section_id=se.section_id,
+            exam_id=se.exam_id,
+            is_online_active=se.is_online_active,
+            is_grades_released=se.is_grades_released,
+            is_started=se.is_started,
+            release_mode=se.release_mode or "FULL",
+            created_at=se.created_at,
+            exam=ExamOut.model_validate(se.exam) if se.exam else None,
+            submission_count=0,
+            average_score=None,
+            max_score=exam.total_questions,
+        )
+
+    section_exam = SectionExam(
+        section_id=section_id,
+        exam_id=body.exam_id,
+        is_online_active=False,
+        is_grades_released=False,
+    )
+    db.add(section_exam)
+    await db.commit()
+
+    result = await db.execute(
+        select(SectionExam)
+        .options(
+            selectinload(SectionExam.exam).selectinload(Exam.answer_keys),
+            selectinload(SectionExam.exam).selectinload(Exam.questions),
+        )
+        .where(SectionExam.id == section_exam.id)
+    )
+    se = result.scalar_one()
+    return SectionExamOut(
+        id=se.id,
+        section_id=se.section_id,
+        exam_id=se.exam_id,
+        is_online_active=se.is_online_active,
+        is_grades_released=se.is_grades_released,
+        is_started=se.is_started,
+        release_mode=se.release_mode or "FULL",
+        created_at=se.created_at,
+        exam=ExamOut.model_validate(se.exam) if se.exam else None,
+        submission_count=0,
+        average_score=None,
+        max_score=exam.total_questions,
+    )
+
+
+@router.delete("/sections/{section_id}/exams/{exam_id}")
+async def unassign_exam_from_section(
+    section_id: str,
+    exam_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Unassign an exam from a section. Submissions and student accounts are retained."""
+    teacher = await _get_teacher(current_user, db)
+    sec_res = await db.execute(
+        select(Section).where(Section.id == section_id, Section.teacher_id == teacher.id)
+    )
+    if not sec_res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Section not found")
+
+    result = await db.execute(
+        select(SectionExam).where(
+            SectionExam.section_id == section_id,
+            SectionExam.exam_id == exam_id,
+        )
+    )
+    se = result.scalar_one_or_none()
+    if not se:
+        raise HTTPException(status_code=404, detail="Exam is not assigned to this section")
+
+    await db.delete(se)
+    await db.commit()
+    return {"message": "Exam unassigned from section successfully"}
+
+
+@router.put("/sections/{section_id}/exams/{exam_id}/toggle-online", response_model=SectionExamOut)
+async def toggle_section_exam_online(
+    section_id: str,
+    exam_id: str,
+    body: Optional[SectionExamOnlineToggle] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Toggle online web quiz active status for this specific section."""
+    teacher = await _get_teacher(current_user, db)
+    sec_res = await db.execute(
+        select(Section).where(Section.id == section_id, Section.teacher_id == teacher.id)
+    )
+    if not sec_res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Section not found")
+
+    result = await db.execute(
+        select(SectionExam)
+        .options(
+            selectinload(SectionExam.exam).selectinload(Exam.answer_keys),
+            selectinload(SectionExam.exam).selectinload(Exam.questions),
+        )
+        .where(
+            SectionExam.section_id == section_id,
+            SectionExam.exam_id == exam_id,
+        )
+    )
+    se = result.scalar_one_or_none()
+    if not se:
+        raise HTTPException(status_code=404, detail="Exam is not assigned to this section")
+
+    if body is not None:
+        se.is_online_active = body.is_online_active
+    else:
+        se.is_online_active = not se.is_online_active
+    if not se.is_online_active:
+        # Closing the lobby also un-releases the exam and clears waiting students.
+        # Entries carrying a teacher-granted retake are kept so the attempt counter survives.
+        se.is_started = False
+        await db.execute(
+            delete(ExamLobbyEntry).where(
+                ExamLobbyEntry.section_exam_id == se.id,
+                ExamLobbyEntry.retakes_granted == 0,
+            )
+        )
+
+    await db.commit()
+
+    return SectionExamOut(
+        id=se.id,
+        section_id=se.section_id,
+        exam_id=se.exam_id,
+        is_online_active=se.is_online_active,
+        is_grades_released=se.is_grades_released,
+        is_started=se.is_started,
+        release_mode=se.release_mode or "FULL",
+        created_at=se.created_at,
+        exam=ExamOut.model_validate(se.exam) if se.exam else None,
+    )
+
+
+@router.put("/sections/{section_id}/exams/{exam_id}/toggle-grades", response_model=SectionExamOut)
+async def toggle_section_exam_grades(
+    section_id: str,
+    exam_id: str,
+    body: Optional[SectionExamGradesToggle] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Toggle releasing grades and questionnaire reviewer for this specific section."""
+    teacher = await _get_teacher(current_user, db)
+    sec_res = await db.execute(
+        select(Section).where(Section.id == section_id, Section.teacher_id == teacher.id)
+    )
+    if not sec_res.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Section not found")
+
+    result = await db.execute(
+        select(SectionExam)
+        .options(
+            selectinload(SectionExam.exam).selectinload(Exam.answer_keys),
+            selectinload(SectionExam.exam).selectinload(Exam.questions),
+        )
+        .where(
+            SectionExam.section_id == section_id,
+            SectionExam.exam_id == exam_id,
+        )
+    )
+    se = result.scalar_one_or_none()
+    if not se:
+        raise HTTPException(status_code=404, detail="Exam is not assigned to this section")
+
+    if body is not None and (body.is_grades_released is not None or body.release_mode is not None):
+        if body.is_grades_released is not None:
+            se.is_grades_released = body.is_grades_released
+        if body.release_mode is not None:
+            se.release_mode = body.release_mode
+    else:
+        se.is_grades_released = not se.is_grades_released
+
+    # Update all submissions of students in this section for this exam
+    students_res = await db.execute(
+        select(Student.id).where(Student.section_id == section_id)
+    )
+    section_student_ids = list(students_res.scalars().all())
+
+    if section_student_ids:
+        await db.execute(
+            update(ExamSubmission)
+            .where(
+                ExamSubmission.exam_id == exam_id,
+                ExamSubmission.student_id.in_(section_student_ids),
+            )
+            .values(is_published=se.is_grades_released)
+        )
+
+    await db.commit()
+
+    return SectionExamOut(
+        id=se.id,
+        section_id=se.section_id,
+        exam_id=se.exam_id,
+        is_online_active=se.is_online_active,
+        is_grades_released=se.is_grades_released,
+        is_started=se.is_started,
+        release_mode=se.release_mode or "FULL",
+        created_at=se.created_at,
+        exam=ExamOut.model_validate(se.exam) if se.exam else None,
+    )
+
+
 # ─── Students ─────────────────────────────────────────────────
 
 @router.get("/students", response_model=list[StudentOut])
@@ -185,14 +512,13 @@ async def list_all_students(
     """
     stmt = (
         select(Student)
-        .options(selectinload(Student.user), selectinload(Student.section))
-        .join(User, Student.user_id == User.id)
+        .options(joinedload(Student.user), joinedload(Student.section))
     )
     if unassigned_only:
         stmt = stmt.where(Student.section_id.is_(None))
     if search:
         s = f"%{search.strip()}%"
-        stmt = stmt.where(
+        stmt = stmt.join(User, Student.user_id == User.id).where(
             or_(
                 User.first_name.ilike(s),
                 User.last_name.ilike(s),
@@ -202,7 +528,22 @@ async def list_all_students(
         )
     stmt = stmt.order_by(Student.student_number)
     result = await db.execute(stmt)
-    return result.scalars().all()
+    students = result.scalars().unique().all()
+
+    # Query active pending reset requests
+    pending_res = await db.execute(
+        select(PasswordResetRequest.student_id).where(
+            PasswordResetRequest.status == ResetRequestStatus.PENDING
+        )
+    )
+    pending_ids = set(pending_res.scalars().all())
+
+    out: list[StudentOut] = []
+    for s in students:
+        s_out = StudentOut.model_validate(s)
+        s_out.has_pending_reset_request = s.id in pending_ids
+        out.append(s_out)
+    return out
 
 
 @router.post("/students", response_model=StudentOut)
@@ -308,7 +649,22 @@ async def list_students(
         .where(Student.section_id == section_id)
         .order_by(Student.student_number)
     )
-    return result.scalars().all()
+    students = result.scalars().all()
+
+    # Query active pending reset requests
+    pending_res = await db.execute(
+        select(PasswordResetRequest.student_id).where(
+            PasswordResetRequest.status == ResetRequestStatus.PENDING
+        )
+    )
+    pending_ids = set(pending_res.scalars().all())
+
+    out: list[StudentOut] = []
+    for s in students:
+        s_out = StudentOut.model_validate(s)
+        s_out.has_pending_reset_request = s.id in pending_ids
+        out.append(s_out)
+    return out
 
 
 @router.post("/sections/{section_id}/students", response_model=StudentOut)
@@ -391,13 +747,15 @@ async def add_student(
 
 
 @router.post("/sections/{section_id}/students/csv", response_model=StudentBulkCreateResponse)
+@router.post("/sections/{section_id}/students/excel", response_model=StudentBulkCreateResponse)
+@router.post("/sections/{section_id}/students/upload", response_model=StudentBulkCreateResponse)
 async def add_students_csv(
     section_id: str,
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(Role.TEACHER)),
 ):
-    """Bulk-add students from a CSV file with columns: first_name, last_name, [student_id / student_number]."""
+    """Bulk-add students from an Excel (.xlsx / .xls) or CSV file with columns: ID, Name."""
     teacher = await _get_teacher(current_user, db)
     sec = await db.execute(
         select(Section).where(Section.id == section_id, Section.teacher_id == teacher.id)
@@ -406,7 +764,13 @@ async def add_students_csv(
         raise HTTPException(status_code=404, detail="Section not found")
 
     content = await file.read()
-    rows = parse_student_csv(content)
+    rows = parse_student_file(content, filename=file.filename or "")
+
+    if not rows:
+        raise HTTPException(
+            status_code=400,
+            detail="No valid student records found in file. Please ensure the file contains an 'ID' and 'Name' column.",
+        )
 
     created_students = []
     used_numbers = set()
@@ -563,6 +927,134 @@ async def delete_student(
     return {"message": "Student deleted successfully"}
 
 
+@router.get("/password-reset-requests", response_model=list[PasswordResetRequestOut])
+async def list_password_reset_requests(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """
+    List all pending password reset requests for students.
+    Includes student info, ID, username, and their enrolled section.
+    """
+    teacher = await _get_teacher(current_user, db)
+
+    # Get teacher's section IDs
+    sec_res = await db.execute(
+        select(Section.id).where(Section.teacher_id == teacher.id)
+    )
+    teacher_sec_ids = set(sec_res.scalars().all())
+
+    stmt = (
+        select(PasswordResetRequest)
+        .options(
+            joinedload(PasswordResetRequest.student).joinedload(Student.user),
+            joinedload(PasswordResetRequest.student).joinedload(Student.section),
+        )
+        .where(PasswordResetRequest.status == ResetRequestStatus.PENDING)
+        .order_by(PasswordResetRequest.created_at.desc())
+    )
+    result = await db.execute(stmt)
+    requests = result.scalars().unique().all()
+
+    out: list[PasswordResetRequestOut] = []
+    for req in requests:
+        st = req.student
+        if not st or not st.user:
+            continue
+        # Show requests if student is in this teacher's section OR if student is unassigned
+        if st.section_id is not None and len(teacher_sec_ids) > 0 and st.section_id not in teacher_sec_ids:
+            continue
+
+        out.append(PasswordResetRequestOut(
+            id=req.id,
+            student_id=st.id,
+            status=req.status.value,
+            created_at=req.created_at,
+            resolved_at=req.resolved_at,
+            student_name=f"{st.user.first_name} {st.user.last_name}",
+            student_username=st.user.username,
+            student_number=st.student_number,
+            full_student_id=f"02000{st.student_number:06d}",
+            section_name=st.section.name if st.section else None,
+            section_subject=st.section.subject if st.section else None,
+        ))
+    return out
+
+
+@router.post("/students/{student_id}/reset-password", response_model=StudentResetPasswordResponse)
+async def reset_student_password(
+    student_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """
+    Teacher resets student password:
+    - Generates a new temporary password
+    - Updates user password_hash
+    - Sets must_change_password=True
+    - Marks any pending reset requests for this student as RESOLVED
+    - Returns the temporary password for the teacher to copy/share with the student
+    """
+    result = await db.execute(
+        select(Student)
+        .options(joinedload(Student.user), joinedload(Student.section))
+        .where(Student.id == student_id)
+    )
+    student = result.scalar_one_or_none()
+    if not student or not student.user:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    new_temp_password = generate_temp_password()
+    student.user.password_hash = hash_password(new_temp_password)
+    student.user.must_change_password = True
+
+    # Mark pending requests as resolved
+    pending_res = await db.execute(
+        select(PasswordResetRequest).where(
+            PasswordResetRequest.student_id == student.id,
+            PasswordResetRequest.status == ResetRequestStatus.PENDING,
+        )
+    )
+    pending_reqs = pending_res.scalars().all()
+    now = datetime.now(timezone.utc)
+    for pr in pending_reqs:
+        pr.status = ResetRequestStatus.RESOLVED
+        pr.resolved_at = now
+        pr.resolved_by = current_user.id
+
+    await db.flush()
+
+    return StudentResetPasswordResponse(
+        student_id=student.id,
+        student_name=f"{student.user.first_name} {student.user.last_name}",
+        username=student.user.username,
+        full_student_id=f"02000{student.student_number:06d}",
+        temp_password=new_temp_password,
+        message=f"Password for {student.user.first_name} {student.user.last_name} successfully reset.",
+    )
+
+
+@router.post("/password-reset-requests/{request_id}/dismiss")
+async def dismiss_password_reset_request(
+    request_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Dismiss a pending password reset request."""
+    result = await db.execute(
+        select(PasswordResetRequest).where(PasswordResetRequest.id == request_id)
+    )
+    req = result.scalar_one_or_none()
+    if not req:
+        raise HTTPException(status_code=404, detail="Reset request not found")
+
+    req.status = ResetRequestStatus.DISMISSED
+    req.resolved_at = datetime.now(timezone.utc)
+    req.resolved_by = current_user.id
+    await db.flush()
+    return {"message": "Reset request dismissed successfully"}
+
+
 # ─── Exams ────────────────────────────────────────────────────
 
 @router.get("/exams", response_model=list[ExamOut])
@@ -603,7 +1095,9 @@ async def create_exam(
         teacher_id=teacher.id,
         title=body.title,
         total_questions=body.total_questions,
-        is_public=body.is_public,
+        is_public=body.is_public or body.is_grades_released,
+        is_online_active=body.is_online_active,
+        is_grades_released=body.is_grades_released,
     )
     db.add(exam)
     await db.flush()
@@ -676,14 +1170,24 @@ async def update_exam(
         exam.title = body.title
     if body.total_questions is not None:
         exam.total_questions = body.total_questions
-    if body.is_public is not None:
+    if body.is_online_active is not None:
+        exam.is_online_active = body.is_online_active
+    if body.is_grades_released is not None:
+        exam.is_grades_released = body.is_grades_released
+        exam.is_public = body.is_grades_released
+        subs_res = await db.execute(
+            select(ExamSubmission).where(ExamSubmission.exam_id == exam.id)
+        )
+        for s in subs_res.scalars().all():
+            s.is_published = body.is_grades_released
+    elif body.is_public is not None:
         exam.is_public = body.is_public
-        if body.is_public:
-            subs_res = await db.execute(
-                select(ExamSubmission).where(ExamSubmission.exam_id == exam.id)
-            )
-            for s in subs_res.scalars().all():
-                s.is_published = True
+        exam.is_grades_released = body.is_public
+        subs_res = await db.execute(
+            select(ExamSubmission).where(ExamSubmission.exam_id == exam.id)
+        )
+        for s in subs_res.scalars().all():
+            s.is_published = body.is_public
 
     if body.answer_keys is not None:
         for key in exam.answer_keys:
@@ -722,6 +1226,71 @@ async def update_exam(
     return result.scalar_one()
 
 
+@router.put("/exams/{exam_id}/toggle-online", response_model=ExamOut)
+@router.patch("/exams/{exam_id}/online", response_model=ExamOut)
+async def toggle_exam_online(
+    exam_id: str,
+    body: Optional[ExamOnlineToggle] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Toggle whether students can take this exam online via web."""
+    teacher = await _get_teacher(current_user, db)
+    result = await db.execute(
+        select(Exam).options(selectinload(Exam.answer_keys), selectinload(Exam.questions)).where(
+            Exam.id == exam_id, Exam.teacher_id == teacher.id
+        )
+    )
+    exam = result.scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+
+    if body is not None:
+        exam.is_online_active = body.is_online_active
+    else:
+        exam.is_online_active = not exam.is_online_active
+
+    await db.commit()
+    return exam
+
+
+@router.put("/exams/{exam_id}/toggle-grades-release", response_model=ExamOut)
+@router.patch("/exams/{exam_id}/grades-release", response_model=ExamOut)
+async def toggle_exam_grades_release(
+    exam_id: str,
+    body: Optional[ExamGradesReleaseToggle] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Toggle releasing exam grades, shaded answers, and questionnaire reviewer to students."""
+    teacher = await _get_teacher(current_user, db)
+    result = await db.execute(
+        select(Exam).options(selectinload(Exam.answer_keys), selectinload(Exam.questions)).where(
+            Exam.id == exam_id, Exam.teacher_id == teacher.id
+        )
+    )
+    exam = result.scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+
+    if body is not None:
+        exam.is_grades_released = body.is_grades_released
+    else:
+        exam.is_grades_released = not exam.is_grades_released
+
+    exam.is_public = exam.is_grades_released
+
+    # Update all submissions: set is_published to match grade release status
+    await db.execute(
+        update(ExamSubmission)
+        .where(ExamSubmission.exam_id == exam.id)
+        .values(is_published=exam.is_grades_released)
+    )
+
+    await db.commit()
+    return exam
+
+
 @router.patch("/exams/{exam_id}/visibility", response_model=ExamOut)
 async def toggle_exam_visibility(
     exam_id: str,
@@ -741,13 +1310,14 @@ async def toggle_exam_visibility(
         raise HTTPException(status_code=404, detail="Exam not found")
 
     exam.is_public = body.is_public
-    if body.is_public:
-        subs_res = await db.execute(
-            select(ExamSubmission).where(ExamSubmission.exam_id == exam.id)
-        )
-        for s in subs_res.scalars().all():
-            s.is_published = True
-    await db.flush()
+    exam.is_grades_released = body.is_public
+    await db.execute(
+        update(ExamSubmission)
+        .where(ExamSubmission.exam_id == exam.id)
+        .values(is_published=body.is_public)
+    )
+
+    await db.commit()
     return exam
 
 
@@ -1040,7 +1610,7 @@ async def scan_sheet(
         total_score=total_score,
         max_score=exam.total_questions,
         scanned_image_url=image_url,
-        is_published=exam.is_public,
+        is_published=exam.is_grades_released,
     )
     db.add(submission)
     await db.flush()

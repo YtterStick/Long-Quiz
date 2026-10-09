@@ -59,6 +59,7 @@ class Student(Base):
     user: Mapped[Optional["User"]] = relationship("User", back_populates="student_profile")
     section: Mapped[Optional["Section"]] = relationship("Section", back_populates="students")
     submissions: Mapped[List["ExamSubmission"]] = relationship("ExamSubmission", back_populates="student", cascade="all, delete-orphan")
+    reset_requests: Mapped[List["PasswordResetRequest"]] = relationship("PasswordResetRequest", back_populates="student", cascade="all, delete-orphan")
 
     @property
     def full_student_id(self) -> str:
@@ -77,6 +78,7 @@ class Section(Base):
 
     teacher: Mapped[Optional["Teacher"]] = relationship("Teacher", back_populates="sections")
     students: Mapped[List["Student"]] = relationship("Student", back_populates="section")
+    section_exams: Mapped[List["SectionExam"]] = relationship("SectionExam", back_populates="section", cascade="all, delete-orphan")
 
 
 class Exam(Base):
@@ -87,12 +89,51 @@ class Exam(Base):
     title: Mapped[str] = mapped_column(String, nullable=False)
     total_questions: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
     is_public: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_online_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_grades_released: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     teacher: Mapped[Optional["Teacher"]] = relationship("Teacher", back_populates="exams")
     answer_keys: Mapped[List["ExamAnswerKey"]] = relationship("ExamAnswerKey", back_populates="exam", cascade="all, delete-orphan", order_by="ExamAnswerKey.question_number")
     questions: Mapped[List["ExamQuestion"]] = relationship("ExamQuestion", back_populates="exam", cascade="all, delete-orphan", order_by="ExamQuestion.question_number")
     submissions: Mapped[List["ExamSubmission"]] = relationship("ExamSubmission", back_populates="exam", cascade="all, delete-orphan")
+    section_exams: Mapped[List["SectionExam"]] = relationship("SectionExam", back_populates="exam", cascade="all, delete-orphan")
+
+
+class SectionExam(Base):
+    __tablename__ = "section_exams"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    section_id: Mapped[str] = mapped_column(String, ForeignKey("sections.id", ondelete="CASCADE"), nullable=False, index=True)
+    exam_id: Mapped[str] = mapped_column(String, ForeignKey("exams.id", ondelete="CASCADE"), nullable=False, index=True)
+    is_online_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_grades_released: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Teacher has released the exam to students waiting in the lobby
+    is_started: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
+    # What students see once grades are released: "FULL" (score + questionnaire + answer key) or "SCORES_ONLY"
+    release_mode: Mapped[str] = mapped_column(String, default="FULL", nullable=False, server_default="FULL")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    section: Mapped[Optional["Section"]] = relationship("Section", back_populates="section_exams")
+    exam: Mapped[Optional["Exam"]] = relationship("Exam", back_populates="section_exams")
+
+
+class ExamLobbyEntry(Base):
+    """Live presence of a student in an exam lobby / while taking the exam."""
+    __tablename__ = "exam_lobby_entries"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    section_exam_id: Mapped[str] = mapped_column(String, ForeignKey("section_exams.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id: Mapped[str] = mapped_column(String, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    is_fullscreen: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_focused: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    violations: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    tab_switches: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
+    fullscreen_exits: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
+    # Number of retakes the teacher has granted this student for this class exam
+    retakes_granted: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
 
 
 class ExamAnswerKey(Base):
@@ -132,6 +173,11 @@ class ExamSubmission(Base):
     max_score: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
     scanned_image_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_published: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Online proctoring snapshot (copied from the lobby entry at submit time)
+    tab_switches: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
+    fullscreen_exits: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
+    attempt_number: Mapped[int] = mapped_column(Integer, default=1, nullable=False, server_default="1")
+    auto_submitted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
     scanned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     exam: Mapped[Optional["Exam"]] = relationship("Exam", back_populates="submissions")
@@ -149,3 +195,27 @@ class SubmissionAnswer(Base):
     is_correct: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     submission: Mapped[Optional["ExamSubmission"]] = relationship("ExamSubmission", back_populates="answers")
+
+
+class ResetRequestStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    RESOLVED = "RESOLVED"
+    DISMISSED = "DISMISSED"
+
+
+class PasswordResetRequest(Base):
+    __tablename__ = "password_reset_requests"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    student_id: Mapped[str] = mapped_column(String, ForeignKey("students.id", ondelete="CASCADE"), nullable=False)
+    status: Mapped[ResetRequestStatus] = mapped_column(
+        SAEnum(ResetRequestStatus, name="reset_request_status"),
+        default=ResetRequestStatus.PENDING,
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_by: Mapped[Optional[str]] = mapped_column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    student: Mapped[Optional["Student"]] = relationship("Student", back_populates="reset_requests")
+    resolver: Mapped[Optional["User"]] = relationship("User", foreign_keys=[resolved_by])

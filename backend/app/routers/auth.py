@@ -1,13 +1,16 @@
 """Authentication routes: login, password change."""
 
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 from app.database import get_db
-from app.models import User
-from app.schemas import LoginRequest, TokenResponse, PasswordChangeRequest
+from app.models import User, Student, PasswordResetRequest, ResetRequestStatus
+from app.schemas import LoginRequest, TokenResponse, PasswordChangeRequest, StudentResetRequestBody
 from app.auth import verify_password, hash_password, create_access_token
 from app.deps import get_current_user
+from app.utils import clean_student_omr_number
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
@@ -99,4 +102,85 @@ async def get_me(current_user: User = Depends(get_current_user)):
         "last_name": current_user.last_name,
         "role": current_user.role.value,
         "must_change_password": current_user.must_change_password,
+    }
+
+
+@router.post("/student-reset-request")
+async def request_student_password_reset(
+    body: StudentResetRequestBody,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Allow students to request a password reset from their teachers.
+    Accepts 6-digit OMR ID, 02000-prefixed ID, or username.
+    Creates or updates a pending PasswordResetRequest.
+    """
+    ident = body.identifier.strip()
+    if not ident:
+        raise HTTPException(status_code=400, detail="Please enter your Student ID or username.")
+
+    student = None
+
+    # 1. Try finding by student number / OMR ID
+    try:
+        omr_id = clean_student_omr_number(ident)
+        res = await db.execute(
+            select(Student)
+            .options(joinedload(Student.user), joinedload(Student.section))
+            .where(Student.student_number == omr_id)
+        )
+        student = res.scalar_one_or_none()
+    except ValueError:
+        pass
+
+    # 2. Try finding by username
+    if student is None:
+        user_res = await db.execute(select(User).where(User.username.ilike(ident)))
+        user = user_res.scalar_one_or_none()
+        if user:
+            st_res = await db.execute(
+                select(Student)
+                .options(joinedload(Student.user), joinedload(Student.section))
+                .where(Student.user_id == user.id)
+            )
+            student = st_res.scalar_one_or_none()
+
+    if student is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No student record found with the provided Student ID or username.",
+        )
+
+    student_name = f"{student.user.first_name} {student.user.last_name}" if student.user else "Student"
+
+    # Check for existing pending request
+    req_res = await db.execute(
+        select(PasswordResetRequest).where(
+            PasswordResetRequest.student_id == student.id,
+            PasswordResetRequest.status == ResetRequestStatus.PENDING,
+        )
+    )
+    existing_req = req_res.scalar_one_or_none()
+
+    if existing_req:
+        existing_req.created_at = datetime.now(timezone.utc)
+        await db.flush()
+        return {
+            "message": "Password reset request updated! Your instructor has been notified.",
+            "student_name": student_name,
+            "student_id": f"02000{student.student_number:06d}",
+        }
+
+    new_req = PasswordResetRequest(
+        student_id=student.id,
+        status=ResetRequestStatus.PENDING,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(new_req)
+    await db.flush()
+
+    return {
+        "message": "Password reset request sent successfully! Your instructor has been notified.",
+        "student_name": student_name,
+        "student_id": f"02000{student.student_number:06d}",
     }

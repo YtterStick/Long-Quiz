@@ -22,6 +22,7 @@ import {
   Save,
   X,
   KeyRound,
+  School,
 } from "lucide-react";
 import Link from "next/link";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
@@ -50,6 +51,8 @@ interface ExamItem {
   title: string;
   total_questions: number;
   is_public: boolean;
+  is_online_active?: boolean;
+  is_grades_released?: boolean;
   is_owner?: boolean;
   created_at: string;
   answer_keys: Array<{ id?: string; question_number: number; correct_option: string }>;
@@ -74,6 +77,8 @@ export default function TeacherExamsPage() {
   const [title, setTitle] = useState("");
   const [totalQuestions, setTotalQuestions] = useState(50);
   const [isPublic, setIsPublic] = useState(false);
+  const [isOnlineActive, setIsOnlineActive] = useState(false);
+  const [isGradesReleased, setIsGradesReleased] = useState(false);
   const [keys, setKeys] = useState<Record<number, string>>({});
   const [questionsData, setQuestionsData] = useState<Record<number, Partial<QuestionItem>>>({});
 
@@ -92,8 +97,10 @@ export default function TeacherExamsPage() {
   const [questionnaireSuccess, setQuestionnaireSuccess] = useState<string | null>(null);
   const [questionFilter, setQuestionFilter] = useState<"all" | "missing" | "completed">("all");
 
-  // Toggling visibility state tracker
+  // Toggling state trackers
   const [togglingVisibilityId, setTogglingVisibilityId] = useState<string | null>(null);
+  const [togglingOnlineId, setTogglingOnlineId] = useState<string | null>(null);
+  const [togglingGradesId, setTogglingGradesId] = useState<string | null>(null);
 
   const openPreview = async () => {
     setPreviewLoading(true);
@@ -352,12 +359,58 @@ export default function TeacherExamsPage() {
     try {
       await teacherApi.toggleExamVisibility(exam.id, newStatus);
       setExams((prev) =>
-        prev.map((e) => (e.id === exam.id ? { ...e, is_public: newStatus } : e))
+        prev.map((e) =>
+          e.id === exam.id
+            ? { ...e, is_public: newStatus, is_grades_released: newStatus }
+            : e
+        )
       );
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to update visibility");
     } finally {
       setTogglingVisibilityId(null);
+    }
+  };
+
+  // Toggle Online Web Quiz Mode
+  const handleToggleOnline = async (exam: ExamItem) => {
+    setTogglingOnlineId(exam.id);
+    const nextStatus = !exam.is_online_active;
+    try {
+      const res = await teacherApi.toggleExamOnline(exam.id, nextStatus);
+      setExams((prev) =>
+        prev.map((e) =>
+          e.id === exam.id ? { ...e, is_online_active: res.is_online_active } : e
+        )
+      );
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to toggle online quiz mode");
+    } finally {
+      setTogglingOnlineId(null);
+    }
+  };
+
+  // Toggle Grade & Reviewer Release
+  const handleToggleGradesRelease = async (exam: ExamItem) => {
+    setTogglingGradesId(exam.id);
+    const nextStatus = !exam.is_grades_released;
+    try {
+      const res = await teacherApi.toggleExamGradesRelease(exam.id, nextStatus);
+      setExams((prev) =>
+        prev.map((e) =>
+          e.id === exam.id
+            ? {
+                ...e,
+                is_grades_released: res.is_grades_released,
+                is_public: res.is_public,
+              }
+            : e
+        )
+      );
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to toggle grade release");
+    } finally {
+      setTogglingGradesId(null);
     }
   };
 
@@ -545,47 +598,19 @@ export default function TeacherExamsPage() {
                   </div>
                 </div>
 
-                {/* Public vs Private Status Indicator */}
-                <div className="flex items-center justify-between rounded-xl bg-surface-base p-4 border border-border-default">
-                  <div className="flex items-center gap-3">
-                    {isPublic ? (
-                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-tan-ghost border border-tan-border">
-                        <Globe className="h-5 w-5 text-tan" />
-                      </div>
-                    ) : (
-                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-surface-subtle border border-border-emphasis">
-                        <Lock className="h-5 w-5 text-text-muted" />
-                      </div>
-                    )}
-                    <div>
-                      <p className="text-xs font-semibold text-text-primary flex items-center gap-2">
-                        {isPublic ? "Public Exam & Reviewer" : "Private Exam"}
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          isPublic ? "bg-sage-ghost text-sage border border-sage-border" : "bg-surface-muted text-text-muted"
-                        }`}>
-                          {isPublic ? "Students Can View" : "Hidden From Students"}
-                        </span>
-                      </p>
-                      <p className="text-[11px] text-text-muted">
-                        {isPublic
-                          ? "Students who took this exam will see their personal score, their shaded answers, the correct answer keys, and the study reviewer."
-                          : "Students cannot view this exam or their score until you toggle it to Public."}
-                      </p>
-                    </div>
+                {/* Class Administration Notice */}
+                <div className="flex items-center gap-3 rounded-xl bg-surface-base p-4 border border-border-default">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-tan-ghost border border-tan-border shrink-0">
+                    <School className="h-5 w-5 text-tan" />
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setIsPublic(!isPublic)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      isPublic ? "bg-steel" : "bg-surface-muted"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                        isPublic ? "translate-x-6" : "translate-x-1"
-                      }`}
-                    />
-                  </button>
+                  <div>
+                    <p className="text-xs font-semibold text-text-primary">
+                      Class Quizzes & Grade Releases
+                    </p>
+                    <p className="text-[11px] text-text-muted mt-0.5">
+                      This exam serves as a questionnaire and answer key bank. You can assign it to your classes and activate online quizzes or release grades inside <strong>Class Sections</strong>.
+                    </p>
+                  </div>
                 </div>
               </div>
 
@@ -815,7 +840,11 @@ export default function TeacherExamsPage() {
 
               <div className="flex items-center gap-3">
                 <button
-                  onClick={() => setIncludePublic(!includePublic)}
+                  onClick={() => {
+                    setLoading(true);
+                    setError(null);
+                    setIncludePublic(!includePublic);
+                  }}
                   className={`flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs font-semibold transition-colors ${
                     includePublic
                       ? "bg-tan-ghost text-tan border-steel-border"
@@ -839,7 +868,7 @@ export default function TeacherExamsPage() {
             {/* ── Blank Bubble Sheet Download Card ─────────────── */}
             <div className="mb-8 rounded-2xl border border-steel-border bg-steel-ghost p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div className="flex items-start gap-4">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-steel-ghost flex-shrink-0">
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-steel-ghost shrink-0">
                   <Printer className="h-5 w-5 text-steel" />
                 </div>
                 <div>
@@ -877,6 +906,21 @@ export default function TeacherExamsPage() {
 
             {loading ? (
               <SkeletonExamGrid count={3} />
+            ) : error && exams.length === 0 ? (
+              <div className="glass-card rounded-2xl p-12 text-center border border-border-default">
+                <AlertCircle className="mx-auto h-12 w-12 text-burgundy-light mb-3" />
+                <h3 className="text-lg font-bold text-text-primary">Couldn&apos;t load exams</h3>
+                <p className="text-xs text-text-muted max-w-sm mx-auto mt-1 mb-6">{error}</p>
+                <button
+                  onClick={() => {
+                    setError(null);
+                    loadExams();
+                  }}
+                  className="rounded-xl gradient-bg-primary px-4 py-2.5 text-xs font-semibold text-text-primary"
+                >
+                  Retry
+                </button>
+              </div>
             ) : exams.length === 0 ? (
               <div className="glass-card rounded-2xl p-12 text-center border border-border-default">
                 <FileSpreadsheet className="mx-auto h-12 w-12 text-text-faint mb-3" />
@@ -905,111 +949,78 @@ export default function TeacherExamsPage() {
                       className="glass-card glass-card-hover rounded-2xl p-6 border border-border-default flex flex-col justify-between group transition-all"
                     >
                       <div>
-                        {/* Status Bar: Public/Private Switch + Delete */}
-                        <div className="flex items-center justify-between mb-3">
-                          <button
-                            type="button"
-                            disabled={!isOwner || isToggling}
-                            onClick={() => isOwner && handleToggleVisibility(exam)}
-                            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-bold border transition-all ${
-                              exam.is_public
-                                ? "bg-sage-ghost text-sage border-sage-border hover:bg-sage-ghost/80"
-                                : "bg-surface-subtle text-text-muted border-border-emphasis hover:bg-surface-muted"
-                            } ${isOwner ? "cursor-pointer" : "cursor-default"}`}
-                            title={
-                              isOwner
-                                ? exam.is_public
-                                  ? "Click to switch to Private"
-                                  : "Click to switch to Public"
-                                : "Visibility status"
-                            }
-                          >
-                            {isToggling ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : exam.is_public ? (
-                              <Globe className="h-3 w-3" />
-                            ) : (
-                              <Lock className="h-3 w-3" />
-                            )}
-                            <span>{exam.is_public ? "Public (Students Can View)" : "Private (Hidden)"}</span>
-                          </button>
-
+                        {/* Header: Title and Delete */}
+                        <div className="flex items-start justify-between gap-3 mb-2">
+                          <h3 className="text-base font-bold text-text-primary group-hover:text-tan-light transition-colors leading-snug">
+                            {exam.title}
+                          </h3>
                           {isOwner && (
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={() => setExamToDelete(exam)}
-                                className="text-text-muted hover:text-burgundy-light hover:bg-burgundy-ghost rounded-lg transition-colors p-1.5"
-                                title="Delete Exam"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            </div>
+                            <button
+                              onClick={() => setExamToDelete(exam)}
+                              className="text-text-muted hover:text-burgundy-light hover:bg-burgundy-ghost rounded-lg transition-colors p-1.5 shrink-0"
+                              title="Delete Exam"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
                           )}
                         </div>
 
-                        <h3 className="text-lg font-bold text-text-primary group-hover:text-tan-light transition-colors">
-                          {exam.title}
-                        </h3>
-
                         {/* Exam specs */}
-                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-muted">
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted mb-3">
                           <span className="font-semibold text-text-secondary">{exam.total_questions} Questions</span>
                           <span>•</span>
                           <span className="text-sage font-mono font-medium">{exam.answer_keys.length} Keys Configured</span>
                           <span>•</span>
                           <span className={questionCount > 0 ? "text-tan font-medium" : "text-text-faint"}>
-                            {questionCount > 0 ? `${questionCount} Reviewer Prompts` : "No Prompts Yet"}
+                            {questionCount > 0 ? `${questionCount} Questions in Reviewer` : "No Prompts Yet"}
                           </span>
                         </div>
 
-                        {/* Visibility explanation note */}
-                        <p className="mt-2.5 text-[11px] text-text-muted leading-relaxed">
-                          {exam.is_public
-                            ? "✓ Students who took this exam can view their score, shaded answers, correct keys, and reviewer."
-                            : "🔒 Exam results and reviewer are private to teacher."}
-                        </p>
+                        {/* Class Administration Notice */}
+                        <div className="flex items-center gap-2.5 rounded-xl bg-surface-base p-2.5 border border-border-default text-xs text-text-muted my-3">
+                          <School className="h-4 w-4 text-tan shrink-0" />
+                          <span className="text-[11px] leading-tight">
+                            To activate web quiz or release grades, assign this exam to your class in <strong>Class Sections</strong>.
+                          </span>
+                        </div>
                       </div>
 
                       {/* Action buttons */}
-                      <div className="mt-6 space-y-2 pt-4 border-t border-border-default">
+                      <div className="mt-4 space-y-2 pt-3 border-t border-border-default">
                         {isOwner && (
-                          <div className="grid grid-cols-2 gap-2">
-                            {/* Edit / View Answer Keys */}
-                            <button
-                              onClick={() => !isLocked && openEditBuilder(exam, "keys")}
-                              disabled={isLocked}
-                              className={`flex items-center justify-center gap-1.5 rounded-xl border py-2 text-xs font-semibold transition-colors ${
-                                isLocked
-                                  ? "bg-surface-base border-border-default text-text-faint cursor-not-allowed"
-                                  : "bg-surface-overlay border-border-default text-text-primary hover:bg-surface-subtle"
-                              }`}
-                              title={isLocked ? "Make exam Private to edit keys" : "Edit answer keys"}
-                            >
-                              {isLocked ? (
-                                <Lock className="h-3.5 w-3.5 text-text-faint" />
-                              ) : (
+                          <div className="space-y-2">
+                            <div className="grid grid-cols-2 gap-2">
+                              {/* Edit / View Answer Keys */}
+                              <button
+                                onClick={() => openEditBuilder(exam, "keys")}
+                                className="flex items-center justify-center gap-1.5 rounded-xl border border-border-default bg-surface-overlay py-2 text-xs font-semibold text-text-primary hover:bg-surface-subtle transition-colors cursor-pointer"
+                                title="Edit answer keys"
+                              >
                                 <KeyRound className="h-3.5 w-3.5 text-tan" />
-                              )}
-                              {isLocked ? "Keys Locked" : "Edit Keys"}
-                            </button>
+                                Edit Keys
+                              </button>
 
-                            {/* Questionnaire Modal Button */}
-                            <button
-                              onClick={() => !isLocked && openQuestionnaireModal(exam)}
-                              disabled={isLocked}
-                              className={`flex items-center justify-center gap-1.5 rounded-xl border py-2 text-xs font-bold transition-all ${
-                                isLocked
-                                  ? "bg-surface-base border-border-default text-text-faint cursor-not-allowed"
-                                  : "bg-steel/15 border-steel-border text-tan-light hover:bg-steel/25"
-                              }`}
-                              title={isLocked ? "Make exam Private to edit questionnaire" : "Edit questionnaire"}
-                            >
-                              {isLocked ? (
-                                <Lock className="h-3.5 w-3.5 text-text-faint" />
-                              ) : (
+                              {/* Questionnaire Modal Button */}
+                              <button
+                                onClick={() => openQuestionnaireModal(exam)}
+                                className="flex items-center justify-center gap-1.5 rounded-xl border border-steel-border bg-steel/15 py-2 text-xs font-bold text-tan-light hover:bg-steel/25 transition-all cursor-pointer"
+                                title="Edit questionnaire"
+                              >
                                 <BookOpen className="h-3.5 w-3.5" />
-                              )}
-                              {isLocked ? "Locked" : "Questionnaire"}
+                                Questionnaire
+                              </button>
+                            </div>
+
+                            {/* Print / Preview Bubble Sheet */}
+                            <button
+                              onClick={() => {
+                                setBlankQuestions(exam.total_questions);
+                                openPreview();
+                              }}
+                              className="w-full flex items-center justify-center gap-1.5 rounded-xl border border-border-emphasis bg-surface-subtle py-1.5 text-[11px] font-semibold text-text-secondary hover:text-text-primary hover:bg-surface-muted transition-colors cursor-pointer"
+                            >
+                              <Printer className="h-3.5 w-3.5" />
+                              Preview Bubble Sheet ({exam.total_questions} Questions)
                             </button>
                           </div>
                         )}
@@ -1240,15 +1251,17 @@ export default function TeacherExamsPage() {
 
             {/* Modal Footer */}
             <div className="flex items-center justify-between px-6 py-4 border-t border-border-default shrink-0 bg-surface-base">
-              <span className="text-xs text-text-muted">
-                {questionnaireList.filter((q) => q.question_text?.trim()).length} of {questionnaireList.length} questions configured
-              </span>
+              <div className="flex items-center gap-2 text-xs text-text-muted">
+                <span>
+                  {questionnaireList.filter((q) => q.question_text?.trim()).length} of {questionnaireList.length} questions configured
+                </span>
+              </div>
 
               <div className="flex items-center gap-3">
                 <button
                   type="button"
                   onClick={() => setQuestionnaireExam(null)}
-                  className="rounded-xl border border-border-emphasis bg-surface-subtle px-4 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-muted"
+                  className="rounded-xl border border-border-emphasis bg-surface-subtle px-4 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-muted cursor-pointer"
                 >
                   Close
                 </button>
@@ -1256,7 +1269,7 @@ export default function TeacherExamsPage() {
                   type="button"
                   disabled={savingQuestionnaire}
                   onClick={handleSaveQuestionnaire}
-                  className="flex items-center gap-2 rounded-xl gradient-bg-primary px-5 py-2 text-xs font-semibold text-text-primary shadow-md shadow-steel/20 hover:opacity-95 transition-all disabled:opacity-60"
+                  className="flex items-center gap-2 rounded-xl gradient-bg-primary px-5 py-2 text-xs font-bold text-text-primary shadow-md shadow-steel/20 hover:opacity-95 transition-all cursor-pointer disabled:opacity-60"
                 >
                   {savingQuestionnaire ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
