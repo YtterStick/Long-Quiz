@@ -13,12 +13,25 @@ import {
   ScanLine,
   ArrowRight,
   FileCheck,
-  Camera,
   ChevronRight,
 } from "lucide-react";
-import { PasswordChangeModal } from "@/components/PasswordChangeModal";
 import Link from "next/link";
-import { SkeletonStatCards, SkeletonWorkflowCards } from "@/components/ui/Skeleton";
+import { PasswordChangeModal } from "@/components/PasswordChangeModal";
+import {
+  Skeleton,
+  SkeletonStatCards,
+  SkeletonWorkflowCards,
+  SkeletonDashboardPage,
+} from "@/components/ui/Skeleton";
+import { WelcomeHero } from "@/components/WelcomeHero";
+import { StudentAvatar } from "@/components/avatar/StudentAvatar";
+import { CharacterCreatorModal } from "@/components/avatar/CharacterCreatorModal";
+import {
+  StudentAvatarConfig,
+  parseAvatarConfig,
+  DEFAULT_TEACHER_AVATAR_CONFIG,
+} from "@/types/avatar";
+import { Shirt } from "lucide-react";
 
 export default function TeacherDashboard() {
   const { user, loading: authLoading } = useAuth();
@@ -32,6 +45,9 @@ export default function TeacherDashboard() {
   });
   const [loading, setLoading] = useState(true);
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [closetModalOpen, setClosetModalOpen] = useState(false);
+  const [teacherAvatar, setTeacherAvatar] = useState<StudentAvatarConfig>(DEFAULT_TEACHER_AVATAR_CONFIG);
+  const [teacherBio, setTeacherBio] = useState<string>("");
 
   useEffect(() => {
     if (!authLoading && (!user || user.role !== "TEACHER")) {
@@ -46,47 +62,129 @@ export default function TeacherDashboard() {
         .then(setStats)
         .catch(console.error)
         .finally(() => setLoading(false));
+
+      const stored = typeof window !== "undefined" ? localStorage.getItem(`evalo_teacher_avatar_${user.id}`) : null;
+      if (stored) {
+        const cfg = parseAvatarConfig(stored);
+        setTeacherAvatar(cfg);
+        setTeacherBio(cfg.bio || "");
+      } else {
+        teacherApi
+          .getProfile()
+          .then((p) => {
+            const cfg = parseAvatarConfig(p.avatar_config || JSON.stringify(DEFAULT_TEACHER_AVATAR_CONFIG));
+            setTeacherAvatar(cfg);
+            setTeacherBio(p.bio || cfg.bio || "");
+          })
+          .catch(() => {
+            setTeacherAvatar(DEFAULT_TEACHER_AVATAR_CONFIG);
+          });
+      }
     }
   }, [user]);
 
+  const handleSaveAvatar = async (config: StudentAvatarConfig) => {
+    if (!user) return;
+    try {
+      await teacherApi.updateProfile({
+        avatar_config: JSON.stringify(config),
+        bio: config.bio,
+      });
+      setTeacherAvatar(config);
+      setTeacherBio(config.bio || "");
+      if (typeof window !== "undefined") {
+        localStorage.setItem(`evalo_teacher_avatar_${user.id}`, JSON.stringify(config));
+        window.dispatchEvent(new Event("evalo_avatar_updated"));
+      }
+    } catch (err) {
+      console.error("Failed to update teacher character:", err);
+    }
+  };
+
+  if (authLoading) {
+    return <SkeletonDashboardPage role="teacher" />;
+  }
+
   return (
-    <div className="min-h-screen bg-surface-base text-text-primary">
-      <Navbar onOpenPasswordModal={() => setPasswordModalOpen(true)} />
+    <div className="min-h-screen text-text-primary">
+      <Navbar
+        onOpenPasswordModal={() => setPasswordModalOpen(true)}
+        onOpenCloset={() => setClosetModalOpen(true)}
+      />
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:py-8 pb-24 sm:pb-12 sm:px-6">
+        {/* Shared role hero (all breakpoints) */}
+        <div className="mb-6 sm:mb-8">
+          <WelcomeHero
+            role="teacher"
+            name={user?.first_name}
+            loading={authLoading}
+            description={
+              teacherBio ||
+              "Manage your class rosters, generate and clone exams, launch live proctored lobbies, and grade bubble sheets with OpenCV."
+            }
+            badges={
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="rounded-full bg-steel-ghost px-3 py-1 text-[11px] font-bold text-steel border border-steel-border">
+                  Academic Year 2026
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setClosetModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-sage-ghost hover:bg-sage text-sage hover:text-white px-3 py-1 text-[11px] font-bold border border-sage-border transition-all cursor-pointer shadow-xs active:scale-95"
+                >
+                  <Shirt className="h-3 w-3" />
+                  Faculty Wardrobe Studio
+                </button>
+              </div>
+            }
+            actions={
+              <div className="flex items-center gap-2 flex-wrap">
+                <Link
+                  href="/teacher/scan"
+                  id="hero-scan-sheet"
+                  className="group flex items-center gap-2 rounded-2xl bg-steel px-5 py-3 text-xs font-bold text-white shadow-lg shadow-steel/25 hover:bg-steel-light hover:shadow-steel/35 transition-all active:scale-95"
+                >
+                  <ScanLine className="h-4 w-4" />
+                  Scan Bubble Sheet
+                  <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setClosetModalOpen(true)}
+                  className="group flex items-center gap-2 rounded-2xl bg-surface-raised border border-border-default hover:border-steel px-4 py-3 text-xs font-bold text-text-primary hover:bg-surface-subtle shadow-sm transition-all active:scale-95 cursor-pointer"
+                >
+                  <Shirt className="h-4 w-4 text-steel" />
+                  Open Wardrobe
+                </button>
+              </div>
+            }
+            customIllustration={
+              <button
+                type="button"
+                onClick={() => setClosetModalOpen(true)}
+                className="group relative cursor-pointer flex flex-col items-center focus:outline-none"
+                title="Click to customize your faculty character avatar!"
+              >
+                <div className="relative p-1.5 rounded-full bg-surface-raised border border-border-emphasis/70 shadow-lg group-hover:shadow-xl group-hover:border-steel transition-all duration-300 group-hover:scale-105">
+                  <StudentAvatar config={teacherAvatar} size={135} animate={true} />
+                  <div className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-steel text-white shadow-md border-2 border-surface-raised group-hover:scale-110 transition-transform">
+                    <Shirt className="h-3.5 w-3.5" />
+                  </div>
+                </div>
+                <span className="mt-1.5 text-[10px] font-bold text-text-muted group-hover:text-steel transition-colors flex items-center gap-1">
+                  <Shirt className="h-2.5 w-2.5" />
+                  Customize Faculty Avatar
+                </span>
+              </button>
+            }
+          />
+        </div>
+
         {/* ============================================================== */}
         {/* MOBILE VIEW (block sm:hidden) — Dribbble-inspired Mobile UI    */}
         {/* ============================================================== */}
         <div className="block sm:hidden space-y-4">
-          {/* Mobile Top Welcome Card */}
-          <div className="glass-card rounded-2xl p-4 border border-border-default flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-tan bg-tan-ghost px-2 py-0.5 rounded-full border border-tan-border">
-                  Teacher
-                </span>
-                <span className="text-xs text-text-muted">Classroom Portal</span>
-              </div>
-              <h1 className="text-xl font-extrabold text-text-primary mt-1.5 flex items-center gap-1.5">
-                Hello,{" "}
-                {authLoading || !user?.first_name ? (
-                  <span className="inline-block h-6 w-24 rounded-lg bg-surface-muted animate-pulse align-middle" />
-                ) : (
-                  <span className="gradient-text">{user.first_name}</span>
-                )}{" "}
-                👋
-              </h1>
-              <p className="text-xs text-text-muted mt-0.5">Quick access to your grading & exams</p>
-            </div>
-            <Link
-              href="/teacher/scan"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-steel text-white shadow-md shadow-steel/25 active:scale-90 transition-transform"
-              title="Camera Scanner"
-            >
-              <Camera className="h-5 w-5" />
-            </Link>
-          </div>
-
           {/* Quick Action Buttons Row */}
           <div className="grid grid-cols-3 gap-2">
             <Link
@@ -135,8 +233,8 @@ export default function TeacherDashboard() {
           <div>
             <div className="flex items-center justify-between mb-2 px-1">
               <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Class Overview</span>
-              <span className="text-[11px] text-text-faint font-mono">
-                {loading ? "Loading stats..." : "Live stats"}
+              <span className="text-[11px] text-text-faint font-mono flex items-center">
+                {loading ? <Skeleton className="h-3 w-16" /> : "Live stats"}
               </span>
             </div>
             {loading ? (
@@ -319,45 +417,6 @@ export default function TeacherDashboard() {
         {/* DESKTOP VIEW (hidden sm:block)                                 */}
         {/* ============================================================== */}
         <div className="hidden sm:block space-y-8">
-          {/* Welcome Header Hero Banner */}
-          <div className="relative overflow-hidden rounded-[32px] border border-border-emphasis/60 bg-surface-raised p-8 shadow-xl">
-            <div className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-steel/10 blur-3xl" />
-            <div className="pointer-events-none absolute -right-4 -bottom-10 h-48 w-48 rounded-full bg-tan/10 blur-2xl" />
-
-            <div className="relative z-10 flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="rounded-full bg-tan-ghost px-3 py-0.5 text-[11px] font-bold text-tan border border-tan-border">
-                    Teacher Workspace
-                  </span>
-                  <span className="text-xs text-text-muted font-medium">Academic Year 2026</span>
-                </div>
-                <h1 className="text-2xl lg:text-3xl font-black tracking-tight text-text-primary flex items-center gap-2">
-                  Welcome back,{" "}
-                  {authLoading || !user?.first_name ? (
-                    <span className="inline-block h-8 w-32 rounded-lg bg-surface-muted animate-pulse align-middle" />
-                  ) : (
-                    <span className="gradient-text">{user.first_name}</span>
-                  )}
-                  ! 👋
-                </h1>
-                <p className="text-xs sm:text-sm text-text-muted mt-1.5 max-w-2xl leading-relaxed">
-                  Manage your class rosters, generate and clone exams, launch live proctored lobbies, and grade bubble sheets with OpenCV.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <Link
-                  href="/teacher/scan"
-                  className="flex items-center gap-2 rounded-2xl bg-steel px-5 py-3 text-xs font-bold text-white shadow-lg shadow-steel/25 hover:bg-steel-light hover:shadow-steel/35 transition-all active:scale-95 cursor-pointer"
-                >
-                  <ScanLine className="h-4 w-4" />
-                  Scan Bubble Sheet
-                </Link>
-              </div>
-            </div>
-          </div>
-
           {/* Stats Grid */}
           <div>
             <div className="flex items-center justify-between mb-3 px-1">
@@ -496,6 +555,21 @@ export default function TeacherDashboard() {
       <PasswordChangeModal
         isOpen={passwordModalOpen}
         onClose={() => setPasswordModalOpen(false)}
+        onOpenCloset={() => setClosetModalOpen(true)}
+      />
+
+      {/* Teacher Character Creator & Faculty Wardrobe Studio Modal */}
+      <CharacterCreatorModal
+        isOpen={closetModalOpen}
+        onClose={() => setClosetModalOpen(false)}
+        initialConfig={teacherAvatar}
+        studentName={
+          user?.first_name
+            ? `${user.first_name} ${user.last_name || ""}`.trim()
+            : "Faculty Teacher"
+        }
+        role="TEACHER"
+        onSave={handleSaveAvatar}
       />
     </div>
   );

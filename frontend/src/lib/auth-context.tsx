@@ -25,8 +25,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(() => (typeof window !== "undefined" ? localStorage.getItem("token") : null));
-  const [loading, setLoading] = useState<boolean>(() => (typeof window !== "undefined" ? Boolean(localStorage.getItem("token")) : false));
+  const [token, setToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
 
   const refreshUser = useCallback(async () => {
     try {
@@ -35,29 +35,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       setUser(null);
       setToken(null);
-      localStorage.removeItem("token");
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("token");
+      }
     }
   }, []);
 
   useEffect(() => {
     let ignore = false;
-    const storedToken = localStorage.getItem("token");
+    const storedToken = typeof window !== "undefined" ? localStorage.getItem("token") : null;
     if (storedToken) {
+      setToken(storedToken);
       authApi
         .getMe()
         .then((me) => {
-          if (!ignore) setUser(me as User);
+          if (!ignore) {
+            setUser(me as User);
+          }
         })
         .catch(() => {
           if (!ignore) {
             setUser(null);
             setToken(null);
-            localStorage.removeItem("token");
+            if (typeof window !== "undefined") {
+              localStorage.removeItem("token");
+            }
           }
         })
         .finally(() => {
-          if (!ignore) setLoading(false);
+          if (!ignore) {
+            setLoading(false);
+          }
         });
+    } else {
+      setLoading(false);
     }
     return () => {
       ignore = true;

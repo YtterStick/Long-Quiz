@@ -23,8 +23,9 @@ import {
   Check,
 } from "lucide-react";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
-import { SkeletonStatCards, SkeletonTable } from "@/components/ui/Skeleton";
+import { SkeletonStatCards, SkeletonTable, SkeletonDashboardPage } from "@/components/ui/Skeleton";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { WelcomeHero } from "@/components/WelcomeHero";
 
 interface TeacherItem {
   id: string;
@@ -216,31 +217,37 @@ export default function AdminDashboard() {
       t.user.username.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  if (authLoading) {
+    return <SkeletonDashboardPage role="admin" />;
+  }
+
   return (
-    <div className="min-h-screen bg-surface-base text-text-primary">
+    <div className="min-h-screen text-text-primary">
       <Navbar onOpenPasswordModal={() => setPasswordModalOpen(true)} />
 
       <main className="mx-auto max-w-7xl px-4 py-8 pb-24 sm:pb-12 sm:px-6">
         {/* Header */}
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mb-8">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-text-primary sm:text-3xl">
-              Super Admin Dashboard
-            </h1>
-            <p className="text-sm text-text-muted mt-1">
-              Manage system users, teachers, sections, and overall system activity.
-            </p>
-          </div>
-          <button
-            onClick={() => {
-              setCreatedCredentials(null);
-              setIsAddModalOpen(true);
-            }}
-            className="flex items-center justify-center gap-2 rounded-xl gradient-bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-steel/20 hover:opacity-95 transition-all"
-          >
-            <Plus className="h-4 w-4" />
-            Add New Teacher
-          </button>
+        <div className="mb-8">
+          <WelcomeHero
+            role="admin"
+            name={user?.first_name}
+            loading={authLoading}
+            meta="Super Admin"
+            description="Manage system users, teachers, sections, and overall system activity across your school."
+            actions={
+              <button
+                id="hero-add-teacher"
+                onClick={() => {
+                  setCreatedCredentials(null);
+                  setIsAddModalOpen(true);
+                }}
+                className="flex items-center justify-center gap-2 rounded-2xl gradient-bg-primary px-5 py-3 text-xs font-bold text-white shadow-lg shadow-steel/20 hover:opacity-95 transition-all active:scale-95"
+              >
+                <Plus className="h-4 w-4" />
+                Add New Teacher
+              </button>
+            }
+          />
         </div>
 
         {/* Stats Grid */}

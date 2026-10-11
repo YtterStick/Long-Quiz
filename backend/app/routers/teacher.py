@@ -38,6 +38,14 @@ from app.utils import (
 router = APIRouter(prefix="/api/teacher", tags=["Teacher"])
 
 
+from pydantic import BaseModel
+
+
+class TeacherProfileUpdateRequest(BaseModel):
+    avatar_config: Optional[str] = None
+    bio: Optional[str] = None
+
+
 async def _get_teacher(user: User, db: AsyncSession) -> Teacher:
     """Helper to get the Teacher profile for the current user."""
     result = await db.execute(select(Teacher).where(Teacher.user_id == user.id))
@@ -45,6 +53,46 @@ async def _get_teacher(user: User, db: AsyncSession) -> Teacher:
     if not teacher:
         raise HTTPException(status_code=404, detail="Teacher profile not found")
     return teacher
+
+
+@router.get("/profile")
+async def get_teacher_profile(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Retrieve full teacher profile, avatar customization config, and philosophy bio."""
+    teacher = await _get_teacher(current_user, db)
+    return {
+        "teacher_id": teacher.id,
+        "first_name": current_user.first_name,
+        "last_name": current_user.last_name,
+        "username": current_user.username,
+        "avatar_config": teacher.avatar_config,
+        "bio": teacher.bio,
+    }
+
+
+@router.put("/profile")
+async def update_teacher_profile(
+    payload: TeacherProfileUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Update teacher avatar config and bio. Names/usernames are non-editable institutional records."""
+    teacher = await _get_teacher(current_user, db)
+    if payload.avatar_config is not None:
+        teacher.avatar_config = payload.avatar_config
+    if payload.bio is not None:
+        teacher.bio = payload.bio.strip()[:160]
+    await db.commit()
+    await db.refresh(teacher)
+    return {
+        "ok": True,
+        "avatar_config": teacher.avatar_config,
+        "bio": teacher.bio,
+        "first_name": current_user.first_name,
+        "last_name": current_user.last_name,
+    }
 
 
 # ─── Dashboard ────────────────────────────────────────────────
@@ -1098,6 +1146,10 @@ async def create_exam(
         is_public=body.is_public or body.is_grades_released,
         is_online_active=body.is_online_active,
         is_grades_released=body.is_grades_released,
+        shuffle_questions=body.shuffle_questions,
+        shuffle_options=body.shuffle_options,
+        has_time_limit=body.has_time_limit,
+        time_limit_minutes=body.time_limit_minutes,
     )
     db.add(exam)
     await db.flush()
@@ -1172,6 +1224,14 @@ async def update_exam(
         exam.total_questions = body.total_questions
     if body.is_online_active is not None:
         exam.is_online_active = body.is_online_active
+    if body.shuffle_questions is not None:
+        exam.shuffle_questions = body.shuffle_questions
+    if body.shuffle_options is not None:
+        exam.shuffle_options = body.shuffle_options
+    if body.has_time_limit is not None:
+        exam.has_time_limit = body.has_time_limit
+    if body.time_limit_minutes is not None:
+        exam.time_limit_minutes = body.time_limit_minutes
     if body.is_grades_released is not None:
         exam.is_grades_released = body.is_grades_released
         exam.is_public = body.is_grades_released
@@ -1428,6 +1488,10 @@ async def clone_exam(
         title=f"{source.title} (Copy)",
         total_questions=source.total_questions,
         is_public=False,
+        shuffle_questions=source.shuffle_questions,
+        shuffle_options=source.shuffle_options,
+        has_time_limit=source.has_time_limit,
+        time_limit_minutes=source.time_limit_minutes,
     )
     db.add(new_exam)
     await db.flush()

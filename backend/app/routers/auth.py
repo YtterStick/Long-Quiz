@@ -8,6 +8,8 @@ from sqlalchemy.orm import joinedload
 from app.database import get_db
 from app.models import User, Student, PasswordResetRequest, ResetRequestStatus
 from app.schemas import LoginRequest, TokenResponse, PasswordChangeRequest, StudentResetRequestBody
+from typing import Optional
+from pydantic import BaseModel
 from app.auth import verify_password, hash_password, create_access_token
 from app.deps import get_current_user
 from app.utils import clean_student_omr_number

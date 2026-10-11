@@ -17,6 +17,8 @@ import {
   ChevronDown,
   Sun,
   Moon,
+  Shirt,
+  UserCog,
 } from "lucide-react";
 import { ExamIcon } from "@/components/ui/ExamIcon";
 import { MobileNav } from "@/components/MobileNav";
@@ -24,18 +26,37 @@ import { ConfirmModal } from "@/components/ConfirmModal";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { NotificationBell } from "@/components/NotificationBell";
 import { useTheme } from "@/lib/theme-context";
+import { StudentAvatar } from "@/components/avatar/StudentAvatar";
+import { StudentAvatarConfig, parseAvatarConfig } from "@/types/avatar";
 
 interface NavbarProps {
   onOpenPasswordModal?: () => void;
+  onOpenCloset?: () => void;
 }
 
-export function Navbar({ onOpenPasswordModal }: NavbarProps) {
+export function Navbar({ onOpenPasswordModal, onOpenCloset }: NavbarProps) {
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const pathname = usePathname();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [logoutModalOpen, setLogoutModalOpen] = useState(false);
+  const [studentAvatar, setStudentAvatar] = useState<StudentAvatarConfig | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (user?.role === "STUDENT" || user?.role === "TEACHER") {
+      const storageKey = user.role === "TEACHER" ? `evalo_teacher_avatar_${user.id}` : `evalo_student_avatar_${user.id}`;
+      const loadAvatar = () => {
+        const stored = typeof window !== "undefined" ? localStorage.getItem(storageKey) : null;
+        if (stored) {
+          setStudentAvatar(parseAvatarConfig(stored));
+        }
+      };
+      loadAvatar();
+      window.addEventListener("evalo_avatar_updated", loadAvatar);
+      return () => window.removeEventListener("evalo_avatar_updated", loadAvatar);
+    }
+  }, [user]);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -78,9 +99,7 @@ export function Navbar({ onOpenPasswordModal }: NavbarProps) {
           {/* Brand */}
           <div className="flex items-center gap-3">
             <Link href="/" className="flex items-center gap-2.5 group">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-steel text-white shadow-md shadow-steel/15 group-hover:scale-105 transition-transform">
-                <ExamIcon className="h-5 w-5" />
-              </div>
+              <ExamIcon className="h-8 w-8 transition-transform group-hover:scale-110 duration-200" />
               <div>
                 <span className="text-xl font-black tracking-tight text-text-primary">
                   Evalo
@@ -125,11 +144,17 @@ export function Navbar({ onOpenPasswordModal }: NavbarProps) {
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setDropdownOpen(!dropdownOpen)}
-                className="flex items-center gap-2.5 rounded-2xl bg-surface-overlay border border-border-default px-3.5 py-1.5 hover:border-border-emphasis transition-all focus:outline-none"
+                className="flex items-center gap-2.5 rounded-2xl bg-surface-overlay border border-border-default px-3 py-1.5 hover:border-border-emphasis transition-all focus:outline-none"
               >
-                <div className={`flex h-6 w-6 items-center justify-center rounded-full border ${roleColors[user.role]}`}>
-                  <RoleIcon className="h-3 w-3" />
-                </div>
+                {user.role === "STUDENT" && studentAvatar ? (
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full overflow-hidden border border-sage-border shadow-xs shrink-0">
+                    <StudentAvatar config={studentAvatar} size={28} showBackdrop={false} />
+                  </div>
+                ) : (
+                  <div className={`flex h-6 w-6 items-center justify-center rounded-full border ${roleColors[user.role]}`}>
+                    <RoleIcon className="h-3 w-3" />
+                  </div>
+                )}
                 <div className="hidden text-left md:block">
                   <p className="text-xs font-semibold text-text-secondary">
                     {user.first_name} {user.last_name}
@@ -151,12 +176,25 @@ export function Navbar({ onOpenPasswordModal }: NavbarProps) {
                     <p className="text-[11px] text-text-muted font-mono">@{user.username}</p>
                   </div>
 
+                  {(user.role === "STUDENT" || user.role === "TEACHER") && onOpenCloset && (
+                    <button
+                      onClick={() => {
+                        setDropdownOpen(false);
+                        onOpenCloset();
+                      }}
+                      className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-bold text-sage hover:bg-sage-ghost transition-colors cursor-pointer"
+                    >
+                      <Shirt className="h-4 w-4" />
+                      {user.role === "TEACHER" ? "Faculty Wardrobe Studio" : "Character Studio & Closet"}
+                    </button>
+                  )}
+
                   <button
                     onClick={() => {
                       setDropdownOpen(false);
                       if (onOpenPasswordModal) onOpenPasswordModal();
                     }}
-                    className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary transition-colors"
+                    className="w-full flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-medium text-text-secondary hover:bg-surface-subtle hover:text-text-primary transition-colors cursor-pointer"
                   >
                     <Settings className="h-4 w-4 text-text-muted" />
                     Account Settings

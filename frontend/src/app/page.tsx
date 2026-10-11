@@ -89,24 +89,15 @@ export default function LoginPage() {
     }
   };
 
-  // Quick fill helper for testing/demoing different roles
-  const fillDemoCredentials = (u: string, p: string) => {
-    setUsername(u);
-    setPassword(p);
-    setError(null);
-  };
-
   return (
     <main className="relative flex min-h-dvh w-full flex-col justify-between bg-surface-base px-4 py-4 sm:px-8 sm:py-6 text-text-primary overflow-x-hidden selection:bg-steel/20">
       <DoodleBackgroundElements />
 
       {/* Top Header Bar */}
       <header className="relative z-20 flex items-center justify-between w-full max-w-7xl mx-auto py-2">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-steel shadow-md shadow-steel/20 text-white transition-transform hover:scale-105">
-            <ExamIcon className="h-5 w-5" />
-          </div>
-          <span className="text-xl font-black tracking-tight text-text-primary">
+        <div className="flex items-center gap-3 group cursor-default">
+          <ExamIcon className="h-8 w-8 transition-transform group-hover:scale-110 duration-200" />
+          <span className="text-2xl font-black tracking-tight text-text-primary">
             Evalo
           </span>
         </div>
@@ -131,14 +122,11 @@ export default function LoginPage() {
         >
           <div className="glass-card rounded-[32px] p-6 sm:p-10 shadow-2xl border border-border-emphasis/70 backdrop-blur-2xl bg-surface-raised/95">
             {/* Card Title */}
-            <div className="text-center mb-6">
-              <div className="inline-flex items-center justify-center h-12 w-12 rounded-2xl bg-steel-ghost border border-steel-border text-steel mb-3 shadow-inner">
-                <Lock className="h-5 w-5" />
-              </div>
-              <h2 className="text-2xl font-black tracking-tight text-text-primary">
+            <div className="text-center mb-7">
+              <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-text-primary">
                 Sign In to Evalo
               </h2>
-              <p className="text-xs text-text-muted mt-1">
+              <p className="text-xs text-text-muted mt-1.5 leading-relaxed">
                 Enter your username or Student ID to continue
               </p>
             </div>

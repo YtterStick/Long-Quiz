@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
+import { SkeletonDashboardPage } from "@/components/ui/Skeleton";
 import Webcam from "react-webcam";
 
 interface ExamOption {
@@ -175,8 +176,12 @@ export default function TeacherScanPage() {
     }
   };
 
+  if (authLoading) {
+    return <SkeletonDashboardPage role="teacher" />;
+  }
+
   return (
-    <div className="min-h-screen bg-surface-base text-text-primary">
+    <div className="min-h-screen text-text-primary">
       <Navbar onOpenPasswordModal={() => setPasswordModalOpen(true)} />
 
       <main className="mx-auto max-w-7xl px-4 py-8 pb-24 sm:pb-12 sm:px-6">

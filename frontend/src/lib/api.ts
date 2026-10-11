@@ -178,6 +178,31 @@ export const teacher = {
       total_submissions: number;
     }>("/api/teacher/dashboard"),
 
+  getProfile: () =>
+    request<{
+      teacher_id: string;
+      first_name: string;
+      last_name: string;
+      username: string;
+      avatar_config?: string | null;
+      bio?: string | null;
+    }>("/api/teacher/profile"),
+
+  updateProfile: (data: {
+    avatar_config?: string;
+    bio?: string;
+  }) =>
+    request<{
+      ok: boolean;
+      avatar_config?: string | null;
+      bio?: string | null;
+      first_name?: string;
+      last_name?: string;
+    }>("/api/teacher/profile", {
+      method: "PUT",
+      body: data,
+    }),
+
   // Sections
   listSections: () => request<Array<{
     id: string;
@@ -461,6 +486,10 @@ export const teacher = {
       title: string;
       total_questions: number;
       is_public: boolean;
+      shuffle_questions?: boolean;
+      shuffle_options?: boolean;
+      has_time_limit?: boolean;
+      time_limit_minutes?: number;
       created_at: string;
       answer_keys: Array<{ id: string; question_number: number; correct_option: string }>;
       questions?: Array<{
@@ -479,6 +508,10 @@ export const teacher = {
     title: string;
     total_questions: number;
     is_public: boolean;
+    shuffle_questions?: boolean;
+    shuffle_options?: boolean;
+    has_time_limit?: boolean;
+    time_limit_minutes?: number;
     answer_keys: Array<{ question_number: number; correct_option: string }>;
     questions?: Array<{
       question_number: number;
@@ -496,6 +529,10 @@ export const teacher = {
     title: string;
     total_questions: number;
     is_public: boolean;
+    shuffle_questions?: boolean;
+    shuffle_options?: boolean;
+    has_time_limit?: boolean;
+    time_limit_minutes?: number;
     answer_keys: Array<{ id: string; question_number: number; correct_option: string }>;
     questions?: Array<{
       id: string;
@@ -513,6 +550,10 @@ export const teacher = {
     title?: string;
     total_questions?: number;
     is_public?: boolean;
+    shuffle_questions?: boolean;
+    shuffle_options?: boolean;
+    has_time_limit?: boolean;
+    time_limit_minutes?: number;
     answer_keys?: Array<{ question_number: number; correct_option: string }>;
     questions?: Array<{
       question_number: number;
@@ -685,11 +726,47 @@ export const student = {
       full_student_id?: string;
       static_prefix?: string;
       section_id: string;
+      section_name?: string | null;
       first_name: string;
       last_name: string;
       total_exams: number;
       average_percentage: number;
+      avatar_config?: string | null;
+      bio?: string | null;
+      is_profile_setup?: boolean;
     }>("/api/student/dashboard"),
+
+  getProfile: () =>
+    request<{
+      student_number: number;
+      full_student_id?: string;
+      static_prefix?: string;
+      first_name: string;
+      last_name: string;
+      username: string;
+      section_id?: string | null;
+      section_name?: string | null;
+      avatar_config?: string | null;
+      bio?: string | null;
+      is_profile_setup: boolean;
+    }>("/api/student/profile"),
+
+  updateProfile: (data: {
+    avatar_config?: string;
+    bio?: string;
+  }) =>
+    request<{
+      ok: boolean;
+      avatar_config?: string | null;
+      bio?: string | null;
+      section_name?: string | null;
+      is_profile_setup: boolean;
+      first_name?: string;
+      last_name?: string;
+    }>("/api/student/profile", {
+      method: "PUT",
+      body: data,
+    }),
 
   getGrades: () =>
     request<Array<{
@@ -751,6 +828,10 @@ export const student = {
       title: string;
       total_questions: number;
       is_public: boolean;
+      shuffle_questions?: boolean;
+      shuffle_options?: boolean;
+      has_time_limit?: boolean;
+      time_limit_minutes?: number;
       created_at: string;
       teacher_name: string;
       question_count: number;
@@ -768,6 +849,11 @@ export const student = {
       title: string;
       total_questions: number;
       is_public: boolean;
+      shuffle_questions?: boolean;
+      shuffle_options?: boolean;
+      has_time_limit?: boolean;
+      time_limit_minutes?: number;
+      time_remaining_seconds?: number | null;
       created_at: string;
       teacher_name: string;
       has_submitted: boolean;
@@ -829,7 +915,81 @@ export const student = {
       method: "POST",
       body: data,
     }),
+
+  generateReviewerFromText: (data: { raw_text: string; title?: string }) =>
+    request<GeneratedReviewerDeck>("/api/student/generate-reviewer-from-text", {
+      method: "POST",
+      body: data,
+    }),
+
+  generateReviewerFromFile: (formData: FormData) =>
+    request<GeneratedReviewerDeck>("/api/student/generate-reviewer-from-file", {
+      method: "POST",
+      body: formData,
+      isFormData: true,
+    }),
+
+  getReviewerQuota: () =>
+    request<{
+      limit: number;
+      used: number;
+      remaining: number;
+      period: string;
+      description: string;
+    }>("/api/student/reviewer-quota"),
+
+  getSharedDecks: () =>
+    request<
+      Array<{
+        id: string;
+        content_hash: string;
+        title: string;
+        file_name?: string;
+        views_count: number;
+        created_at: string;
+        deck: GeneratedReviewerDeck;
+      }>
+    >("/api/student/shared-decks"),
 };
+
+export interface ReviewerTopic {
+  topic_name: string;
+  description: string;
+  key_terms: Array<{ term: string; definition: string }>;
+  bullet_points: string[];
+  exam_tips: string[];
+}
+
+export interface ReviewerFlashcard {
+  id: string;
+  front: string;
+  back: string;
+  category: string;
+}
+
+export interface ReviewerQuizCard {
+  id: string;
+  question_number: number;
+  question: string;
+  options: Record<string, string>;
+  correct_option: string;
+  correct_answer_text: string;
+  explanation: string;
+}
+
+export interface GeneratedReviewerDeck {
+  title: string;
+  total_pointers: number;
+  total_flashcards: number;
+  total_quiz_cards: number;
+  topics: ReviewerTopic[];
+  flashcards: ReviewerFlashcard[];
+  quiz_cards: ReviewerQuizCard[];
+  source_word_count: number;
+  cached?: boolean;
+  quota_used?: number;
+  quota_remaining?: number;
+}
 
 export { ApiError };
 

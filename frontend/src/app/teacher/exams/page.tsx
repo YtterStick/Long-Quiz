@@ -23,10 +23,19 @@ import {
   X,
   KeyRound,
   School,
+  Shuffle,
+  Timer,
+  Sparkles,
+  Sliders,
 } from "lucide-react";
 import Link from "next/link";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
-import { SkeletonExamGrid } from "@/components/ui/Skeleton";
+import {
+  Skeleton,
+  SkeletonExamGrid,
+  SkeletonDashboardPage,
+  SkeletonQuestionnaireList,
+} from "@/components/ui/Skeleton";
 import { ConfirmModal } from "@/components/ConfirmModal";
 
 interface AnswerKey {
@@ -53,6 +62,10 @@ interface ExamItem {
   is_public: boolean;
   is_online_active?: boolean;
   is_grades_released?: boolean;
+  shuffle_questions?: boolean;
+  shuffle_options?: boolean;
+  has_time_limit?: boolean;
+  time_limit_minutes?: number;
   is_owner?: boolean;
   created_at: string;
   answer_keys: Array<{ id?: string; question_number: number; correct_option: string }>;
@@ -79,6 +92,10 @@ export default function TeacherExamsPage() {
   const [isPublic, setIsPublic] = useState(false);
   const [isOnlineActive, setIsOnlineActive] = useState(false);
   const [isGradesReleased, setIsGradesReleased] = useState(false);
+  const [shuffleQuestions, setShuffleQuestions] = useState(false);
+  const [shuffleOptions, setShuffleOptions] = useState(false);
+  const [hasTimeLimit, setHasTimeLimit] = useState(false);
+  const [timeLimitMinutes, setTimeLimitMinutes] = useState(60);
   const [keys, setKeys] = useState<Record<number, string>>({});
   const [questionsData, setQuestionsData] = useState<Record<number, Partial<QuestionItem>>>({});
 
@@ -177,6 +194,10 @@ export default function TeacherExamsPage() {
     setTitle("");
     setTotalQuestions(50);
     setIsPublic(false);
+    setShuffleQuestions(false);
+    setShuffleOptions(false);
+    setHasTimeLimit(false);
+    setTimeLimitMinutes(60);
     setBuilderTab("keys");
 
     // Default keys: Question 1-50 with 'A'
@@ -204,6 +225,10 @@ export default function TeacherExamsPage() {
     setTitle(exam.title);
     setTotalQuestions(exam.total_questions);
     setIsPublic(exam.is_public);
+    setShuffleQuestions(exam.shuffle_questions || false);
+    setShuffleOptions(exam.shuffle_options || false);
+    setHasTimeLimit(exam.has_time_limit || false);
+    setTimeLimitMinutes(exam.time_limit_minutes || 60);
     setBuilderTab(initialTab);
 
     const existingKeys: Record<number, string> = {};
@@ -311,6 +336,10 @@ export default function TeacherExamsPage() {
           title,
           total_questions: totalQuestions,
           is_public: isPublic,
+          shuffle_questions: shuffleQuestions,
+          shuffle_options: shuffleOptions,
+          has_time_limit: hasTimeLimit,
+          time_limit_minutes: timeLimitMinutes,
           answer_keys,
           questions: questions_payload,
         });
@@ -319,6 +348,10 @@ export default function TeacherExamsPage() {
           title,
           total_questions: totalQuestions,
           is_public: isPublic,
+          shuffle_questions: shuffleQuestions,
+          shuffle_options: shuffleOptions,
+          has_time_limit: hasTimeLimit,
+          time_limit_minutes: timeLimitMinutes,
           answer_keys,
           questions: questions_payload,
         });
@@ -494,8 +527,12 @@ export default function TeacherExamsPage() {
     }
   };
 
+  if (authLoading) {
+    return <SkeletonDashboardPage role="teacher" />;
+  }
+
   return (
-    <div className="min-h-screen bg-surface-base text-text-primary">
+    <div className="min-h-screen text-text-primary">
       <Navbar onOpenPasswordModal={() => setPasswordModalOpen(true)} />
 
       <main className="mx-auto max-w-7xl px-4 py-8 pb-24 sm:pb-12 sm:px-6">
@@ -611,6 +648,144 @@ export default function TeacherExamsPage() {
                       This exam serves as a questionnaire and answer key bank. You can assign it to your classes and activate online quizzes or release grades inside <strong>Class Sections</strong>.
                     </p>
                   </div>
+                </div>
+              </div>
+
+              {/* Online Quiz Configuration Card */}
+              <div className="glass-card rounded-2xl p-6 border border-border-default space-y-5">
+                <div className="flex items-center justify-between border-b border-border-default pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-steel/15 text-steel-light border border-steel-border">
+                      <Sliders className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-text-primary">Online Quiz Configuration</h3>
+                      <p className="text-[11px] text-text-muted">Configure student question rumbling, scrambled answer keys, and exam time limits</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Shuffle Questions Toggle Card */}
+                  <div className={`p-4 rounded-xl border transition-all ${shuffleQuestions ? "bg-tan-ghost/20 border-tan/40 shadow-sm" : "bg-surface-base border-border-default"}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${shuffleQuestions ? "bg-tan text-surface-base" : "bg-surface-overlay text-text-muted"}`}>
+                          <Shuffle className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <label htmlFor="shuffleQuestionsToggle" className="text-xs font-bold text-text-primary cursor-pointer block">
+                            Rumble Question Order
+                          </label>
+                          <p className="text-[11px] text-text-muted mt-0.5 leading-snug">
+                            Randomizes question numbering (1..N) uniquely for each student to prevent screen peeking.
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        id="shuffleQuestionsToggle"
+                        role="switch"
+                        aria-checked={shuffleQuestions}
+                        onClick={() => setShuffleQuestions(!shuffleQuestions)}
+                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${shuffleQuestions ? "bg-tan" : "bg-surface-muted"}`}
+                      >
+                        <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${shuffleQuestions ? "translate-x-4" : "translate-x-0"}`} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Shuffle Options / Scrambled Answer Key Toggle Card */}
+                  <div className={`p-4 rounded-xl border transition-all ${shuffleOptions ? "bg-sage-ghost/20 border-sage/40 shadow-sm" : "bg-surface-base border-border-default"}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3">
+                        <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${shuffleOptions ? "bg-sage text-white" : "bg-surface-overlay text-text-muted"}`}>
+                          <Sparkles className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <label htmlFor="shuffleOptionsToggle" className="text-xs font-bold text-text-primary cursor-pointer block">
+                            Scramble Choices (Different Answer Key)
+                          </label>
+                          <p className="text-[11px] text-text-muted mt-0.5 leading-snug">
+                            Randomizes A, B, C, D choices per question so each student has different answer keys while grading remains 100% accurate.
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        id="shuffleOptionsToggle"
+                        role="switch"
+                        aria-checked={shuffleOptions}
+                        onClick={() => setShuffleOptions(!shuffleOptions)}
+                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${shuffleOptions ? "bg-sage" : "bg-surface-muted"}`}
+                      >
+                        <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${shuffleOptions ? "translate-x-4" : "translate-x-0"}`} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Exam Countdown Timer Card */}
+                <div className={`p-4 rounded-xl border transition-all ${hasTimeLimit ? "bg-steel/10 border-steel-border shadow-sm" : "bg-surface-base border-border-default"}`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className={`h-8 w-8 rounded-lg flex items-center justify-center shrink-0 ${hasTimeLimit ? "bg-steel text-white" : "bg-surface-overlay text-text-muted"}`}>
+                        <Timer className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <label htmlFor="hasTimeLimitToggle" className="text-xs font-bold text-text-primary cursor-pointer block">
+                          Exam Countdown Timer
+                        </label>
+                        <p className="text-[11px] text-text-muted mt-0.5 leading-snug">
+                          Enables a countdown timer with visual warnings. Automatically submits the quiz when time expires.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      id="hasTimeLimitToggle"
+                      role="switch"
+                      aria-checked={hasTimeLimit}
+                      onClick={() => setHasTimeLimit(!hasTimeLimit)}
+                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${hasTimeLimit ? "bg-steel" : "bg-surface-muted"}`}
+                    >
+                      <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${hasTimeLimit ? "translate-x-4" : "translate-x-0"}`} />
+                    </button>
+                  </div>
+
+                  {/* Timer Duration Config */}
+                  {hasTimeLimit && (
+                    <div className="mt-4 pt-3 border-t border-border-default/60 flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[11px] font-semibold text-text-muted mr-1">Presets:</span>
+                        {[15, 30, 45, 60, 90, 120].map((mins) => (
+                          <button
+                            type="button"
+                            key={mins}
+                            onClick={() => setTimeLimitMinutes(mins)}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${timeLimitMinutes === mins ? "bg-steel text-white shadow-sm" : "bg-surface-overlay text-text-secondary hover:bg-surface-muted"}`}
+                          >
+                            {mins}m
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-text-muted font-medium">Custom Duration:</label>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min={1}
+                            max={300}
+                            value={timeLimitMinutes}
+                            onChange={(e) => setTimeLimitMinutes(Math.max(1, Math.min(300, parseInt(e.target.value) || 1)))}
+                            className="w-20 rounded-lg border border-border-emphasis bg-surface-base px-2.5 py-1 text-xs text-text-primary focus:border-steel focus:outline-none font-mono text-center font-bold"
+                          />
+                          <span className="text-xs text-text-muted font-medium">min</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -976,6 +1151,30 @@ export default function TeacherExamsPage() {
                           </span>
                         </div>
 
+                        {/* Online Quiz Configuration Badges */}
+                        {(exam.has_time_limit || exam.shuffle_questions || exam.shuffle_options) && (
+                          <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
+                            {exam.has_time_limit && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-steel/15 text-steel-light border border-steel-border">
+                                <Timer className="h-3 w-3" />
+                                {exam.time_limit_minutes || 60}m Timer
+                              </span>
+                            )}
+                            {exam.shuffle_questions && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-tan-ghost text-tan border border-tan-border">
+                                <Shuffle className="h-3 w-3" />
+                                Rumbled Questions
+                              </span>
+                            )}
+                            {exam.shuffle_options && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-sage-ghost text-sage border border-sage-border">
+                                <Sparkles className="h-3 w-3" />
+                                Scrambled Keys
+                              </span>
+                            )}
+                          </div>
+                        )}
+
                         {/* Class Administration Notice */}
                         <div className="flex items-center gap-2.5 rounded-xl bg-surface-base p-2.5 border border-border-default text-xs text-text-muted my-3">
                           <School className="h-4 w-4 text-tan shrink-0" />
@@ -1123,10 +1322,7 @@ export default function TeacherExamsPage() {
             {/* Questionnaire Questions List */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               {loadingQuestionnaire ? (
-                <div className="py-12 flex flex-col items-center justify-center text-text-muted text-sm">
-                  <Loader2 className="h-8 w-8 animate-spin mb-3 text-steel" />
-                  Loading questionnaire questions...
-                </div>
+                <SkeletonQuestionnaireList count={4} />
               ) : (
                 questionnaireList
                   .filter((q) => {
@@ -1331,9 +1527,10 @@ export default function TeacherExamsPage() {
                 </button>
                 <button
                   onClick={closePreview}
-                  className="rounded-xl bg-surface-subtle px-3 py-1.5 text-xs font-semibold text-text-secondary hover:bg-surface-muted transition-colors"
+                  className="flex items-center gap-1.5 rounded-xl bg-surface-subtle px-3 py-1.5 text-xs font-semibold text-text-secondary hover:bg-surface-muted transition-colors cursor-pointer"
                 >
-                  ✕ Close
+                  <X className="h-3.5 w-3.5" />
+                  Close
                 </button>
               </div>
             </div>

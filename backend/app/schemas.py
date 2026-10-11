@@ -190,6 +190,10 @@ class ExamCreate(BaseModel):
     is_public: bool = False
     is_online_active: bool = False
     is_grades_released: bool = False
+    shuffle_questions: bool = False
+    shuffle_options: bool = False
+    has_time_limit: bool = False
+    time_limit_minutes: int = Field(default=60, ge=1, le=300)
     answer_keys: List[AnswerKeyItem] = []
     questions: Optional[List[QuestionItem]] = []
 
@@ -200,6 +204,10 @@ class ExamUpdate(BaseModel):
     is_public: Optional[bool] = None
     is_online_active: Optional[bool] = None
     is_grades_released: Optional[bool] = None
+    shuffle_questions: Optional[bool] = None
+    shuffle_options: Optional[bool] = None
+    has_time_limit: Optional[bool] = None
+    time_limit_minutes: Optional[int] = Field(default=None, ge=1, le=300)
     answer_keys: Optional[List[AnswerKeyItem]] = None
     questions: Optional[List[QuestionItem]] = None
 
@@ -233,6 +241,10 @@ class ExamOut(BaseModel):
     is_public: bool
     is_online_active: bool = False
     is_grades_released: bool = False
+    shuffle_questions: bool = False
+    shuffle_options: bool = False
+    has_time_limit: bool = False
+    time_limit_minutes: int = 60
     is_owner: bool = True
     created_at: datetime
     answer_keys: List[AnswerKeyOut] = []
@@ -264,6 +276,10 @@ class SectionExamOut(BaseModel):
     is_grades_released: bool = False
     is_started: bool = False
     release_mode: str = "FULL"
+    shuffle_questions: Optional[bool] = None
+    shuffle_options: Optional[bool] = None
+    has_time_limit: Optional[bool] = None
+    time_limit_minutes: Optional[int] = None
     created_at: datetime
     exam: Optional[ExamOut] = None
     submission_count: int = 0
@@ -291,6 +307,7 @@ class StudentExamQuestionOut(BaseModel):
     option_b: Optional[str] = None
     option_c: Optional[str] = None
     option_d: Optional[str] = None
+    explanation: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -302,6 +319,10 @@ class StudentAvailableExamOut(BaseModel):
     is_public: bool
     is_online_active: bool = False
     is_grades_released: bool = False
+    shuffle_questions: bool = False
+    shuffle_options: bool = False
+    has_time_limit: bool = False
+    time_limit_minutes: int = 60
     created_at: datetime
     teacher_name: str
     question_count: int
@@ -320,6 +341,11 @@ class StudentExamTakeDetailOut(BaseModel):
     is_public: bool
     is_online_active: bool = False
     is_grades_released: bool = False
+    shuffle_questions: bool = False
+    shuffle_options: bool = False
+    has_time_limit: bool = False
+    time_limit_minutes: int = 60
+    time_remaining_seconds: Optional[int] = None
     created_at: datetime
     teacher_name: str
     has_submitted: bool = False

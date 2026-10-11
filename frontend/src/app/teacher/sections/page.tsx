@@ -39,7 +39,11 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
-import { SkeletonSectionGrid } from "@/components/ui/Skeleton";
+import {
+  Skeleton,
+  SkeletonSectionGrid,
+  SkeletonDashboardPage,
+} from "@/components/ui/Skeleton";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { CustomSelect } from "@/components/ui/CustomSelect";
 import { LiveExamMonitorModal } from "@/components/LiveExamMonitorModal";
@@ -655,8 +659,12 @@ export default function TeacherSectionsPage() {
     return exam.title.toLowerCase().includes(term);
   });
 
+  if (authLoading) {
+    return <SkeletonDashboardPage role="teacher" />;
+  }
+
   return (
-    <div className="min-h-screen bg-surface-base text-text-primary">
+    <div className="min-h-screen text-text-primary">
       <Navbar onOpenPasswordModal={() => setPasswordModalOpen(true)} />
 
       <main className="mx-auto max-w-7xl px-4 py-8 pb-24 sm:pb-12 sm:px-6">
@@ -2146,8 +2154,9 @@ export default function TeacherSectionsPage() {
                   </tbody>
                 </table>
               </div>
-              <p className="text-[10px] text-text-muted pt-1">
-                ✓ Full Names formatted as <code className="text-tan">LASTNAME,FIRSTNAME</code> are automatically parsed into first and last names.
+              <p className="text-[10px] text-text-muted pt-1 flex items-center gap-1.5">
+                <CheckCircle2 className="h-3 w-3 text-sage shrink-0" />
+                <span>Full Names formatted as <code className="text-tan">LASTNAME,FIRSTNAME</code> are automatically parsed into first and last names.</span>
               </p>
             </div>
 

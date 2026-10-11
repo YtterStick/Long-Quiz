@@ -312,11 +312,11 @@ export function DoodleBackgroundElements() {
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden select-none" aria-hidden="true">
       {/* ─── Ambient Atmospheric Illumination Halos ───────────────────────────── */}
-      <div className="absolute -top-32 left-[10%] h-[550px] w-[550px] rounded-full bg-steel/15 blur-[140px]" />
-      <div className="absolute -top-20 right-[12%] h-[500px] w-[500px] rounded-full bg-tan/15 blur-[130px]" />
-      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 h-[650px] w-[650px] rounded-full bg-steel/8 blur-[160px]" />
-      <div className="absolute -bottom-28 left-[15%] h-[500px] w-[500px] rounded-full bg-sage/12 blur-[140px]" />
-      <div className="absolute -bottom-24 right-[10%] h-[550px] w-[550px] rounded-full bg-cream/12 blur-[130px]" />
+      <div className="absolute -top-32 left-[10%] h-137.5 w-137.5 rounded-full bg-steel/15 blur-[140px]" />
+      <div className="absolute -top-20 right-[12%] h-125 w-125 rounded-full bg-tan/15 blur-[130px]" />
+      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 h-162.5 w-162.5 rounded-full bg-steel/8 blur-[160px]" />
+      <div className="absolute -bottom-28 left-[15%] h-125 w-125 rounded-full bg-sage/12 blur-[140px]" />
+      <div className="absolute -bottom-24 right-[10%] h-137.5 w-137.5 rounded-full bg-cream/12 blur-[130px]" />
 
       {/* ─── Fullscreen Scaled SVG Vector Layer ───────────────────────────────── */}
       <svg
@@ -799,5 +799,299 @@ export function DoodleBackgroundElements() {
         <circle cx="980" cy="750" r="3" fill="currentColor" className="text-steel/70" />
       </svg>
     </div>
+  );
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   ROLE ILLUSTRATIONS — used by the dashboard WelcomeHero.
+   Same visual language as the login art: fine line-work, theme-aware fills,
+   pastel pedestals, polka dots, sparkles and a single floor line.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Admin — classic school building with flag & clock, plus a checklist clipboard.
+ */
+export function AdminCampusIllustration({ className = "w-64 h-48" }: IllustrationProps) {
+  return (
+    <svg viewBox="0 0 260 200" fill="none" xmlns="http://www.w3.org/2000/svg" className={className} aria-hidden="true">
+      {/* Dashed backdrop arch */}
+      <path d="M 20 180 C 20 60, 240 60, 240 180" stroke="currentColor" strokeWidth="1.25" strokeDasharray="4 4" className="text-text-muted/30" />
+
+      {/* Tree */}
+      <line x1="22" y1="150" x2="22" y2="180" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-tan" />
+      <circle cx="22" cy="138" r="15" className="fill-sage-ghost stroke-sage/60" strokeWidth="1.5" />
+      <circle cx="17" cy="134" r="2" className="fill-sage/70" />
+      <circle cx="27" cy="142" r="2" className="fill-sage/70" />
+
+      {/* Steps */}
+      <rect x="32" y="172" width="136" height="7" rx="2" className="fill-surface-subtle stroke-border-emphasis" strokeWidth="1.25" />
+      <rect x="40" y="165" width="120" height="7" rx="2" className="fill-surface-raised stroke-border-emphasis" strokeWidth="1.25" />
+
+      {/* Building body */}
+      <rect x="46" y="102" width="108" height="63" className="fill-surface-raised stroke-text-primary" strokeWidth="1.75" />
+
+      {/* Columns */}
+      {[56, 74, 119, 137].map((x) => (
+        <rect key={x} x={x} y="108" width="7" height="57" rx="1.5" className="fill-surface-base stroke-border-emphasis" strokeWidth="1.25" />
+      ))}
+
+      {/* Door */}
+      <path d="M 90 165 V 134 Q 100 122 110 134 V 165" className="fill-steel-ghost stroke-text-primary" strokeWidth="1.5" />
+      <line x1="100" y1="128" x2="100" y2="165" stroke="currentColor" strokeWidth="1" className="text-text-primary/50" />
+
+      {/* Pediment roof */}
+      <polygon points="38,102 100,64 162,102" className="fill-tan-ghost stroke-text-primary" strokeWidth="1.75" strokeLinejoin="round" />
+
+      {/* Clock */}
+      <circle cx="100" cy="88" r="8.5" className="fill-surface-raised stroke-text-primary" strokeWidth="1.5" />
+      <line x1="100" y1="88" x2="100" y2="83" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" className="text-text-primary" />
+      <line x1="100" y1="88" x2="104" y2="90" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" className="text-text-primary" />
+
+      {/* Flag */}
+      <line x1="100" y1="64" x2="100" y2="34" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" className="text-text-primary" />
+      <path d="M 100 35 L 122 40 L 100 47 Z" className="fill-burgundy stroke-text-primary" strokeWidth="1" strokeLinejoin="round" />
+
+      {/* Clipboard */}
+      <g transform="translate(176, 92) rotate(6)">
+        <rect x="0" y="0" width="60" height="82" rx="7" className="fill-tan-ghost stroke-text-primary" strokeWidth="1.75" />
+        <rect x="6" y="10" width="48" height="66" rx="3" className="fill-surface-raised stroke-border-emphasis" strokeWidth="1.25" />
+        <rect x="19" y="-5" width="22" height="11" rx="3" className="fill-tan stroke-text-primary" strokeWidth="1.25" />
+        {[24, 40, 56].map((y, i) => (
+          <g key={y}>
+            <rect x="12" y={y - 5} width="9" height="9" rx="2" className={i < 2 ? "fill-sage-ghost stroke-sage" : "fill-surface-base stroke-border-emphasis"} strokeWidth="1.2" />
+            {i < 2 && (
+              <polyline points={`${14},${y} ${16},${y + 2} ${19.5},${y - 2}`} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-sage" />
+            )}
+            <line x1="26" y1={y} x2={i === 1 ? 42 : 48} y2={y} stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" className="text-text-muted/55" />
+          </g>
+        ))}
+      </g>
+
+      {/* Floating pie-chart badge */}
+      <g transform="translate(222, 46)" className="animate-pulse" style={{ animationDuration: "4.5s" }}>
+        <circle r="17" className="fill-surface-raised stroke-border-emphasis" strokeWidth="1.5" />
+        <circle r="11" className="fill-steel-ghost" />
+        <path d="M 0 0 L 0 -11 A 11 11 0 0 1 10.46 3.4 Z" className="fill-steel" />
+        <path d="M 0 0 L 10.46 3.4 A 11 11 0 0 1 -3.4 10.46 Z" className="fill-tan" />
+      </g>
+
+      {/* Sparkles */}
+      <path d="M 180 14 Q 180 22 188 22 Q 180 22 180 30 Q 180 22 172 22 Q 180 22 180 14 Z" className="fill-tan" />
+      <g transform="translate(46, 42)">
+        <line x1="0" y1="6" x2="12" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-steel" />
+        <line x1="6" y1="0" x2="6" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-steel" />
+      </g>
+      <circle cx="150" cy="40" r="2.5" className="fill-cream" />
+      <circle cx="70" cy="70" r="2" className="fill-sage/70" />
+
+      {/* Floor */}
+      <line x1="8" y1="180" x2="252" y2="180" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" className="text-border-emphasis" />
+    </svg>
+  );
+}
+
+/**
+ * Teacher — standing at a chalkboard with bubble rows & a progress chart,
+ * beside a desk holding graded papers and the classic apple.
+ */
+export function TeacherChalkboardIllustration({ className = "w-64 h-48" }: IllustrationProps) {
+  return (
+    <svg viewBox="0 0 260 200" fill="none" xmlns="http://www.w3.org/2000/svg" className={className} aria-hidden="true">
+      {/* Dashed backdrop arch */}
+      <path d="M 14 180 C 14 50, 246 50, 246 180" stroke="currentColor" strokeWidth="1.25" strokeDasharray="4 4" className="text-text-muted/30" />
+
+      {/* Easel legs */}
+      <line x1="38" y1="124" x2="30" y2="180" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" className="text-text-primary" />
+      <line x1="134" y1="124" x2="142" y2="180" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" className="text-text-primary" />
+
+      {/* Chalkboard frame & surface */}
+      <rect x="18" y="28" width="136" height="94" rx="8" className="fill-tan-ghost stroke-text-primary" strokeWidth="1.75" />
+      <rect x="26" y="36" width="120" height="78" rx="4" className="fill-steel-ghost stroke-steel/40" strokeWidth="1.25" />
+
+      {/* Bubble rows on board */}
+      {[
+        { y: 52, filled: 1, cls: "fill-steel stroke-steel" },
+        { y: 70, filled: 3, cls: "fill-sage stroke-sage" },
+        { y: 88, filled: 0, cls: "fill-tan stroke-tan" },
+      ].map((row, i) => (
+        <g key={row.y}>
+          <text x="32" y={row.y + 3} className="fill-text-muted font-mono text-[8px] font-bold">
+            {i + 1}.
+          </text>
+          {[46, 58, 70, 82].map((cx, j) => (
+            <circle
+              key={cx}
+              cx={cx}
+              cy={row.y}
+              r="4.2"
+              strokeWidth="1"
+              className={j === row.filled ? row.cls : "fill-surface-raised stroke-border-emphasis"}
+            />
+          ))}
+        </g>
+      ))}
+
+      {/* Mini bar chart */}
+      <line x1="98" y1="102" x2="140" y2="102" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" className="text-text-muted/60" />
+      <rect x="102" y="84" width="8" height="18" rx="2" className="fill-steel/80" />
+      <rect x="114" y="74" width="8" height="28" rx="2" className="fill-sage/80" />
+      <rect x="126" y="62" width="8" height="40" rx="2" className="fill-tan/80" />
+      <path d="M 100 70 Q 116 60 136 48" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 3" strokeLinecap="round" className="text-burgundy/70" />
+      <path d="M 131 47 L 137 47.5 L 135 53" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-burgundy/70" />
+
+      {/* Chalk tray */}
+      <rect x="40" y="121" width="92" height="5" rx="2" className="fill-tan stroke-text-primary" strokeWidth="1.1" />
+      <rect x="62" y="118" width="10" height="3" rx="1" className="fill-surface-raised" />
+
+      {/* ── Teacher figure ── */}
+      {/* Pointer arm */}
+      <path d="M 168 102 L 152 94 L 142 86" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-text-primary" />
+      <line x1="142" y1="86" x2="120" y2="66" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-tan" />
+      {/* Head + hair bun */}
+      <circle cx="180" cy="72" r="12" className="fill-text-primary" />
+      <circle cx="190" cy="63" r="5.5" className="fill-text-primary" />
+      {/* Neck */}
+      <line x1="180" y1="84" x2="180" y2="90" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" className="text-text-primary" />
+      {/* Blazer */}
+      <path d="M 166 92 C 162 110 163 134 167 142 L 193 142 C 197 132 197 110 194 92 Z" className="fill-steel-ghost stroke-text-primary" strokeWidth="1.75" strokeLinejoin="round" />
+      <path d="M 174 92 L 180 103 L 186 92" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" className="text-text-primary" />
+      {/* Arm holding a book */}
+      <path d="M 192 100 L 199 118 L 190 124" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-text-primary" />
+      <rect x="184" y="114" width="13" height="17" rx="2" className="fill-burgundy stroke-text-primary" strokeWidth="1.25" />
+      {/* Legs & shoes */}
+      <path d="M 172 142 L 170 176" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-text-primary" />
+      <path d="M 188 142 L 190 176" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-text-primary" />
+      <rect x="162" y="175" width="12" height="6" rx="2" className="fill-text-primary" />
+      <rect x="187" y="175" width="12" height="6" rx="2" className="fill-text-primary" />
+
+      {/* ── Desk with apple & graded papers ── */}
+      <line x1="212" y1="134" x2="212" y2="180" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" className="text-text-primary" />
+      <line x1="246" y1="134" x2="246" y2="180" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" className="text-text-primary" />
+      <rect x="206" y="128" width="46" height="6" rx="2" className="fill-tan stroke-text-primary" strokeWidth="1.25" />
+      {/* Apple */}
+      <circle cx="215" cy="121" r="6.5" className="fill-burgundy stroke-text-primary" strokeWidth="1" />
+      <line x1="215" y1="115" x2="215.5" y2="111" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" className="text-text-primary" />
+      <path d="M 216 113 Q 220 108 223 110 Q 220 114 216 113 Z" className="fill-sage" />
+      {/* Paper stack with A+ */}
+      <rect x="226" y="120" width="24" height="8" rx="1.5" className="fill-surface-raised stroke-border-emphasis" strokeWidth="1.1" />
+      <rect x="228" y="112" width="22" height="8" rx="1.5" className="fill-surface-raised stroke-border-emphasis" strokeWidth="1.1" />
+      <text x="239" y="118.5" textAnchor="middle" className="fill-sage font-mono text-[6px] font-black">
+        A+
+      </text>
+
+      {/* Sparkles */}
+      <path d="M 168 16 Q 168 25 177 25 Q 168 25 168 34 Q 168 25 159 25 Q 168 25 168 16 Z" className="fill-tan animate-pulse" style={{ animationDuration: "4s" }} />
+      <g transform="translate(232, 64)">
+        <line x1="0" y1="6" x2="12" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-steel" />
+        <line x1="6" y1="0" x2="6" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-steel" />
+      </g>
+      <circle cx="210" cy="40" r="2.5" className="fill-cream" />
+      <circle cx="12" cy="60" r="2" className="fill-sage/70" />
+
+      {/* Floor */}
+      <line x1="8" y1="180" x2="252" y2="180" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" className="text-border-emphasis" />
+    </svg>
+  );
+}
+
+/**
+ * Student — studying at a desk with an open book, pencil cup, a stack of
+ * books topped with a graduation cap, a light-bulb idea and an A+ badge.
+ */
+export function StudentStudyIllustration({ className = "w-64 h-48" }: IllustrationProps) {
+  return (
+    <svg viewBox="0 0 260 200" fill="none" xmlns="http://www.w3.org/2000/svg" className={className} aria-hidden="true">
+      {/* Dashed backdrop arch */}
+      <path d="M 24 180 C 24 50, 236 50, 236 180" stroke="currentColor" strokeWidth="1.25" strokeDasharray="4 4" className="text-text-muted/30" />
+
+      {/* Polka pedestal (left) */}
+      <rect x="6" y="128" width="30" height="52" rx="6" className="fill-sage-ghost stroke-sage/40" strokeWidth="1.25" />
+      <circle cx="15" cy="140" r="2" className="fill-sage" />
+      <circle cx="27" cy="150" r="2" className="fill-sage" />
+      <circle cx="15" cy="162" r="2" className="fill-sage" />
+      <circle cx="27" cy="172" r="2" className="fill-sage" />
+
+      {/* ── Student ── */}
+      {/* Body / sweater */}
+      <path d="M 88 132 C 88 110 96 99 112 99 C 128 99 136 110 136 132 Z" className="fill-sage-ghost stroke-text-primary" strokeWidth="1.75" strokeLinejoin="round" />
+      <path d="M 104 100 L 112 108 L 120 100" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" className="text-text-primary" />
+      {/* Neck */}
+      <line x1="112" y1="93" x2="112" y2="99" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" className="text-text-primary" />
+      {/* Face */}
+      <circle cx="112" cy="80" r="13" className="fill-surface-raised stroke-text-primary" strokeWidth="1.75" />
+      {/* Hair */}
+      <path d="M 99 79 C 97 62 127 60 125 79 C 120 71 106 70 99 79 Z" className="fill-text-primary" />
+      {/* Eyes (focused, looking down) & smile */}
+      <path d="M 105 83 Q 107 85 109 83" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className="text-text-primary" />
+      <path d="M 115 83 Q 117 85 119 83" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className="text-text-primary" />
+      <path d="M 108.5 88 Q 112 90.5 115.5 88" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className="text-text-primary" />
+      {/* Arms */}
+      <path d="M 94 112 Q 88 124 96 128 L 104 128" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-text-primary" />
+      <path d="M 130 112 Q 136 122 140 122" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-text-primary" />
+      {/* Pencil in hand */}
+      <line x1="138" y1="124" x2="147" y2="111" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="text-tan" />
+      <circle cx="137.5" cy="124.8" r="1.2" className="fill-text-primary" />
+
+      {/* Open book on desk */}
+      <path d="M 112 131 L 82 127 L 84 120 L 112 123 Z" className="fill-surface-raised stroke-text-primary" strokeWidth="1.4" strokeLinejoin="round" />
+      <path d="M 112 131 L 142 127 L 140 120 L 112 123 Z" className="fill-surface-raised stroke-text-primary" strokeWidth="1.4" strokeLinejoin="round" />
+      <line x1="90" y1="124" x2="106" y2="126" stroke="currentColor" strokeWidth="1" strokeLinecap="round" className="text-text-muted/60" />
+      <line x1="118" y1="126" x2="134" y2="124" stroke="currentColor" strokeWidth="1" strokeLinecap="round" className="text-text-muted/60" />
+
+      {/* Desk */}
+      <rect x="44" y="131" width="150" height="7" rx="3" className="fill-tan-ghost stroke-text-primary" strokeWidth="1.5" />
+      <line x1="56" y1="138" x2="56" y2="180" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" className="text-text-primary" />
+      <line x1="182" y1="138" x2="182" y2="180" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" className="text-text-primary" />
+
+      {/* Pencil cup */}
+      <line x1="58" y1="114" x2="55" y2="100" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="text-tan" />
+      <line x1="64" y1="114" x2="65" y2="98" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="text-steel" />
+      <line x1="69" y1="114" x2="73" y2="102" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="text-burgundy" />
+      <rect x="54" y="112" width="18" height="19" rx="3" className="fill-tan-ghost stroke-text-primary" strokeWidth="1.4" />
+
+      {/* Book stack */}
+      <rect x="150" y="119" width="36" height="12" rx="2" className="fill-steel-ghost stroke-text-primary" strokeWidth="1.4" />
+      <line x1="156" y1="119" x2="156" y2="131" stroke="currentColor" strokeWidth="1" className="text-steel" />
+      <rect x="154" y="108" width="29" height="11" rx="2" className="fill-burgundy-ghost stroke-text-primary" strokeWidth="1.4" />
+      <line x1="160" y1="108" x2="160" y2="119" stroke="currentColor" strokeWidth="1" className="text-burgundy" />
+      <rect x="148" y="98" width="33" height="10" rx="2" className="fill-sage-ghost stroke-text-primary" strokeWidth="1.4" />
+      <line x1="154" y1="98" x2="154" y2="108" stroke="currentColor" strokeWidth="1" className="text-sage" />
+
+      {/* Graduation cap */}
+      <rect x="157" y="90" width="16" height="7" rx="1.5" className="fill-text-primary" />
+      <polygon points="165,80 186,87.5 165,95 144,87.5" className="fill-text-primary" />
+      <path d="M 186 87.5 L 188 99" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" className="text-tan" />
+      <circle cx="188" cy="100.5" r="2" className="fill-tan" />
+
+      {/* Light-bulb idea */}
+      <g className="animate-pulse" style={{ animationDuration: "3.5s" }}>
+        <circle cx="140" cy="48" r="9" className="fill-cream-ghost stroke-cream" strokeWidth="1.5" />
+        <rect x="136" y="56" width="8" height="5" rx="1.5" className="fill-surface-raised stroke-cream" strokeWidth="1.2" />
+        <path d="M 137 49 Q 140 44 143 49" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" className="text-cream" />
+        <line x1="140" y1="33" x2="140" y2="29" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="text-cream" />
+        <line x1="127" y1="40" x2="124" y2="37" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="text-cream" />
+        <line x1="153" y1="40" x2="156" y2="37" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="text-cream" />
+      </g>
+
+      {/* A+ badge */}
+      <g transform="translate(50, 58)" className="animate-bounce" style={{ animationDuration: "3s" }}>
+        <circle r="16" className="fill-sage" />
+        <text x="0" y="5" textAnchor="middle" className="fill-white text-[13px] font-black">
+          A+
+        </text>
+      </g>
+
+      {/* Sparkles */}
+      <path d="M 212 30 Q 212 39 221 39 Q 212 39 212 48 Q 212 39 203 39 Q 212 39 212 30 Z" className="fill-tan" />
+      <g transform="translate(222, 110)">
+        <line x1="0" y1="6" x2="12" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-steel" />
+        <line x1="6" y1="0" x2="6" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-steel" />
+      </g>
+      <circle cx="90" cy="40" r="2.5" className="fill-steel/70" />
+      <circle cx="236" cy="72" r="2" className="fill-sage/70" />
+
+      {/* Floor */}
+      <line x1="4" y1="180" x2="256" y2="180" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" className="text-border-emphasis" />
+    </svg>
   );
 }

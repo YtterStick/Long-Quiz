@@ -42,6 +42,8 @@ class Teacher(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
+    avatar_config: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    bio: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     user: Mapped[Optional["User"]] = relationship("User", back_populates="teacher_profile")
     sections: Mapped[List["Section"]] = relationship("Section", back_populates="teacher", cascade="all, delete-orphan")
@@ -55,6 +57,9 @@ class Student(Base):
     user_id: Mapped[str] = mapped_column(String, ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
     student_number: Mapped[int] = mapped_column(Integer, unique=True, nullable=False)
     section_id: Mapped[Optional[str]] = mapped_column(String, ForeignKey("sections.id", ondelete="SET NULL"), nullable=True)
+    avatar_config: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    bio: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    is_profile_setup: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
 
     user: Mapped[Optional["User"]] = relationship("User", back_populates="student_profile")
     section: Mapped[Optional["Section"]] = relationship("Section", back_populates="students")
@@ -91,6 +96,12 @@ class Exam(Base):
     is_public: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_online_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_grades_released: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Online Quiz Configuration: Randomize question sequence and answer choices per student
+    shuffle_questions: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
+    shuffle_options: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
+    # Online Quiz Configuration: Countdown timer
+    has_time_limit: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
+    time_limit_minutes: Mapped[int] = mapped_column(Integer, default=60, nullable=False, server_default="60")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     teacher: Mapped[Optional["Teacher"]] = relationship("Teacher", back_populates="exams")
@@ -112,6 +123,11 @@ class SectionExam(Base):
     is_started: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
     # What students see once grades are released: "FULL" (score + questionnaire + answer key) or "SCORES_ONLY"
     release_mode: Mapped[str] = mapped_column(String, default="FULL", nullable=False, server_default="FULL")
+    # Section overrides (if set, overrides base exam settings)
+    shuffle_questions: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    shuffle_options: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    has_time_limit: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    time_limit_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     section: Mapped[Optional["Section"]] = relationship("Section", back_populates="section_exams")
@@ -127,6 +143,7 @@ class ExamLobbyEntry(Base):
     student_id: Mapped[str] = mapped_column(String, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
     joined_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     last_seen: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    started_exam_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     is_fullscreen: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_focused: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     violations: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
@@ -219,3 +236,34 @@ class PasswordResetRequest(Base):
 
     student: Mapped[Optional["Student"]] = relationship("Student", back_populates="reset_requests")
     resolver: Mapped[Optional["User"]] = relationship("User", foreign_keys=[resolved_by])
+
+
+class SharedReviewerDeck(Base):
+    """Cached and shared study reviewer decks (generated from handouts/modules)."""
+    __tablename__ = "shared_reviewer_decks"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    content_hash: Mapped[str] = mapped_column(String, unique=True, index=True, nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    file_name: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    section_id: Mapped[Optional[str]] = mapped_column(String, ForeignKey("sections.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_by_user_id: Mapped[Optional[str]] = mapped_column(String, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    deck_data: Mapped[str] = mapped_column(Text, nullable=False)  # JSON serialized GeneratedReviewerDeck
+    usage_count: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    section: Mapped[Optional["Section"]] = relationship("Section")
+    creator: Mapped[Optional["User"]] = relationship("User")
+
+
+class StudentGenerationLog(Base):
+    """Tracks student AI handout generation attempts to enforce 10 handouts per week limit."""
+    __tablename__ = "student_generation_logs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    student_id: Mapped[str] = mapped_column(String, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    content_hash: Mapped[str] = mapped_column(String, nullable=False)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    student: Mapped[Optional["Student"]] = relationship("Student")

@@ -13,6 +13,7 @@ import {
   Loader2,
   AlertCircle,
   Sparkles,
+  Info,
 } from "lucide-react";
 import { auth } from "@/lib/api";
 
@@ -151,9 +152,10 @@ export function ForgotPasswordModal({ isOpen, onClose }: ForgotPasswordModalProp
                 </div>
               </div>
 
-              <div className="rounded-xl bg-tan-ghost/20 border border-tan-border/40 p-3 text-left">
+              <div className="rounded-xl bg-tan-ghost/20 border border-tan-border/40 p-3 text-left flex items-start gap-2.5">
+                <Info className="h-4 w-4 text-tan shrink-0 mt-0.5" />
                 <p className="text-xs text-text-secondary leading-relaxed">
-                  📢 <strong>Next Step:</strong> Contact your teacher or check your section roster. Your teacher can reset your password and hand you a temporary sign-in code.
+                  <strong>Next Step:</strong> Contact your teacher or check your section roster. Your teacher can reset your password and hand you a temporary sign-in code.
                 </p>
               </div>
 

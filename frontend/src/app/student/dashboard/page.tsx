@@ -22,7 +22,6 @@ import {
   Lightbulb,
   Send,
   PenTool,
-  Sparkles,
   Loader2,
   X,
   ArrowRight,
@@ -34,10 +33,30 @@ import {
   Clock,
   Monitor,
   Play,
+  Timer,
+  Shuffle,
+  Shirt,
+  UserCog,
 } from "lucide-react";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
-import { SkeletonTable, SkeletonStudentStats } from "@/components/ui/Skeleton";
+import {
+  SkeletonTable,
+  SkeletonStudentStats,
+  SkeletonDashboardPage,
+  SkeletonStudentExamGrid,
+  SkeletonGradeCards,
+  SkeletonReviewerList,
+} from "@/components/ui/Skeleton";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { StudentHandoutReviewer } from "@/components/StudentHandoutReviewer";
+import { WelcomeHero } from "@/components/WelcomeHero";
+import { StudentAvatar } from "@/components/avatar/StudentAvatar";
+import { CharacterCreatorModal } from "@/components/avatar/CharacterCreatorModal";
+import {
+  StudentAvatarConfig,
+  parseAvatarConfig,
+  DEFAULT_AVATAR_CONFIG,
+} from "@/types/avatar";
 
 interface QuestionItem {
   id?: string;
@@ -93,6 +112,10 @@ interface AvailableExamItem {
   is_public: boolean;
   is_online_active?: boolean;
   is_grades_released?: boolean;
+  shuffle_questions?: boolean;
+  shuffle_options?: boolean;
+  has_time_limit?: boolean;
+  time_limit_minutes?: number;
   created_at: string;
   teacher_name: string;
   question_count: number;
@@ -120,6 +143,11 @@ interface ExamTakingDetail {
   is_public: boolean;
   is_online_active?: boolean;
   is_grades_released?: boolean;
+  shuffle_questions?: boolean;
+  shuffle_options?: boolean;
+  has_time_limit?: boolean;
+  time_limit_minutes?: number;
+  time_remaining_seconds?: number | null;
   created_at: string;
   teacher_name: string;
   has_submitted: boolean;
@@ -135,24 +163,32 @@ interface StudentInfo {
   full_student_id?: string;
   static_prefix?: string;
   section_id: string;
+  section_name?: string | null;
   first_name: string;
   last_name: string;
   total_exams: number;
   average_percentage: number;
+  avatar_config?: string | null;
+  bio?: string | null;
+  is_profile_setup?: boolean;
 }
 
 export default function StudentDashboard() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, refreshUser } = useAuth();
   const router = useRouter();
 
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<"available" | "grades" | "reviewers">("available");
   const [info, setInfo] = useState<StudentInfo | null>(null);
+  const [avatarConfig, setAvatarConfig] = useState<StudentAvatarConfig>(DEFAULT_AVATAR_CONFIG);
+  const [closetModalOpen, setClosetModalOpen] = useState(false);
+  const [isFirstTimeSetup, setIsFirstTimeSetup] = useState(false);
   const [grades, setGrades] = useState<GradeItem[]>([]);
   const [availableExams, setAvailableExams] = useState<AvailableExamItem[]>([]);
   const [publicReviewers, setPublicReviewers] = useState<PublicReviewerItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingReviewers, setLoadingReviewers] = useState(false);
+  const [reviewerSectionMode, setReviewerSectionMode] = useState<"ai_handout" | "public_exams">("ai_handout");
 
   // Online Exam Taking & Proctoring State
   const [mobileBlockedOpen, setMobileBlockedOpen] = useState(false);
@@ -178,6 +214,7 @@ export default function StudentDashboard() {
 
   const [activeTakingExam, setActiveTakingExam] = useState<ExamTakingDetail | null>(null);
   const [takingAnswers, setTakingAnswers] = useState<Record<number, string>>({});
+  const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
   const [loadingTakingExam, setLoadingTakingExam] = useState(false);
   const [submittingOnlineExam, setSubmittingOnlineExam] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -225,8 +262,59 @@ export default function StudentDashboard() {
       setInfo(infoData);
       setGrades(gradesData);
       setAvailableExams(availableData);
+
+      // Handle avatar loading
+      if (infoData.avatar_config) {
+        const parsed = parseAvatarConfig(infoData.avatar_config);
+        setAvatarConfig(parsed);
+        if (typeof window !== "undefined" && user?.id) {
+          localStorage.setItem(`evalo_student_avatar_${user.id}`, JSON.stringify(parsed));
+          window.dispatchEvent(new Event("evalo_avatar_updated"));
+        }
+      } else if (typeof window !== "undefined" && user?.id) {
+        const cached = localStorage.getItem(`evalo_student_avatar_${user.id}`);
+        if (cached) {
+          setAvatarConfig(parseAvatarConfig(cached));
+        }
+      }
+
+      // Check starting account setup requirement
+      if (!infoData.is_profile_setup) {
+        const dismissed = typeof window !== "undefined" ? sessionStorage.getItem(`evalo_avatar_dismissed_${user?.id}`) : null;
+        if (!dismissed) {
+          setIsFirstTimeSetup(true);
+          setClosetModalOpen(true);
+        }
+      }
     } catch (err) {
       console.error("Failed to load student data:", err);
+    }
+  };
+
+  const handleSaveAvatar = async (newConfig: StudentAvatarConfig) => {
+    setAvatarConfig(newConfig);
+    if (typeof window !== "undefined" && user?.id) {
+      localStorage.setItem(`evalo_student_avatar_${user.id}`, JSON.stringify(newConfig));
+      window.dispatchEvent(new Event("evalo_avatar_updated"));
+    }
+    try {
+      await studentApi.updateProfile({
+        avatar_config: JSON.stringify(newConfig),
+        bio: newConfig.bio,
+      });
+      setInfo((prev) =>
+        prev
+          ? {
+              ...prev,
+              avatar_config: JSON.stringify(newConfig),
+              bio: newConfig.bio,
+              is_profile_setup: true,
+            }
+          : prev
+      );
+      setIsFirstTimeSetup(false);
+    } catch (err) {
+      console.error("Failed to update student profile avatar:", err);
     }
   };
 
@@ -372,6 +460,7 @@ export default function StudentDashboard() {
     setExamLobbyOpen(false);
     setLobbyExamId(null);
     setLobbyExamInfo(null);
+    setTimeRemaining(null);
   };
 
   // Lobby Polling Effect: pings backend every 2 seconds while in lobby
@@ -395,6 +484,17 @@ export default function StudentDashboard() {
           // Instructor started the exam! Fetch questions and begin immediately
           const detail = await studentApi.getExamForTaking(lobbyExamId);
           setActiveTakingExam(detail);
+          if (detail.has_time_limit) {
+            const initialSecs =
+              detail.time_remaining_seconds !== null && detail.time_remaining_seconds !== undefined
+                ? detail.time_remaining_seconds
+                : detail.time_limit_minutes
+                ? detail.time_limit_minutes * 60
+                : 3600;
+            setTimeRemaining(initialSecs);
+          } else {
+            setTimeRemaining(null);
+          }
           setIsWaitingInLobby(false);
           setExamLobbyOpen(false);
           setIsExamInProgress(true);
@@ -411,6 +511,7 @@ export default function StudentDashboard() {
           setExamLobbyOpen(false);
           setLobbyExamId(null);
           setLobbyExamInfo(null);
+          setTimeRemaining(null);
           alert("The online exam lobby was closed by your instructor.");
         }
       } catch (err) {
@@ -461,6 +562,7 @@ export default function StudentDashboard() {
 
       setConfirmSubmitOpen(false);
       setIsExamInProgress(false);
+      setTimeRemaining(null);
       setAntiCheatAlert(null);
       setActiveTakingExam(null);
       setSubmissionSuccessResult({
@@ -489,13 +591,48 @@ export default function StudentDashboard() {
     if (autoSubmittingRef.current) return;
     autoSubmittingRef.current = true;
     if (activeTakingExam) {
-      alert(`Security Violation: ${reason}. Auto-submitting your exam now.`);
+      if (reason.toLowerCase().includes("time")) {
+        alert(`Exam Time Expired: ${reason}. Auto-submitting your quiz now.`);
+      } else {
+        alert(`Security Violation: ${reason}. Auto-submitting your exam now.`);
+      }
       await doSubmitExam(true);
     } else if (isWaitingInLobby && lobbyExamId) {
       // Violation in lobby
       alert(`Security Violation: ${reason}. Exiting exam lobby.`);
       handleLeaveLobby();
     }
+  };
+
+  // Live Exam Countdown Timer
+  useEffect(() => {
+    if (!isExamInProgress || timeRemaining === null) return;
+
+    const timer = setInterval(() => {
+      setTimeRemaining((prev) => {
+        if (prev === null) return null;
+        if (prev <= 1) {
+          clearInterval(timer);
+          setTimeout(() => {
+            handleAutoSubmit("Exam time limit reached");
+          }, 0);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isExamInProgress, timeRemaining === null]);
+
+  const formatTimeRemaining = (seconds: number) => {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    if (hrs > 0) {
+      return `${hrs}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
+    }
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
   // Exam heartbeat: keeps the teacher's live monitor updated while the student is answering
@@ -718,16 +855,12 @@ export default function StudentDashboard() {
   const showPasswordReset = mustResetPassword || Boolean(user?.must_change_password);
 
   if (!mounted || authLoading) {
-    return (
-      <div className="min-h-screen bg-surface-base text-text-primary flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-steel" />
-      </div>
-    );
+    return <SkeletonDashboardPage role="student" />;
   }
 
   if (showPasswordReset) {
     return (
-      <div className="min-h-screen bg-surface-base text-text-primary flex items-center justify-center">
+      <div className="min-h-screen text-text-primary flex items-center justify-center">
         <PasswordChangeModal
           isOpen={true}
           forced={true}
@@ -738,48 +871,64 @@ export default function StudentDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-surface-base text-text-primary">
-      <Navbar onOpenPasswordModal={() => setPasswordModalOpen(true)} />
+    <div className="min-h-screen text-text-primary">
+      <Navbar
+        onOpenPasswordModal={() => setPasswordModalOpen(true)}
+        onOpenCloset={() => setClosetModalOpen(true)}
+      />
 
       <main className="mx-auto max-w-7xl px-3 sm:px-6 py-5 sm:py-8 pb-24 sm:pb-12 space-y-6">
-        {/* Elevated Student Header Hero Banner */}
-        <div className="relative overflow-hidden rounded-[28px] border border-border-emphasis/60 bg-surface-raised p-6 sm:p-7 shadow-lg">
-          <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-sage/10 blur-3xl" />
-          <div className="pointer-events-none absolute -right-4 -bottom-10 h-36 w-36 rounded-full bg-steel/10 blur-2xl" />
-
-          <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2 mb-2 flex-wrap">
-                <span className="rounded-full bg-sage-ghost px-3 py-0.5 text-[10px] font-bold text-sage border border-sage-border">
-                  Student Portal
-                </span>
-                {info && (info.full_student_id || info.student_number) && (
-                  <span className="rounded-full bg-steel-ghost px-3 py-0.5 text-[10px] font-bold text-steel font-mono border border-steel-border">
-                    ID: {info.full_student_id || info.student_number}
-                  </span>
-                )}
-              </div>
-              <h1 className="text-xl sm:text-2xl lg:text-3xl font-black tracking-tight text-text-primary">
-                Welcome back, {user?.first_name ? `${user.first_name} ${user.last_name || ""}`.trim() : "Student"}! 👋
-              </h1>
-              <p className="text-xs text-text-muted mt-1 max-w-xl">
-                Take live proctored online exams, review graded bubble sheet results, and explore public study reviewer question banks.
-              </p>
-            </div>
-
-            {info && info.average_percentage !== undefined && (
-              <div className="flex items-center gap-3 rounded-2xl bg-surface-base border border-border-default p-3.5 shadow-sm shrink-0 self-start sm:self-auto">
+        {/* Shared role hero with personalized dynamic character */}
+        <WelcomeHero
+          role="student"
+          showRoleBadge={false}
+          name={user?.first_name ? `${user.first_name} ${user.last_name || ""}`.trim() : "Student"}
+          description={
+            info?.bio || avatarConfig?.bio || "Take live proctored online exams, review graded bubble sheet results, and explore study reviewers."
+          }
+          actions={
+            <button
+              type="button"
+              onClick={() => setClosetModalOpen(true)}
+              className="group inline-flex items-center gap-2 rounded-2xl bg-sage hover:bg-sage-light text-white px-4 py-2.5 text-xs font-black shadow-lg shadow-sage/25 hover:shadow-sage/35 transition-all active:scale-95 cursor-pointer"
+            >
+              <Shirt className="h-4 w-4" />
+              Open Wardrobe Studio
+            </button>
+          }
+          aside={
+            info && info.average_percentage !== undefined ? (
+              <div className="flex items-center gap-3 rounded-2xl bg-surface-base/80 border border-border-default p-3.5 shadow-sm shrink-0">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sage-ghost text-sage border border-sage-border shadow-inner">
                   <Award className="h-5 w-5" />
                 </div>
-                <div className="text-left sm:text-right">
+                <div className="text-left">
                   <span className="block text-[10px] font-bold uppercase tracking-wider text-text-muted">Overall Average</span>
                   <span className="text-lg font-black text-sage font-mono">{info.average_percentage}%</span>
                 </div>
               </div>
-            )}
-          </div>
-        </div>
+            ) : null
+          }
+          customIllustration={
+            <button
+              type="button"
+              onClick={() => setClosetModalOpen(true)}
+              className="group relative cursor-pointer flex flex-col items-center focus:outline-none"
+              title="Click to customize your student character in the Closet Studio!"
+            >
+              <div className="relative p-1.5 rounded-full bg-surface-raised border border-border-emphasis/70 shadow-lg group-hover:shadow-xl group-hover:border-sage transition-all duration-300 group-hover:scale-105">
+                <StudentAvatar config={avatarConfig} size={135} animate={true} />
+                <div className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-sage text-white shadow-md border-2 border-surface-raised group-hover:scale-110 transition-transform">
+                  <Shirt className="h-3.5 w-3.5" />
+                </div>
+              </div>
+              <span className="mt-1.5 text-[10px] font-bold text-text-muted group-hover:text-sage transition-colors flex items-center gap-1">
+                <Shirt className="h-2.5 w-2.5" />
+                Customize Character
+              </span>
+            </button>
+          }
+        />
 
         {/* Modern Segmented Tab Switcher */}
         <div className="p-1.5 rounded-[22px] bg-surface-raised border border-border-default grid grid-cols-3 gap-1.5 shadow-sm">
@@ -857,7 +1006,7 @@ export default function StudentDashboard() {
             </div>
 
             {loading ? (
-              <SkeletonTable rows={3} />
+              <SkeletonStudentExamGrid count={4} />
             ) : availableExams.length === 0 ? (
               <div className="py-16 text-center space-y-3">
                 <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl bg-surface-subtle border border-border-default text-text-faint">
@@ -895,7 +1044,7 @@ export default function StudentDashboard() {
                           )
                         ) : (
                           <span className="inline-flex items-center gap-1 rounded-full bg-tan-ghost px-2.5 py-0.5 text-[10px] font-bold text-tan border border-tan-border">
-                            <Sparkles className="h-3 w-3" />
+                            <FileCheck className="h-3 w-3" />
                             Online Exam Active
                           </span>
                         )}
@@ -916,6 +1065,30 @@ export default function StudentDashboard() {
                           </>
                         )}
                       </div>
+
+                      {/* Online Quiz Configuration Badges */}
+                      {(exam.has_time_limit || exam.shuffle_questions || exam.shuffle_options) && (
+                        <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+                          {exam.has_time_limit && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-steel/15 px-2 py-0.5 text-[10px] font-bold text-steel-light border border-steel/30">
+                              <Timer className="h-3 w-3" />
+                              {exam.time_limit_minutes || 60}m Timer
+                            </span>
+                          )}
+                          {exam.shuffle_questions && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-tan-ghost px-2 py-0.5 text-[10px] font-bold text-tan border border-tan-border">
+                              <Shuffle className="h-3 w-3" />
+                              Rumbled Questions
+                            </span>
+                          )}
+                          {exam.shuffle_options && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-sage-ghost px-2 py-0.5 text-[10px] font-bold text-sage border border-sage-border">
+                              <Shuffle className="h-3 w-3" />
+                              Scrambled Keys
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     <div className="pt-3 border-t border-border-default/60 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
@@ -992,7 +1165,7 @@ export default function StudentDashboard() {
             </div>
 
             {loading ? (
-              <SkeletonTable rows={3} />
+              <SkeletonGradeCards count={3} />
             ) : grades.length === 0 ? (
               <div className="py-12 text-center text-text-faint text-sm">
                 No public exam grades available yet. When your teacher makes an exam public, your personal score, answers, and the reviewer key will appear here.
@@ -1219,7 +1392,8 @@ export default function StudentDashboard() {
                                               )}
                                               {isCorrect && (
                                                 <span className="px-2 py-0.5 rounded-md font-bold bg-sage-ghost text-sage">
-                                                  ✓ Correct Answer
+                                                  <CheckCircle2 className="inline h-3 w-3 mr-1" />
+                                                  Correct Answer
                                                 </span>
                                               )}
                                             </div>
@@ -1298,23 +1472,82 @@ export default function StudentDashboard() {
           </div>
         )}
 
-        {/* TAB 2: Public Study Reviewers */}
+        {/* TAB 2: Study Reviewers (AI Handout Generator + Public Exams) */}
         {activeTab === "reviewers" && (
-          <div className="glass-card rounded-2xl p-4 sm:p-6 border border-border-default">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
-              <div>
-                <h2 className="text-lg font-bold text-text-primary flex items-center gap-2">
-                  <BookOpen className="h-5 w-5 text-tan" />
-                  Public Exam Questionnaires & Study Reviewers
-                </h2>
-                <p className="text-xs text-text-muted">
-                  Browse public questionnaires and official answer keys published by your teachers to prepare and study.
-                </p>
+          <div className="space-y-6">
+            {/* Section Sub-switcher */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 glass-card rounded-2xl p-4 border border-border-default">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-steel/15 text-steel-light border border-steel/30">
+                  <BookOpen className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold text-text-primary">
+                    Study Reviewers & Flashcard Engine
+                  </h2>
+                  <p className="text-xs text-text-muted">
+                    Generate pointers, 3D flip flashcards & card quizzes from your STI handouts or explore teacher public reviewers.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 p-1 bg-surface-subtle border border-border-default rounded-xl self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setReviewerSectionMode("ai_handout")}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    reviewerSectionMode === "ai_handout"
+                      ? "bg-steel text-white shadow-sm shadow-steel/20"
+                      : "text-text-muted hover:text-text-primary"
+                  }`}
+                >
+                  <BookOpen className="h-3.5 w-3.5 text-steel-light" />
+                  <span>AI Handout Reviewer</span>
+                  <span className="text-[10px] bg-white/20 text-white px-1.5 py-0.2 rounded font-mono">NEW</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setReviewerSectionMode("public_exams")}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    reviewerSectionMode === "public_exams"
+                      ? "bg-steel text-white shadow-sm shadow-steel/20"
+                      : "text-text-muted hover:text-text-primary"
+                  }`}
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  <span>Teacher Reviewers</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
+                    reviewerSectionMode === "public_exams" ? "bg-white/20 text-white" : "bg-surface-muted text-text-muted"
+                  }`}>
+                    {publicReviewers.length}
+                  </span>
+                </button>
               </div>
             </div>
 
+            {/* Sub-view: AI Handout Reviewer */}
+            {reviewerSectionMode === "ai_handout" && (
+              <StudentHandoutReviewer />
+            )}
+
+            {/* Sub-view: Teacher Public Questionnaires */}
+            {reviewerSectionMode === "public_exams" && (
+              <div className="glass-card rounded-2xl p-4 sm:p-6 border border-border-default">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
+                  <div>
+                    <h2 className="text-base font-bold text-text-primary flex items-center gap-2">
+                      <BookOpen className="h-4 w-4 text-tan" />
+                      Teacher Public Questionnaires
+                    </h2>
+                    <p className="text-xs text-text-muted">
+                      Browse public questionnaires and official answer keys published by your teachers.
+                    </p>
+                  </div>
+                </div>
+
             {loadingReviewers ? (
-              <SkeletonTable rows={3} />
+              <SkeletonReviewerList count={3} />
             ) : publicReviewers.length === 0 ? (
               <div className="py-12 text-center text-text-faint text-sm">
                 No public reviewers available right now. When teachers make exams public, they will be listed here.
@@ -1413,7 +1646,8 @@ export default function StudentDashboard() {
 
                                         {isCorrect && (
                                           <span className="text-[10px] text-sage font-bold">
-                                            ✓ Correct Key
+                                            <CheckCircle2 className="inline h-3 w-3 mr-1" />
+                                            Correct Key
                                           </span>
                                         )}
                                       </div>
@@ -1442,11 +1676,14 @@ export default function StudentDashboard() {
             )}
           </div>
         )}
+      </div>
+    )}
       </main>
 
       <PasswordChangeModal
         isOpen={passwordModalOpen}
         onClose={() => setPasswordModalOpen(false)}
+        onOpenCloset={() => setClosetModalOpen(true)}
       />
 
       {/* 1. Modal: Mobile Phone Blocked Gate */}
@@ -1586,15 +1823,22 @@ export default function StudentDashboard() {
 
                 {/* Waiting Banner */}
                 <div className="rounded-2xl border border-steel-border bg-steel-ghost p-4 max-w-md mx-auto text-xs text-left space-y-1.5">
-                  <div className="font-bold text-text-primary flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 text-steel animate-spin shrink-0" />
+                  <div className="font-bold text-text-primary flex items-center gap-2.5">
+                    <span className="relative flex h-2.5 w-2.5 shrink-0">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-steel opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-steel"></span>
+                    </span>
                     Waiting for Instructor to start the exam...
+                  </div>
+                  <div className="w-full bg-surface-muted/60 h-1.5 rounded-full overflow-hidden my-1">
+                    <div className="bg-steel/80 h-full w-1/3 animate-pulse rounded-full" />
                   </div>
                   <p className="text-[11px] text-text-muted leading-relaxed">
                     Your instructor is reviewing the live lobby roster. As soon as the teacher clicks <strong>Start Exam</strong>, this window will automatically load your test questions.
                   </p>
-                  <p className="text-[10px] text-burgundy-light font-semibold pt-1">
-                    ⚠️ Do not exit fullscreen or switch tabs. Any focus loss is recorded as a violation strike.
+                  <p className="text-[10px] text-burgundy-light font-semibold pt-1 flex items-center gap-1.5">
+                    <ShieldAlert className="h-3.5 w-3.5 shrink-0" />
+                    <span>Do not exit fullscreen or switch tabs. Any focus loss is recorded as a violation strike.</span>
                   </p>
                 </div>
 
@@ -1626,6 +1870,12 @@ export default function StudentDashboard() {
                     <Maximize className="h-3 w-3" />
                     Proctored Fullscreen Exam
                   </span>
+                  {(activeTakingExam.shuffle_questions || activeTakingExam.shuffle_options) && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-tan-ghost px-2.5 py-0.5 text-[10px] font-bold text-tan border border-tan-border">
+                      <Shuffle className="h-3 w-3" />
+                      Randomized Layout
+                    </span>
+                  )}
                   <span className="text-xs text-text-muted">By {activeTakingExam.teacher_name}</span>
                 </div>
                 <h2 className="text-base sm:text-lg font-bold text-text-primary mt-0.5">
@@ -1633,13 +1883,45 @@ export default function StudentDashboard() {
                 </h2>
               </div>
 
-              {/* Progress Tracker */}
-              <div className="flex items-center gap-4">
+              {/* Header Right: Live Countdown Timer & Progress Tracker */}
+              <div className="flex items-center gap-3 sm:gap-5">
+                {/* Live Countdown Timer Widget */}
+                {timeRemaining !== null && (
+                  <div
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all ${
+                      timeRemaining <= 60
+                        ? "bg-burgundy-ghost text-burgundy-light border-burgundy-border animate-pulse shadow-sm shadow-burgundy/20"
+                        : timeRemaining <= 300
+                        ? "bg-amber-500/15 text-amber-300 border-amber-500/40"
+                        : "bg-surface-subtle text-text-primary border-border-default"
+                    }`}
+                  >
+                    <Timer
+                      className={`h-4 w-4 ${
+                        timeRemaining <= 60
+                          ? "animate-spin text-burgundy-light"
+                          : timeRemaining <= 300
+                          ? "text-amber-400"
+                          : "text-steel-light"
+                      }`}
+                    />
+                    <div className="flex flex-col text-left leading-none font-mono">
+                      <span className="text-[9px] uppercase tracking-wider text-text-muted font-sans font-bold">
+                        {timeRemaining <= 60 ? "Ending Soon" : "Time Left"}
+                      </span>
+                      <span className="text-sm font-bold tracking-tight mt-0.5">
+                        {formatTimeRemaining(timeRemaining)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Question Progress Tracker */}
                 <div className="text-right">
                   <span className="font-mono text-xs font-bold text-tan">
                     {Object.keys(takingAnswers).length} of {activeTakingExam.questions.length} Answered
                   </span>
-                  <div className="w-32 h-1.5 rounded-full bg-surface-subtle mt-1 overflow-hidden">
+                  <div className="w-28 sm:w-32 h-1.5 rounded-full bg-surface-subtle mt-1 overflow-hidden">
                     <div
                       className="h-full bg-steel transition-all duration-300"
                       style={{
@@ -1912,6 +2194,30 @@ export default function StudentDashboard() {
           </div>
         </div>
       )}
+
+      {/* Student Character Creator & Closet Wardrobe Studio Modal */}
+      <CharacterCreatorModal
+        isOpen={closetModalOpen}
+        onClose={() => {
+          setClosetModalOpen(false);
+          if (user?.id) {
+            sessionStorage.setItem(`evalo_avatar_dismissed_${user.id}`, "true");
+          }
+        }}
+        initialConfig={avatarConfig}
+        studentName={
+          info?.first_name
+            ? `${info.first_name} ${info.last_name || ""}`.trim()
+            : user?.first_name
+            ? `${user.first_name} ${user.last_name || ""}`.trim()
+            : "Student"
+        }
+        studentId={info?.full_student_id || (info?.student_number ? String(info.student_number) : undefined)}
+        sectionName={info?.section_name || undefined}
+        role="STUDENT"
+        isFirstTime={isFirstTimeSetup}
+        onSave={handleSaveAvatar}
+      />
     </div>
   );
 }

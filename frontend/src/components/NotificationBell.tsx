@@ -13,6 +13,7 @@ import {
   User,
   GraduationCap,
 } from "lucide-react";
+import { SkeletonNotificationList } from "@/components/ui/Skeleton";
 import { teacher } from "@/lib/api";
 
 interface ResetRequest {
@@ -183,10 +184,7 @@ export function NotificationBell() {
             {/* List */}
             <div className="max-h-80 overflow-y-auto space-y-2 pr-0.5">
               {loading && requests.length === 0 ? (
-                <div className="py-8 text-center text-xs text-text-muted space-y-2">
-                  <Loader2 className="h-5 w-5 animate-spin mx-auto text-steel" />
-                  <p>Checking for student requests...</p>
-                </div>
+                <SkeletonNotificationList count={3} />
               ) : requests.length === 0 ? (
                 <div className="py-8 text-center space-y-2 px-4">
                   <div className="flex h-10 w-10 mx-auto items-center justify-center rounded-2xl bg-surface-subtle border border-border-default text-text-muted">

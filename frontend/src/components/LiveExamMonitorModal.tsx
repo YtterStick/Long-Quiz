@@ -21,6 +21,7 @@ import {
   RotateCcw,
   Zap,
 } from "lucide-react";
+import { SkeletonLiveRoster } from "@/components/ui/Skeleton";
 
 interface StudentAnswer {
   question_number: number;
@@ -167,43 +168,72 @@ export function LiveExamMonitorModal({
     }
   };
 
+  // View & Filter States
+  const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "in_lobby" | "taking" | "submitted" | "violations" | "offline">("all");
+
   const totalTabSwitches = data?.students.reduce((sum, s) => sum + (s.tab_switches || 0), 0) ?? 0;
+  const totalFullscreenExits = data?.students.reduce((sum, s) => sum + (s.fullscreen_exits || 0), 0) ?? 0;
+  const violationStudents = data?.students.filter((s) => s.tab_switches > 0 || s.fullscreen_exits > 0) ?? [];
+
+  // Filtered Students list
+  const filteredStudents = (data?.students ?? []).filter((s) => {
+    const matchesSearch =
+      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      String(s.student_number).includes(searchQuery);
+
+    if (!matchesSearch) return false;
+
+    if (statusFilter === "in_lobby") return s.status === "IN_LOBBY";
+    if (statusFilter === "taking") return s.status === "TAKING";
+    if (statusFilter === "submitted") return s.status === "SUBMITTED";
+    if (statusFilter === "violations") return s.tab_switches > 0 || s.fullscreen_exits > 0;
+    if (statusFilter === "offline") return s.status === "NOT_JOINED" || s.status === "DISCONNECTED";
+    return true;
+  });
 
   if (!isOpen) return null;
 
+  const totalStudentsCount = data?.total_students || 1;
+  const inLobbyPercent = Math.round(((data?.counts.in_lobby || 0) / totalStudentsCount) * 100);
+  const takingPercent = Math.round(((data?.counts.taking || 0) / totalStudentsCount) * 100);
+  const submittedPercent = Math.round(((data?.counts.submitted || 0) / totalStudentsCount) * 100);
+  const offlinePercent = Math.max(0, 100 - inLobbyPercent - takingPercent - submittedPercent);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-3 sm:p-6 overflow-y-auto">
-      <div className="w-full max-w-5xl rounded-2xl border border-border-default bg-surface-overlay shadow-2xl flex flex-col max-h-[92vh] overflow-hidden animate-in fade-in zoom-in-95">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 sm:p-6 border-b border-border-default bg-surface-base shrink-0">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-2 sm:p-6 overflow-y-auto">
+      <div className="w-full max-w-5xl rounded-3xl border border-border-default bg-surface-raised shadow-2xl flex flex-col max-h-[94vh] overflow-hidden animate-in fade-in zoom-in-95 transition-all">
+        {/* ── Top Header ─────────────────────────────────────────────── */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 sm:p-6 border-b border-border-default/80 bg-surface-base shrink-0">
           <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="rounded-full bg-steel/15 px-2.5 py-0.5 text-[10px] font-bold text-steel-light border border-steel/30">
-                Class: {sectionName}
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <span className="rounded-full bg-steel-ghost px-3 py-0.5 text-[11px] font-bold text-steel border border-steel-border">
+                Section: {sectionName}
               </span>
               {data?.is_started ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-sage-ghost px-2.5 py-0.5 text-[10px] font-bold text-sage border border-sage-border animate-pulse">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-sage-ghost px-3 py-0.5 text-[11px] font-bold text-sage border border-sage-border animate-pulse">
                   <Play className="h-3 w-3 fill-sage" />
-                  Exam In Progress (Live)
+                  Live Exam Active
                 </span>
               ) : data?.is_online_active ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-tan-ghost px-2.5 py-0.5 text-[10px] font-bold text-tan border border-tan-border">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-tan-ghost px-3 py-0.5 text-[11px] font-bold text-tan border border-tan-border">
                   <Clock className="h-3 w-3" />
                   Lobby Open • Waiting for Start
                 </span>
               ) : (
-                <span className="rounded-full bg-surface-subtle px-2.5 py-0.5 text-[10px] font-bold text-text-muted border border-border-default">
-                  Quiz Inactive
+                <span className="rounded-full bg-surface-subtle px-3 py-0.5 text-[11px] font-bold text-text-muted border border-border-default">
+                  Lobby Closed
                 </span>
               )}
             </div>
 
-            <h2 className="text-xl font-bold text-text-primary mt-1.5 flex items-center gap-2">
+            <h2 className="text-xl sm:text-2xl font-black tracking-tight text-text-primary flex items-center gap-2">
               <Monitor className="h-5 w-5 text-steel" />
               {examTitle}
             </h2>
             <p className="text-xs text-text-muted mt-0.5">
-              Live proctoring dashboard, lobby presence, real-time student activity & submitted answers.
+              Real-time student lobby presence, active focus detection, and instant grading monitor.
             </p>
           </div>
 
@@ -212,7 +242,7 @@ export function LiveExamMonitorModal({
               type="button"
               onClick={() => fetchMonitor(true)}
               disabled={refreshing}
-              className="flex items-center gap-1.5 rounded-xl border border-border-emphasis bg-surface-subtle px-3 py-2 text-xs font-semibold text-text-secondary hover:text-text-primary hover:bg-surface-muted transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 rounded-xl border border-border-default bg-surface-subtle px-3 py-2 text-xs font-semibold text-text-secondary hover:text-text-primary hover:bg-surface-muted transition-colors cursor-pointer"
               title="Refresh Roster"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin text-steel" : ""}`} />
@@ -224,10 +254,10 @@ export function LiveExamMonitorModal({
                 type="button"
                 onClick={handleToggleStart}
                 disabled={togglingStart}
-                className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all cursor-pointer shadow-md ${
+                className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all cursor-pointer shadow-lg active:scale-95 ${
                   data.is_started
-                    ? "bg-burgundy text-white hover:bg-burgundy-light shadow-burgundy/20"
-                    : "gradient-bg-primary text-text-primary hover:opacity-95 shadow-steel/20"
+                    ? "bg-burgundy text-white hover:bg-burgundy-light shadow-burgundy/25"
+                    : "bg-steel text-white hover:bg-steel-light shadow-steel/25"
                 }`}
               >
                 {togglingStart ? (
@@ -235,12 +265,12 @@ export function LiveExamMonitorModal({
                 ) : data.is_started ? (
                   <>
                     <Pause className="h-4 w-4" />
-                    Pause / Close Exam
+                    Pause / End Exam
                   </>
                 ) : (
                   <>
                     <Play className="h-4 w-4 fill-current" />
-                    Release & Start Exam for Class
+                    Start Exam for Class ({data.counts.in_lobby}/{data.total_students} Ready)
                   </>
                 )}
               </button>
@@ -250,76 +280,230 @@ export function LiveExamMonitorModal({
               type="button"
               onClick={onClose}
               className="rounded-xl bg-surface-subtle p-2 text-text-muted hover:text-text-primary hover:bg-surface-muted transition-colors cursor-pointer"
+              title="Close Monitor"
             >
               <X className="h-5 w-5" />
             </button>
           </div>
         </div>
 
-        {/* Live Metrics Bar */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 sm:p-5 bg-surface-base/50 border-b border-border-default text-xs shrink-0">
-          <div className="rounded-xl border border-border-default bg-surface-base p-3 flex items-center justify-between">
-            <div>
-              <span className="text-[11px] text-text-muted block font-medium">In Lobby (Ready)</span>
-              <strong className="text-base font-bold text-tan">
-                {data?.counts.in_lobby || 0}{" "}
-                <span className="text-[10px] text-text-muted font-normal">
-                  ({data?.counts.ready || 0} locked fullscreen)
-                </span>
-              </strong>
+        {/* ── Live Visual Activity Bar & Key Metrics ──────────────────── */}
+        <div className="p-4 sm:p-5 bg-surface-base/70 border-b border-border-default/70 shrink-0 space-y-3">
+          {/* Segmented Visual Progress Bar */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-[11px] font-bold">
+              <span className="text-text-secondary">Class Attendance &amp; Activity Progress</span>
+              <span className="text-text-muted font-mono">{data?.total_students || 0} Enrolled</span>
             </div>
-            <div className="h-8 w-8 rounded-lg bg-tan-ghost flex items-center justify-center text-tan">
-              <Clock className="h-4 w-4" />
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-border-default bg-surface-base p-3 flex items-center justify-between">
-            <div>
-              <span className="text-[11px] text-text-muted block font-medium">Currently Taking</span>
-              <strong className="text-base font-bold text-steel">
-                {data?.counts.taking || 0}
-              </strong>
-            </div>
-            <div className="h-8 w-8 rounded-lg bg-steel-ghost flex items-center justify-center text-steel">
-              <Monitor className="h-4 w-4" />
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-border-default bg-surface-base p-3 flex items-center justify-between">
-            <div>
-              <span className="text-[11px] text-text-muted block font-medium">Submitted</span>
-              <strong className="text-base font-bold text-sage">
-                {data?.counts.submitted || 0}{" "}
-                <span className="text-[10px] text-text-muted font-normal">
-                  / {data?.total_students || 0}
-                </span>
-              </strong>
-            </div>
-            <div className="h-8 w-8 rounded-lg bg-sage-ghost flex items-center justify-center text-sage">
-              <CheckCircle2 className="h-4 w-4" />
+            <div className="h-2.5 w-full rounded-full bg-surface-muted overflow-hidden flex shadow-inner">
+              {inLobbyPercent > 0 && (
+                <div
+                  style={{ width: `${inLobbyPercent}%` }}
+                  className="h-full bg-tan transition-all duration-500"
+                  title={`In Lobby: ${data?.counts.in_lobby} (${inLobbyPercent}%)`}
+                />
+              )}
+              {takingPercent > 0 && (
+                <div
+                  style={{ width: `${takingPercent}%` }}
+                  className="h-full bg-steel transition-all duration-500"
+                  title={`Taking Exam: ${data?.counts.taking} (${takingPercent}%)`}
+                />
+              )}
+              {submittedPercent > 0 && (
+                <div
+                  style={{ width: `${submittedPercent}%` }}
+                  className="h-full bg-sage transition-all duration-500"
+                  title={`Submitted: ${data?.counts.submitted} (${submittedPercent}%)`}
+                />
+              )}
+              {offlinePercent > 0 && (
+                <div
+                  style={{ width: `${offlinePercent}%` }}
+                  className="h-full bg-surface-subtle transition-all duration-500"
+                  title={`Offline: ${data?.counts.not_joined} (${offlinePercent}%)`}
+                />
+              )}
             </div>
           </div>
 
-          <div className="rounded-xl border border-border-default bg-surface-base p-3 flex items-center justify-between">
-            <div>
-              <span className="text-[11px] text-text-muted block font-medium">Not Joined</span>
-              <strong className="text-base font-bold text-text-muted">
-                {data?.counts.not_joined || 0}
-              </strong>
+          {/* Metric Chips */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div
+              onClick={() => setStatusFilter("in_lobby")}
+              className={`rounded-2xl border p-3 flex items-center justify-between cursor-pointer transition-all ${
+                statusFilter === "in_lobby"
+                  ? "border-tan bg-tan-ghost shadow-sm"
+                  : "border-border-default bg-surface-base hover:border-tan-border"
+              }`}
+            >
+              <div>
+                <span className="text-[11px] text-text-muted block font-medium">In Lobby (Ready)</span>
+                <strong className="text-lg font-black text-tan">
+                  {data?.counts.in_lobby || 0}{" "}
+                  <span className="text-[10px] text-text-muted font-normal">
+                    ({data?.counts.ready || 0} fullscreen)
+                  </span>
+                </strong>
+              </div>
+              <div className="h-8 w-8 rounded-xl bg-tan-ghost text-tan border border-tan-border flex items-center justify-center">
+                <Clock className="h-4 w-4" />
+              </div>
             </div>
-            <div className="h-8 w-8 rounded-lg bg-surface-subtle flex items-center justify-center text-text-muted">
-              <Users className="h-4 w-4" />
+
+            <div
+              onClick={() => setStatusFilter("taking")}
+              className={`rounded-2xl border p-3 flex items-center justify-between cursor-pointer transition-all ${
+                statusFilter === "taking"
+                  ? "border-steel bg-steel-ghost shadow-sm"
+                  : "border-border-default bg-surface-base hover:border-steel-border"
+              }`}
+            >
+              <div>
+                <span className="text-[11px] text-text-muted block font-medium">Currently Taking</span>
+                <strong className="text-lg font-black text-steel">
+                  {data?.counts.taking || 0}
+                </strong>
+              </div>
+              <div className="h-8 w-8 rounded-xl bg-steel-ghost text-steel border border-steel-border flex items-center justify-center">
+                <Monitor className="h-4 w-4" />
+              </div>
+            </div>
+
+            <div
+              onClick={() => setStatusFilter("submitted")}
+              className={`rounded-2xl border p-3 flex items-center justify-between cursor-pointer transition-all ${
+                statusFilter === "submitted"
+                  ? "border-sage bg-sage-ghost shadow-sm"
+                  : "border-border-default bg-surface-base hover:border-sage-border"
+              }`}
+            >
+              <div>
+                <span className="text-[11px] text-text-muted block font-medium">Submitted</span>
+                <strong className="text-lg font-black text-sage">
+                  {data?.counts.submitted || 0}{" "}
+                  <span className="text-[10px] text-text-muted font-normal">
+                    / {data?.total_students || 0}
+                  </span>
+                </strong>
+              </div>
+              <div className="h-8 w-8 rounded-xl bg-sage-ghost text-sage border border-sage-border flex items-center justify-center">
+                <CheckCircle2 className="h-4 w-4" />
+              </div>
+            </div>
+
+            <div
+              onClick={() => setStatusFilter("offline")}
+              className={`rounded-2xl border p-3 flex items-center justify-between cursor-pointer transition-all ${
+                statusFilter === "offline"
+                  ? "border-border-emphasis bg-surface-subtle shadow-sm"
+                  : "border-border-default bg-surface-base hover:border-border-emphasis"
+              }`}
+            >
+              <div>
+                <span className="text-[11px] text-text-muted block font-medium">Offline / Not Joined</span>
+                <strong className="text-lg font-black text-text-muted">
+                  {data?.counts.not_joined || 0}
+                </strong>
+              </div>
+              <div className="h-8 w-8 rounded-xl bg-surface-subtle text-text-muted border border-border-default flex items-center justify-center">
+                <Users className="h-4 w-4" />
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Content Body */}
+        {/* ── Active Incident / Violation Alert Banner ──────────────── */}
+        {violationStudents.length > 0 && (
+          <div className="mx-4 sm:mx-6 mt-4 p-3.5 rounded-2xl bg-burgundy-ghost border border-burgundy-border text-xs flex items-center justify-between gap-3 animate-in fade-in">
+            <div className="flex items-center gap-2.5 text-burgundy-light font-semibold">
+              <ShieldAlert className="h-4 w-4 shrink-0 text-burgundy-light" />
+              <span>
+                <strong>Proctoring Notice:</strong> {totalTabSwitches} alt-tab switch{totalTabSwitches === 1 ? "" : "es"} detected across {violationStudents.length} student{violationStudents.length === 1 ? "" : "s"}.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setStatusFilter(statusFilter === "violations" ? "all" : "violations")}
+              className="shrink-0 text-[11px] font-bold text-burgundy-light underline hover:text-white transition-colors cursor-pointer"
+            >
+              {statusFilter === "violations" ? "Show All Students" : "Filter Violations"}
+            </button>
+          </div>
+        )}
+
+        {retakeNotice && (
+          <div className="mx-4 sm:mx-6 mt-4 flex items-center gap-2 rounded-2xl border border-sage-border bg-sage-ghost px-4 py-3 text-xs font-semibold text-sage animate-in fade-in">
+            <RotateCcw className="h-4 w-4 shrink-0" />
+            <span>{retakeNotice}</span>
+          </div>
+        )}
+
+        {/* ── Filter Toolbar & View Switcher ────────────────────────── */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-6 pt-4 pb-2 shrink-0">
+          {/* Status Filter Chips */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+            {[
+              { id: "all", label: `All (${data?.students.length || 0})` },
+              { id: "in_lobby", label: `In Lobby (${data?.counts.in_lobby || 0})` },
+              { id: "taking", label: `Taking (${data?.counts.taking || 0})` },
+              { id: "submitted", label: `Submitted (${data?.counts.submitted || 0})` },
+              { id: "violations", label: `Violations (${violationStudents.length})` },
+              { id: "offline", label: `Offline (${data?.counts.not_joined || 0})` },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setStatusFilter(tab.id as typeof statusFilter)}
+                className={`px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                  statusFilter === tab.id
+                    ? "bg-steel text-white shadow-sm"
+                    : "bg-surface-subtle text-text-muted hover:text-text-primary hover:bg-surface-muted"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Search + View Toggle */}
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              placeholder="Search student..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="rounded-xl border border-border-default bg-surface-base px-3 py-1.5 text-xs text-text-primary placeholder:text-text-faint focus:border-steel focus:outline-none transition-all w-36 sm:w-48"
+            />
+            <div className="flex items-center rounded-xl bg-surface-subtle p-0.5 border border-border-default">
+              <button
+                type="button"
+                onClick={() => setViewMode("grid")}
+                className={`p-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  viewMode === "grid" ? "bg-surface-raised text-steel shadow-sm" : "text-text-muted hover:text-text-primary"
+                }`}
+                title="Student Cards Gallery"
+              >
+                Grid
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                className={`p-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  viewMode === "table" ? "bg-surface-raised text-steel shadow-sm" : "text-text-muted hover:text-text-primary"
+                }`}
+                title="Detailed Audit Table"
+              >
+                Table
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Main Content Body ─────────────────────────────────────── */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
           {loading && !data ? (
-            <div className="flex flex-col items-center justify-center py-16 text-text-muted">
-              <Loader2 className="h-8 w-8 animate-spin text-steel mb-3" />
-              <p className="text-xs">Loading live class exam roster...</p>
-            </div>
+            <SkeletonLiveRoster count={5} />
           ) : fetchError && !data ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <AlertTriangle className="h-10 w-10 text-burgundy mb-2" />
@@ -328,253 +512,317 @@ export function LiveExamMonitorModal({
               <button
                 type="button"
                 onClick={() => fetchMonitor(true)}
-                className="mt-4 rounded-xl gradient-bg-primary px-4 py-2 text-xs font-semibold text-text-primary cursor-pointer hover:opacity-95"
+                className="mt-4 rounded-xl bg-steel px-4 py-2 text-xs font-semibold text-white cursor-pointer hover:bg-steel-light"
               >
                 Retry
               </button>
             </div>
-          ) : !data || data.students.length === 0 ? (
+          ) : filteredStudents.length === 0 ? (
             <div className="text-center py-12 text-text-muted">
-              <Users className="h-12 w-12 mx-auto mb-2 text-text-faint" />
-              <p className="text-sm font-semibold">No students enrolled in this section</p>
+              <Users className="h-10 w-10 mx-auto mb-2 text-text-faint" />
+              <p className="text-sm font-semibold">No students match current filter</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setStatusFilter("all");
+                  setSearchQuery("");
+                }}
+                className="mt-2 text-xs text-steel font-bold hover:underline cursor-pointer"
+              >
+                Clear filters
+              </button>
             </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-xs text-text-muted px-1">
-                <span>
-                  Roster ({data.students.length} Students)
-                  {totalTabSwitches > 0 && (
-                    <span className="ml-2 text-burgundy-light font-semibold">
-                      • {totalTabSwitches} total alt-tab{totalTabSwitches > 1 ? "s" : ""} in class
-                    </span>
-                  )}
-                </span>
-                <span className="text-[11px] flex items-center gap-1.5">
-                  <span className="inline-block h-2 w-2 rounded-full bg-sage animate-ping" />
-                  Live sync active
-                </span>
-              </div>
+          ) : viewMode === "grid" ? (
+            /* ── VISUAL STUDENT CARDS GALLERY ────────────────────────── */
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+              {filteredStudents.map((student) => {
+                const hasViolations = student.tab_switches > 0 || student.fullscreen_exits > 0;
+                const initials = student.name
+                  .split(" ")
+                  .map((n) => n[0])
+                  .join("")
+                  .slice(0, 2)
+                  .toUpperCase();
 
-              {retakeNotice && (
-                <div className="flex items-center gap-2 rounded-xl border border-sage-border bg-sage-ghost px-3 py-2 text-xs font-semibold text-sage animate-in fade-in">
-                  <RotateCcw className="h-3.5 w-3.5" />
-                  {retakeNotice}
-                </div>
-              )}
-
-              <div className="overflow-x-auto rounded-xl border border-border-default">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-surface-base border-b border-border-default text-[11px] font-bold text-text-secondary uppercase tracking-wider">
-                    <tr>
-                      <th className="py-3 px-4">Student</th>
-                      <th className="py-3 px-4">Status</th>
-                      <th className="py-3 px-4">Integrity / Screen</th>
-                      <th className="py-3 px-4">Alt-Tabs / Fullscreen Exits</th>
-                      <th className="py-3 px-4">Score / Submitted</th>
-                      <th className="py-3 px-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-border-default/50 bg-surface-overlay">
-                    {data.students.map((student) => {
-                      return (
-                        <tr key={student.student_id} className="hover:bg-surface-subtle/40 transition-colors">
-                          {/* Student Info */}
-                          <td className="py-3 px-4">
-                            <div className="font-bold text-text-primary">{student.name}</div>
-                            <div className="font-mono text-[10px] text-text-muted">
+                return (
+                  <div
+                    key={student.student_id}
+                    className={`rounded-2xl p-4 border transition-all relative flex flex-col justify-between ${
+                      hasViolations
+                        ? "bg-burgundy-ghost/15 border-burgundy-border/60 hover:border-burgundy-border"
+                        : student.status === "SUBMITTED"
+                        ? "bg-sage-ghost/10 border-sage-border/50 hover:border-sage-border"
+                        : student.status === "TAKING"
+                        ? "bg-steel-ghost/15 border-steel-border/50 hover:border-steel-border shadow-sm"
+                        : student.status === "IN_LOBBY"
+                        ? "bg-tan-ghost/15 border-tan-border/50 hover:border-tan-border"
+                        : "bg-surface-base border-border-default hover:border-border-emphasis"
+                    }`}
+                  >
+                    {/* Top Row: Avatar + Info + Status */}
+                    <div>
+                      <div className="flex items-start justify-between gap-2 mb-3">
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className={`h-10 w-10 rounded-2xl flex items-center justify-center font-bold text-xs shadow-inner shrink-0 ${
+                              student.status === "SUBMITTED"
+                                ? "bg-sage-ghost text-sage border border-sage-border"
+                                : student.status === "TAKING"
+                                ? "bg-steel-ghost text-steel border border-steel-border"
+                                : student.status === "IN_LOBBY"
+                                ? "bg-tan-ghost text-tan border border-tan-border"
+                                : "bg-surface-subtle text-text-muted border border-border-default"
+                            }`}
+                          >
+                            {initials || "ST"}
+                          </div>
+                          <div>
+                            <div className="font-bold text-sm text-text-primary leading-tight">
+                              {student.name}
+                            </div>
+                            <div className="font-mono text-[10px] text-text-muted mt-0.5">
                               ID: {student.student_number}
                             </div>
-                          </td>
+                          </div>
+                        </div>
 
-                          {/* Live Status Badge */}
-                          <td className="py-3 px-4">
-                            {student.status === "SUBMITTED" ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-sage-ghost px-2.5 py-0.5 text-[10px] font-bold text-sage border border-sage-border">
-                                <CheckCircle2 className="h-3 w-3" />
-                                Submitted
-                              </span>
-                            ) : student.status === "TAKING" ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-steel-ghost px-2.5 py-0.5 text-[10px] font-bold text-steel border border-steel-border animate-pulse">
-                                <Monitor className="h-3 w-3" />
-                                Taking Exam
-                              </span>
-                            ) : student.status === "IN_LOBBY" ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-tan-ghost px-2.5 py-0.5 text-[10px] font-bold text-tan border border-tan-border">
-                                <Clock className="h-3 w-3" />
-                                In Lobby (Ready)
-                              </span>
-                            ) : student.status === "DISCONNECTED" ? (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-surface-subtle px-2.5 py-0.5 text-[10px] font-bold text-text-muted border border-border-default">
-                                Disconnected
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 rounded-full bg-surface-base px-2.5 py-0.5 text-[10px] font-semibold text-text-faint border border-border-default">
-                                Not Joined
-                              </span>
-                            )}
-                            {(student.attempt_number > 1 || student.auto_submitted) && (
-                              <div className="mt-1 flex flex-wrap gap-1">
-                                {student.attempt_number > 1 && (
-                                  <span className="inline-flex items-center gap-0.5 rounded-md bg-steel-ghost px-1.5 py-0.5 text-[9px] font-bold text-steel border border-steel-border">
-                                    <RotateCcw className="h-2.5 w-2.5" />
-                                    Attempt #{student.attempt_number}
-                                  </span>
-                                )}
-                                {student.auto_submitted && (
-                                  <span className="inline-flex items-center gap-0.5 rounded-md bg-burgundy-ghost px-1.5 py-0.5 text-[9px] font-bold text-burgundy-light border border-burgundy-border">
-                                    <Zap className="h-2.5 w-2.5" />
-                                    Auto-submitted
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                          </td>
-                          <td className="py-3 px-4">
-                            {student.status === "IN_LOBBY" || student.status === "TAKING" ? (
-                              <div className="flex items-center gap-2">
-                                <span
-                                  className={`inline-flex items-center gap-1 text-[11px] font-semibold ${
-                                    student.is_fullscreen ? "text-sage" : "text-burgundy-light"
-                                  }`}
-                                  title={student.is_fullscreen ? "Fullscreen Locked" : "Not in Fullscreen"}
-                                >
-                                  <Maximize2 className="h-3.5 w-3.5" />
-                                  {student.is_fullscreen ? "Fullscreen" : "Windowed"}
-                                </span>
-                                <span>•</span>
-                                <span
-                                  className={`inline-flex items-center gap-1 text-[11px] font-semibold ${
-                                    student.is_focused ? "text-sage" : "text-burgundy-light"
-                                  }`}
-                                  title={student.is_focused ? "Tab Focused" : "Tab Switched Away / Blurred"}
-                                >
-                                  {student.is_focused ? (
-                                    <ShieldCheck className="h-3.5 w-3.5" />
-                                  ) : (
-                                    <ShieldAlert className="h-3.5 w-3.5" />
-                                  )}
-                                  {student.is_focused ? "Active" : "Unfocused"}
-                                </span>
-                              </div>
-                            ) : student.status === "SUBMITTED" ? (
-                              <span className="text-[11px] text-text-muted flex items-center gap-1">
-                                <CheckCircle2 className="h-3.5 w-3.5 text-sage" />
-                                Completed
-                              </span>
-                            ) : (
-                              <span className="text-[11px] text-text-faint">—</span>
-                            )}
-                          </td>
+                        {/* Status Pill */}
+                        <div>
+                          {student.status === "SUBMITTED" ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-sage-ghost px-2.5 py-0.5 text-[10px] font-bold text-sage border border-sage-border">
+                              <CheckCircle2 className="h-3 w-3" />
+                              Submitted
+                            </span>
+                          ) : student.status === "TAKING" ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-steel-ghost px-2.5 py-0.5 text-[10px] font-bold text-steel border border-steel-border animate-pulse">
+                              <Monitor className="h-3 w-3" />
+                              Taking Exam
+                            </span>
+                          ) : student.status === "IN_LOBBY" ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-tan-ghost px-2.5 py-0.5 text-[10px] font-bold text-tan border border-tan-border">
+                              <Clock className="h-3 w-3" />
+                              Ready in Lobby
+                            </span>
+                          ) : student.status === "DISCONNECTED" ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-surface-subtle px-2 py-0.5 text-[10px] font-bold text-text-muted border border-border-default">
+                              Disconnected
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-surface-base px-2 py-0.5 text-[10px] font-semibold text-text-faint border border-border-default">
+                              Not Joined
+                            </span>
+                          )}
+                        </div>
+                      </div>
 
-                          {/* Alt-Tab & Fullscreen Exit Counts */}
-                          <td className="py-3 px-4">
-                            <div className="flex flex-col gap-1">
-                              <span
-                                className={`inline-flex w-fit items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg border ${
-                                  student.tab_switches > 0
-                                    ? "text-burgundy-light bg-burgundy-ghost border-burgundy-border"
-                                    : "text-text-muted bg-surface-base border-border-default"
-                                }`}
-                                title="Times the student Alt-Tabbed / switched away from the exam window"
-                              >
-                                {student.tab_switches > 0 && <AlertTriangle className="h-3.5 w-3.5" />}
-                                {student.tab_switches} alt-tab{student.tab_switches === 1 ? "" : "s"}
-                              </span>
-                              <span
-                                className={`text-[10px] ${
-                                  student.fullscreen_exits > 0 ? "text-tan font-semibold" : "text-text-faint"
-                                }`}
-                              >
-                                {student.fullscreen_exits} fullscreen exit{student.fullscreen_exits === 1 ? "" : "s"}
-                              </span>
-                            </div>
-                          </td>
+                      {/* Proctoring & Integrity Health */}
+                      <div className="space-y-2 py-2 border-t border-border-default/50 text-xs">
+                        {/* Focus & Fullscreen status */}
+                        {(student.status === "IN_LOBBY" || student.status === "TAKING") && (
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-text-muted flex items-center gap-1">
+                              <Maximize2 className="h-3.5 w-3.5 text-text-faint" />
+                              Screen:
+                            </span>
+                            <span
+                              className={`font-semibold ${
+                                student.is_fullscreen ? "text-sage" : "text-burgundy-light font-bold"
+                              }`}
+                            >
+                              {student.is_fullscreen ? "Fullscreen Locked" : "Windowed"}
+                            </span>
+                          </div>
+                        )}
 
-                          {/* Score & Timestamp */}
-                          <td className="py-3 px-4">
-                            {student.status === "SUBMITTED" ? (
-                              <div>
-                                <span className="font-bold text-text-primary text-xs">
-                                  {student.total_score} / {student.max_score || totalQuestions}
-                                </span>{" "}
-                                <span className="text-text-muted font-mono text-[10px]">
-                                  (
-                                  {student.max_score
-                                    ? Math.round((student.total_score! / student.max_score) * 100)
-                                    : 0}
-                                  %)
-                                </span>
-                                {student.submitted_at && (
-                                  <div className="text-[10px] text-text-muted">
-                                    {new Date(student.submitted_at).toLocaleTimeString([], {
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                      second: "2-digit",
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-[11px] text-text-faint">—</span>
-                            )}
-                          </td>
+                        {/* Live Answer progress if taking */}
+                        {student.status === "TAKING" && (
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-text-muted">Progress:</span>
+                            <span className="font-bold text-steel font-mono">
+                              {student.answers?.length || 0} / {totalQuestions} answered
+                            </span>
+                          </div>
+                        )}
 
-                          {/* Actions */}
-                          <td className="py-3 px-4 text-right">
-                            {student.status === "SUBMITTED" ? (
-                              <div className="inline-flex items-center gap-1.5">
-                                {student.answers && student.answers.length > 0 && (
-                                  <button
-                                    type="button"
-                                    id={`view-answers-${student.student_id}`}
-                                    onClick={() => setSelectedStudentForAnswers(student)}
-                                    className="inline-flex items-center gap-1.5 rounded-lg border border-steel-border bg-steel/15 px-2.5 py-1 text-xs font-bold text-steel-light hover:bg-steel/25 transition-all cursor-pointer"
-                                  >
-                                    <Eye className="h-3.5 w-3.5" />
-                                    Answers
-                                  </button>
-                                )}
-                                <button
-                                  type="button"
-                                  id={`allow-retake-${student.student_id}`}
-                                  onClick={() => {
-                                    setResetCounters(true);
-                                    setRetakeTarget(student);
-                                  }}
-                                  className="inline-flex items-center gap-1.5 rounded-lg border border-tan-border bg-tan-ghost px-2.5 py-1 text-xs font-bold text-tan hover:brightness-110 transition-all cursor-pointer"
-                                  title="Give this student another chance to take the exam"
-                                >
-                                  <RotateCcw className="h-3.5 w-3.5" />
-                                  Allow Retake
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="text-[11px] text-text-faint">—</span>
+                        {/* Score if submitted */}
+                        {student.status === "SUBMITTED" && student.total_score !== null && (
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-text-muted">Final Score:</span>
+                            <span className="font-bold text-sage font-mono text-sm">
+                              {student.total_score} / {student.max_score || totalQuestions}
+                              <span className="text-[10px] text-text-muted font-normal ml-1">
+                                ({student.max_score ? Math.round((student.total_score / student.max_score) * 100) : 0}%)
+                              </span>
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Violation Indicator */}
+                        {hasViolations && (
+                          <div className="flex items-center justify-between rounded-xl bg-burgundy-ghost/50 border border-burgundy-border px-2.5 py-1 text-[10px] font-bold text-burgundy-light">
+                            <span className="flex items-center gap-1">
+                              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                              {student.tab_switches} alt-tab{student.tab_switches === 1 ? "" : "s"}
+                            </span>
+                            {student.fullscreen_exits > 0 && (
+                              <span>{student.fullscreen_exits} window exit{student.fullscreen_exits === 1 ? "" : "s"}</span>
                             )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Bottom Action Footer on Card */}
+                    <div className="pt-3 mt-2 border-t border-border-default/50 flex items-center justify-end gap-1.5">
+                      {student.status === "SUBMITTED" && student.answers && student.answers.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedStudentForAnswers(student)}
+                          className="inline-flex items-center gap-1 rounded-xl border border-steel-border bg-steel-ghost px-2.5 py-1 text-[11px] font-bold text-steel hover:bg-steel/20 transition-all cursor-pointer"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          Answers
+                        </button>
+                      )}
+
+                      {(student.status === "SUBMITTED" || hasViolations || student.auto_submitted) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setResetCounters(true);
+                            setRetakeTarget(student);
+                          }}
+                          className="inline-flex items-center gap-1 rounded-xl border border-tan-border bg-tan-ghost px-2.5 py-1 text-[11px] font-bold text-tan hover:brightness-110 transition-all cursor-pointer"
+                          title="Allow student another attempt"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          Allow Retake
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* ── DETAILED AUDIT TABLE VIEW ───────────────────────────── */
+            <div className="overflow-x-auto rounded-2xl border border-border-default">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-surface-base border-b border-border-default text-[11px] font-bold text-text-secondary uppercase tracking-wider">
+                  <tr>
+                    <th className="py-3 px-4">Student</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4">Screen / Focus Health</th>
+                    <th className="py-3 px-4">Violations</th>
+                    <th className="py-3 px-4">Score</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border-default/50 bg-surface-overlay">
+                  {filteredStudents.map((student) => (
+                    <tr key={student.student_id} className="hover:bg-surface-subtle/40 transition-colors">
+                      <td className="py-3 px-4">
+                        <div className="font-bold text-text-primary">{student.name}</div>
+                        <div className="font-mono text-[10px] text-text-muted">
+                          ID: {student.student_number}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        {student.status === "SUBMITTED" ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-sage-ghost px-2.5 py-0.5 text-[10px] font-bold text-sage border border-sage-border">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Submitted
+                          </span>
+                        ) : student.status === "TAKING" ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-steel-ghost px-2.5 py-0.5 text-[10px] font-bold text-steel border border-steel-border animate-pulse">
+                            <Monitor className="h-3 w-3" />
+                            Taking Exam
+                          </span>
+                        ) : student.status === "IN_LOBBY" ? (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-tan-ghost px-2.5 py-0.5 text-[10px] font-bold text-tan border border-tan-border">
+                            <Clock className="h-3 w-3" />
+                            In Lobby
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-surface-base px-2 py-0.5 text-[10px] font-semibold text-text-faint border border-border-default">
+                            {student.status === "DISCONNECTED" ? "Disconnected" : "Not Joined"}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        {(student.status === "IN_LOBBY" || student.status === "TAKING") ? (
+                          <span className={student.is_fullscreen ? "text-sage font-semibold" : "text-burgundy-light font-bold"}>
+                            {student.is_fullscreen ? "Fullscreen" : "Windowed"} • {student.is_focused ? "Active" : "Unfocused"}
+                          </span>
+                        ) : (
+                          <span className="text-text-faint">—</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        {student.tab_switches > 0 ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg border text-burgundy-light bg-burgundy-ghost border-burgundy-border">
+                            <AlertTriangle className="h-3.5 w-3.5" />
+                            {student.tab_switches} alt-tab{student.tab_switches === 1 ? "" : "s"}
+                          </span>
+                        ) : (
+                          <span className="text-text-muted text-[11px]">0 violations</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 font-mono">
+                        {student.status === "SUBMITTED" ? (
+                          <span className="font-bold text-sage">
+                            {student.total_score} / {student.max_score || totalQuestions}
+                          </span>
+                        ) : (
+                          <span className="text-text-faint">—</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="inline-flex items-center gap-1.5">
+                          {student.status === "SUBMITTED" && student.answers && student.answers.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedStudentForAnswers(student)}
+                              className="rounded-lg border border-steel-border bg-steel-ghost px-2 py-1 text-xs font-bold text-steel hover:bg-steel/20 cursor-pointer"
+                            >
+                              Answers
+                            </button>
+                          )}
+                          {(student.status === "SUBMITTED" || student.tab_switches > 0) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setResetCounters(true);
+                                setRetakeTarget(student);
+                              }}
+                              className="rounded-lg border border-tan-border bg-tan-ghost px-2 py-1 text-xs font-bold text-tan hover:brightness-110 cursor-pointer"
+                            >
+                              Retake
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
 
-        {/* Footer info note */}
+        {/* ── Footer note ────────────────────────────────────────────── */}
         <div className="p-4 border-t border-border-default bg-surface-base flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs text-text-muted shrink-0">
           <div className="flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-tan shrink-0" />
             <span>
-              <strong>Lobby Flow:</strong> Direct students to log in and click <em>Enter Exam Lobby</em>. When everyone is in fullscreen mode, click <strong>Release & Start Exam</strong> to start all tests together.
+              <strong>Lobby Workflow:</strong> Direct students to log in and enter the lobby. When students show <strong>Ready in Lobby</strong>, click <strong>Start Exam for Class</strong> to start simultaneously.
             </span>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-border-emphasis bg-surface-subtle px-4 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-muted transition-colors cursor-pointer self-end sm:self-auto"
+            className="rounded-xl border border-border-default bg-surface-subtle px-4 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-muted transition-colors cursor-pointer self-end sm:self-auto"
           >
             Close Monitor
           </button>
