@@ -1067,8 +1067,10 @@ export interface StudentNotificationItem {
   title: string;
   message: string;
   created_at: string;
+  is_done?: boolean;
   data: {
     request_id?: string;
+    status?: string;
     sender_student_id?: string;
     sender_name?: string;
     sender_full_student_id?: string;
@@ -1082,6 +1084,7 @@ export interface StudentNotificationItem {
     percentage?: number;
     total_score?: number;
     max_score?: number;
+    is_submitted?: boolean;
   };
 }
 

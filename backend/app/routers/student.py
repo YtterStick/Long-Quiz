@@ -1615,7 +1615,7 @@ async def get_student_notifications(
     student = await _get_student(current_user, db)
     notifications: list[dict] = []
 
-    # 1. Pending incoming friend requests
+    # 1. Incoming friend requests (pending and accepted)
     friend_requests_res = await db.execute(
         select(Friendship)
         .options(
@@ -1624,24 +1624,28 @@ async def get_student_notifications(
         )
         .where(
             Friendship.receiver_student_id == student.id,
-            Friendship.status == FriendshipStatus.PENDING,
+            Friendship.status.in_([FriendshipStatus.PENDING, FriendshipStatus.ACCEPTED]),
         )
         .order_by(Friendship.created_at.desc())
+        .limit(15)
     )
-    pending_friendships = friend_requests_res.scalars().all()
-    for f in pending_friendships:
+    friendships = friend_requests_res.scalars().all()
+    for f in friendships:
         sender_user = f.sender.user if f.sender else None
         sender_name = f"{sender_user.first_name} {sender_user.last_name}" if sender_user else "A student"
         sender_id_formatted = format_full_student_id(f.sender.student_number) if f.sender else ""
         section_name = f.sender.section.name if f.sender and f.sender.section else None
+        is_accepted = f.status == FriendshipStatus.ACCEPTED
         notifications.append({
             "id": f"friend_req_{f.id}",
             "type": "FRIEND_REQUEST",
-            "title": "Friend Request",
-            "message": f"{sender_name} sent you a study circle friend request.",
+            "title": "Friend Request Accepted" if is_accepted else "Friend Request",
+            "message": f"You and {sender_name} are now study circle friends." if is_accepted else f"{sender_name} sent you a study circle friend request.",
             "created_at": f.created_at.isoformat(),
+            "is_done": is_accepted,
             "data": {
                 "request_id": f.id,
+                "status": f.status.value,
                 "sender_student_id": f.sender_student_id,
                 "sender_name": sender_name,
                 "sender_full_student_id": sender_id_formatted,
@@ -1670,6 +1674,7 @@ async def get_student_notifications(
             "title": "Study Deck Shared",
             "message": f"{sender_name} shared '{sd.title}' with you.",
             "created_at": sd.created_at.isoformat(),
+            "is_done": False,
             "data": {
                 "deck_id": sd.id,
                 "title": sd.title,
@@ -1713,19 +1718,21 @@ async def get_student_notifications(
         submitted_exam_ids = set(subs_res.scalars().all())
 
         for exam_id, exam in exam_online_map.items():
-            if exam_id not in submitted_exam_ids:
-                notifications.append({
-                    "id": f"exam_avail_{exam.id}",
-                    "type": "EXAM_AVAILABLE",
-                    "title": "Online Quiz Active",
-                    "message": f"'{exam.title}' ({exam.total_questions} questions) is currently open for your section.",
-                    "created_at": exam.created_at.isoformat(),
-                    "data": {
-                        "exam_id": exam.id,
-                        "title": exam.title,
-                        "total_questions": exam.total_questions,
-                    },
-                })
+            is_submitted = exam_id in submitted_exam_ids
+            notifications.append({
+                "id": f"exam_avail_{exam.id}",
+                "type": "EXAM_AVAILABLE",
+                "title": "Online Quiz Completed" if is_submitted else "Online Quiz Active",
+                "message": f"'{exam.title}' - Completed and submitted." if is_submitted else f"'{exam.title}' ({exam.total_questions} questions) is currently open for your section.",
+                "created_at": exam.created_at.isoformat(),
+                "is_done": is_submitted,
+                "data": {
+                    "exam_id": exam.id,
+                    "title": exam.title,
+                    "total_questions": exam.total_questions,
+                    "is_submitted": is_submitted,
+                },
+            })
 
     # 4. Released Exam Grades
     grades_res = await db.execute(
@@ -1753,6 +1760,7 @@ async def get_student_notifications(
                 "title": "Exam Results Released",
                 "message": f"Grades for '{sub.exam.title}' are published: {pct}% ({sub.total_score}/{sub.max_score}).",
                 "created_at": time_val,
+                "is_done": False,
                 "data": {
                     "exam_id": sub.exam_id,
                     "title": sub.exam.title,
