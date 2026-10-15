@@ -1391,7 +1391,7 @@ async def update_questionnaire(
     """Save or update the questionnaire (questions, choices, explanations) for an exam separately from the answer keys."""
     teacher = await _get_teacher(current_user, db)
     result = await db.execute(
-        select(Exam).options(selectinload(Exam.questions)).where(
+        select(Exam).options(selectinload(Exam.questions), selectinload(Exam.answer_keys)).where(
             Exam.id == exam_id, Exam.teacher_id == teacher.id
         )
     )
@@ -1415,6 +1415,21 @@ async def update_questionnaire(
             explanation=q.explanation,
         ))
     await db.flush()
+
+    if body.answer_keys is not None:
+        for key in exam.answer_keys:
+            await db.delete(key)
+        await db.flush()
+
+        for ak in body.answer_keys:
+            db.add(ExamAnswerKey(
+                exam_id=exam.id,
+                question_number=ak.question_number,
+                correct_option=ak.correct_option,
+            ))
+        await db.flush()
+
+    await db.commit()
 
     result = await db.execute(
         select(ExamQuestion).where(ExamQuestion.exam_id == exam.id).order_by(ExamQuestion.question_number)

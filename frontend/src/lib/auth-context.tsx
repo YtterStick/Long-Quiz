@@ -1,7 +1,10 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { auth as authApi } from "@/lib/api";
+import { auth as authApi, ApiError } from "@/lib/api";
+
+const TOKEN_KEY = "token";
+const USER_KEY = "evalo_user";
 
 interface User {
   id: string;
@@ -24,64 +27,101 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+
+  const clearSession = useCallback(() => {
+    setUser(null);
+    setToken(null);
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(USER_KEY);
+    }
+  }, []);
 
   const refreshUser = useCallback(async () => {
     try {
       const me = await authApi.getMe();
       setUser(me as User);
-    } catch {
-      setUser(null);
-      setToken(null);
       if (typeof window !== "undefined") {
-        localStorage.removeItem("token");
+        localStorage.setItem(USER_KEY, JSON.stringify(me));
+      }
+    } catch (err) {
+      // ONLY clear session if server explicitly returns 401 Unauthorized
+      if (err instanceof ApiError && err.status === 401) {
+        clearSession();
       }
     }
-  }, []);
+  }, [clearSession]);
 
   useEffect(() => {
     let ignore = false;
-    const storedToken = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-    if (storedToken) {
-      setToken(storedToken);
-      authApi
-        .getMe()
-        .then((me) => {
-          if (!ignore) {
-            setUser(me as User);
-          }
-        })
-        .catch(() => {
-          if (!ignore) {
-            setUser(null);
-            setToken(null);
-            if (typeof window !== "undefined") {
-              localStorage.removeItem("token");
-            }
-          }
-        })
-        .finally(() => {
-          if (!ignore) {
-            setLoading(false);
-          }
-        });
-    } else {
+    const storedToken = typeof window !== "undefined" ? localStorage.getItem(TOKEN_KEY) : null;
+
+    if (!storedToken) {
       setLoading(false);
+      return;
     }
+
+    setToken(storedToken);
+
+    // Hydrate user immediately from cached storage on client mount
+    const storedUser = typeof window !== "undefined" ? localStorage.getItem(USER_KEY) : null;
+    if (storedUser) {
+      try {
+        setUser(JSON.parse(storedUser));
+        setLoading(false);
+      } catch {
+        // ignore malformed cached json
+      }
+    }
+
+    // Stale-while-revalidate verification with backend
+    authApi
+      .getMe()
+      .then((me) => {
+        if (!ignore) {
+          setUser(me as User);
+          if (typeof window !== "undefined") {
+            localStorage.setItem(USER_KEY, JSON.stringify(me));
+          }
+        }
+      })
+      .catch((err) => {
+        if (!ignore) {
+          // CRITICAL: Only log out if credentials are fundamentally invalid (401).
+          // Do NOT log out on connection aborts from spam-refreshing or network drops!
+          if (err instanceof ApiError && err.status === 401) {
+            clearSession();
+          } else {
+            console.warn("Auth verification network hiccup; preserving existing session:", err);
+          }
+        }
+      })
+      .finally(() => {
+        if (!ignore) {
+          setLoading(false);
+        }
+      });
+
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [clearSession]);
 
   const login = async (username: string, password: string) => {
     const result = await authApi.login(username, password);
-    localStorage.setItem("token", result.access_token);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(TOKEN_KEY, result.access_token);
+    }
     setToken(result.access_token);
 
     const me = await authApi.getMe();
     setUser(me as User);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(USER_KEY, JSON.stringify(me));
+    }
     setLoading(false);
 
     return {
@@ -91,9 +131,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => {
-    localStorage.removeItem("token");
-    setToken(null);
-    setUser(null);
+    clearSession();
   };
 
   return (

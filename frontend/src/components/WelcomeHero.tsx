@@ -34,13 +34,14 @@ const ROLE_QUOTES: Record<RoleKey, DailyQuoteItem[]> = {
   ],
   teacher: [
     { text: "Education is not the filling of a pail, but the lighting of a fire.", author: "W.B. Yeats" },
-    { text: "Teaching is the one profession that creates all other professions.", author: "Unknown" },
+    { text: "Teaching is the one profession that creates all other professions.", author: "Colleen Wilcox" },
+    { text: "It is the supreme art of the teacher to awaken joy in creative expression and knowledge.", author: "Albert Einstein" },
     { text: "What we learn with pleasure we never forget.", author: "Alfred Mercier" },
   ],
   student: [
     { text: "The expert in anything was once a beginner.", author: "Helen Hayes" },
     { text: "The more that you read, the more things you will know. The more that you learn, the more places you'll go.", author: "Dr. Seuss" },
-    { text: "Mistakes are proof that you are trying.", author: "Unknown" },
+    { text: "A person who never made a mistake never tried anything new.", author: "Albert Einstein" },
   ],
 };
 
@@ -92,7 +93,7 @@ export function WelcomeHero({
   loading = false,
   meta,
   badges,
-  showRoleBadge = true,
+  showRoleBadge = false,
   description,
   actions,
   aside,
@@ -117,62 +118,75 @@ export function WelcomeHero({
       <div className={`pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full blur-3xl ${t.heroGlowA}`} />
       <div className={`pointer-events-none absolute -left-16 -bottom-28 h-64 w-64 rounded-full blur-3xl ${t.heroGlowB}`} />
 
-      <div className="relative z-10 grid items-center gap-6 p-5 sm:p-8 md:grid-cols-[1fr_auto]">
-        {/* ── Text column ── */}
-        <div className="min-w-0">
-          {hasBadgesRow && (
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              {showRoleBadge && (
-                <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-bold ${t.badge}`}>
-                  <RoleIcon className="h-3.5 w-3.5" />
-                  {t.label}
-                </span>
-              )}
-              {badges}
-              {meta && <span className="text-xs font-medium text-text-muted">{meta}</span>}
-            </div>
-          )}
-
-          <h1
-            id="welcome-hero-title"
-            className="flex flex-wrap items-center gap-x-2 text-2xl font-black tracking-tight text-text-primary sm:text-3xl lg:text-4xl"
-          >
-            Welcome back,
-            {loading || !name ? (
-              <span className="inline-block h-8 w-36 animate-pulse rounded-lg bg-surface-muted align-middle" />
-            ) : (
-              <span className="gradient-text">{name}</span>
+      <div className="relative z-10 p-5 sm:p-8">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 sm:gap-6">
+          {/* Header row on mobile: avatar + text side-by-side */}
+          <div className="flex items-start gap-4 flex-1 min-w-0">
+            {customIllustration && (
+              <div className="shrink-0 md:hidden pt-0.5">{customIllustration}</div>
             )}
-          </h1>
+            <div className="min-w-0 flex-1">
+              {hasBadgesRow && (
+                <div className="mb-2.5 flex flex-wrap items-center gap-2">
+                  {showRoleBadge && (
+                    <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-bold ${t.badge}`}>
+                      <RoleIcon className="h-3.5 w-3.5" />
+                      {t.label}
+                    </span>
+                  )}
+                  {badges}
+                  {meta && <span className="text-xs font-medium text-text-muted">{meta}</span>}
+                </div>
+              )}
 
-          <p className="mt-2 max-w-2xl text-xs leading-relaxed text-text-muted sm:text-sm">{description}</p>
+              <h1
+                id="welcome-hero-title"
+                className="flex flex-wrap items-center gap-x-2 text-xl sm:text-3xl lg:text-4xl font-black tracking-tight text-text-primary"
+              >
+                Welcome back,
+                {loading || !name ? (
+                  <span className="inline-block h-7 sm:h-8 w-32 sm:w-36 animate-pulse rounded-lg bg-surface-muted align-middle" />
+                ) : (
+                  <span className="gradient-text">{name}</span>
+                )}
+              </h1>
 
-          {actions && <div className="mt-5 flex flex-wrap items-center gap-3">{actions}</div>}
+              <p className="mt-1.5 max-w-2xl text-xs leading-relaxed text-text-muted sm:text-sm">{description}</p>
+
+              {/* Mobile aside widget (e.g. Overall Average) */}
+              {aside && (
+                <div className="mt-3.5 md:hidden">
+                  {aside}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Desktop avatar / illustration */}
+          <div className="hidden md:flex items-center gap-6 justify-end shrink-0">
+            {aside}
+            {customIllustration ? (
+              <div className="shrink-0">{customIllustration}</div>
+            ) : (
+              <Illustration className="hidden h-44 w-56 shrink-0 drop-shadow-lg md:block lg:h-48 lg:w-64" />
+            )}
+          </div>
         </div>
 
-        {/* ── Illustration / aside column ── */}
-        <div className="flex items-center gap-6 md:justify-end">
-          {aside}
-          {customIllustration ? (
-            <div className="shrink-0">{customIllustration}</div>
-          ) : (
-            <Illustration className="hidden h-44 w-56 shrink-0 drop-shadow-lg md:block lg:h-48 lg:w-64" />
-          )}
-        </div>
+        {actions && <div className="mt-4 sm:mt-5 flex flex-wrap items-center gap-2.5 sm:gap-3">{actions}</div>}
       </div>
 
       {/* ── Quote of the day ── */}
-      <figure className="relative z-10 flex items-start gap-3 border-t border-border-default/70 bg-surface-base/50 px-5 py-3.5 sm:px-8">
-        <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border ${t.badge}`}>
-          <Quote className="h-3.5 w-3.5" />
+      <figure className="relative z-10 flex items-center gap-2.5 sm:gap-3 border-t border-border-default/70 bg-surface-base/50 px-5 py-2.5 sm:px-8 text-xs text-text-secondary">
+        <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border ${t.badge}`}>
+          <Quote className="h-3 w-3" />
         </span>
-        <div className="min-w-0">
-          <span className="block text-[10px] font-bold uppercase tracking-wider text-text-faint">
-            Thought for today
-          </span>
-          <blockquote suppressHydrationWarning className="text-xs italic leading-relaxed text-text-secondary sm:text-[13px]">
+        <div className="min-w-0 flex-1 truncate">
+          <blockquote suppressHydrationWarning className="truncate italic text-xs leading-relaxed text-text-secondary">
             &ldquo;{quote.text}&rdquo;
-            <cite className={`ml-1.5 not-italic font-semibold ${t.text}`}>— {quote.author}</cite>
+            {quote.author && quote.author.toLowerCase() !== "unknown" && (
+              <cite className={`ml-1.5 not-italic font-semibold ${t.text}`}>— {quote.author}</cite>
+            )}
           </blockquote>
         </div>
       </figure>

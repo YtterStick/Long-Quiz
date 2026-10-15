@@ -566,18 +566,26 @@ export const teacher = {
     }>;
   }) => request(`/api/teacher/exams/${id}`, { method: "PUT", body: data }),
 
-  updateQuestionnaire: (examId: string, questions: Array<{
-    question_number: number;
-    question_text: string;
-    option_a?: string | null;
-    option_b?: string | null;
-    option_c?: string | null;
-    option_d?: string | null;
-    explanation?: string | null;
-  }>) => request(`/api/teacher/exams/${examId}/questionnaire`, {
-    method: "PUT",
-    body: { questions },
-  }),
+  updateQuestionnaire: (
+    examId: string,
+    questions: Array<{
+      question_number: number;
+      question_text: string;
+      option_a?: string | null;
+      option_b?: string | null;
+      option_c?: string | null;
+      option_d?: string | null;
+      explanation?: string | null;
+    }>,
+    answer_keys?: Array<{
+      question_number: number;
+      correct_option: string;
+    }>
+  ) =>
+    request(`/api/teacher/exams/${examId}/questionnaire`, {
+      method: "PUT",
+      body: { questions, answer_keys },
+    }),
 
   getQuestionnaire: (examId: string) => request<Array<{
     id: string;
@@ -950,7 +958,141 @@ export const student = {
         deck: GeneratedReviewerDeck;
       }>
     >("/api/student/shared-decks"),
+
+  // Friends & Study Circle
+  getFriends: () => request<StudentFriendsData>("/api/student/friends"),
+
+  searchFriends: (q: string) =>
+    request<StudentFriendCard[]>(`/api/student/friends/search?q=${encodeURIComponent(q)}`),
+
+  sendFriendRequest: (target_student_id: string) =>
+    request<{ ok: boolean; message: string }>("/api/student/friends/request", {
+      method: "POST",
+      body: { target_student_id },
+    }),
+
+  respondFriendRequest: (request_id: string, action: "ACCEPT" | "DECLINE") =>
+    request<{ ok: boolean; message: string }>(`/api/student/friends/request/${request_id}`, {
+      method: "PUT",
+      body: { action },
+    }),
+
+  removeFriend: (friend_student_id: string) =>
+    request<{ ok: boolean; message: string }>(`/api/student/friends/${friend_student_id}`, {
+      method: "DELETE",
+    }),
+
+  // Deck Sharing
+  shareDeck: (data: { receiver_student_id: string; title: string; deck_data: GeneratedReviewerDeck; note?: string }) =>
+    request<{ ok: boolean; message: string }>("/api/student/reviewer/share", {
+      method: "POST",
+      body: data,
+    }),
+
+  getSharedWithMeDecks: () =>
+    request<FriendSharedDeckItem[]>("/api/student/reviewer/shared-with-me"),
+
+  dismissSharedDeck: (share_id: string) =>
+    request<{ ok: boolean; message: string }>(`/api/student/reviewer/shared-with-me/${share_id}`, {
+      method: "DELETE",
+    }),
+
+  // Student Notifications
+  getNotifications: () =>
+    request<StudentNotificationItem[]>("/api/student/notifications"),
+
+  // Custom & Cloud Saved Decks
+  getCustomDecks: () =>
+    request<CustomStudentDeckItem[]>("/api/student/reviewer/custom-decks"),
+
+  createCustomDeck: (data: { title: string; description?: string; deck_data: GeneratedReviewerDeck }) =>
+    request<CustomStudentDeckItem>("/api/student/reviewer/custom-decks", {
+      method: "POST",
+      body: data,
+    }),
+
+  updateCustomDeck: (
+    deck_id: string,
+    data: { title?: string; description?: string; deck_data?: GeneratedReviewerDeck }
+  ) =>
+    request<CustomStudentDeckItem>(`/api/student/reviewer/custom-decks/${deck_id}`, {
+      method: "PUT",
+      body: data,
+    }),
+
+  deleteCustomDeck: (deck_id: string) =>
+    request<{ ok: boolean; message: string }>(`/api/student/reviewer/custom-decks/${deck_id}`, {
+      method: "DELETE",
+    }),
 };
+
+export interface StudentFriendCard {
+  student_id: string;
+  student_number: number;
+  full_student_id: string;
+  first_name: string;
+  last_name: string;
+  full_name: string;
+  username: string;
+  avatar_config?: string | null;
+  bio?: string | null;
+  section_id?: string | null;
+  section_name?: string | null;
+  friendship_id?: string;
+  request_id?: string;
+  since?: string;
+  requested_at?: string;
+  relationship_status?: "FRIEND" | "PENDING_INCOMING" | "PENDING_OUTGOING" | "NONE";
+}
+
+export interface StudentFriendsData {
+  friends: StudentFriendCard[];
+  incoming_requests: StudentFriendCard[];
+  outgoing_requests: StudentFriendCard[];
+  classmates: StudentFriendCard[];
+}
+
+export interface FriendSharedDeckItem {
+  id: string;
+  title: string;
+  note?: string | null;
+  created_at: string;
+  sender?: StudentFriendCard | null;
+  deck: GeneratedReviewerDeck;
+}
+
+export interface StudentNotificationItem {
+  id: string;
+  type: "FRIEND_REQUEST" | "SHARED_DECK" | "EXAM_AVAILABLE" | "GRADE_RELEASED";
+  title: string;
+  message: string;
+  created_at: string;
+  data: {
+    request_id?: string;
+    sender_student_id?: string;
+    sender_name?: string;
+    sender_full_student_id?: string;
+    section_name?: string | null;
+    avatar_config?: string | null;
+    deck_id?: string;
+    title?: string;
+    note?: string | null;
+    exam_id?: string;
+    total_questions?: number;
+    percentage?: number;
+    total_score?: number;
+    max_score?: number;
+  };
+}
+
+export interface CustomStudentDeckItem {
+  id: string;
+  title: string;
+  description?: string | null;
+  created_at: string;
+  updated_at: string;
+  deck: GeneratedReviewerDeck;
+}
 
 export interface ReviewerTopic {
   topic_name: string;
@@ -978,6 +1120,7 @@ export interface ReviewerQuizCard {
 }
 
 export interface GeneratedReviewerDeck {
+  id?: string;
   title: string;
   total_pointers: number;
   total_flashcards: number;
@@ -992,4 +1135,5 @@ export interface GeneratedReviewerDeck {
 }
 
 export { ApiError };
+
 

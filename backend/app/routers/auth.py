@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import joinedload
 from app.database import get_db
 from app.models import User, Student, PasswordResetRequest, ResetRequestStatus
@@ -21,13 +21,12 @@ router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     """Authenticate user and return JWT token."""
     input_username = body.username.strip()
-    result = await db.execute(select(User).where(User.username == input_username))
+    result = await db.execute(select(User).where(func.lower(User.username) == input_username.lower()))
     user = result.scalar_one_or_none()
 
     if user is None:
-        # Check if the input is a Student ID or numerical OMR ID
+        # Check if the input is a Student ID, numerical OMR ID, or {name}.{student_number}
         try:
-            from app.utils import clean_student_omr_number
             from app.models import Student
             st_num = clean_student_omr_number(input_username)
             student_res = await db.execute(
@@ -37,7 +36,7 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
             if student:
                 user_res = await db.execute(select(User).where(User.id == student.user_id))
                 user = user_res.scalar_one_or_none()
-        except ValueError:
+        except (ValueError, Exception):
             pass
 
     if user is None:

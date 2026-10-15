@@ -63,17 +63,30 @@ def clean_student_omr_number(raw_id: str | int | None) -> int:
 
     clean = str(raw_id).strip().replace("-", "").replace(" ", "")
     if "." in clean:
-        clean = clean.split(".")[0]
+        parts = clean.split(".")
+        # If float format from Excel (e.g. 282222.0)
+        if parts[0].isdigit() and len(parts[0]) >= 5:
+            clean = parts[0]
+        # If username format (e.g. uvero.610807)
+        elif parts[-1].isdigit():
+            clean = parts[-1]
+        elif parts[0].isdigit():
+            clean = parts[0]
 
     if clean.startswith(STATIC_STUDENT_PREFIX):
         clean = clean[len(STATIC_STUDENT_PREFIX):]
     elif clean.startswith("2000") and len(clean) == 10:
         clean = clean[4:]
-    elif len(clean) > 6:
+    elif len(clean) > 6 and clean.isdigit():
         clean = clean[-6:]
 
     if not clean.isdigit() or len(clean) == 0:
-        raise ValueError("Student OMR digit must be numerical digits (e.g. 282222 or 2000361208)")
+        import re
+        match = re.search(r"\d{5,6}", str(raw_id))
+        if match:
+            clean = match.group(0)
+        else:
+            raise ValueError("Student OMR digit must be numerical digits (e.g. 282222 or 2000361208)")
 
     return int(clean)
 

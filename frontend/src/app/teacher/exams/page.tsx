@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/Navbar";
@@ -109,10 +109,17 @@ export default function TeacherExamsPage() {
   // Dedicated Questionnaire Modal state
   const [questionnaireExam, setQuestionnaireExam] = useState<ExamItem | null>(null);
   const [questionnaireList, setQuestionnaireList] = useState<QuestionItem[]>([]);
+  const [questionnaireKeys, setQuestionnaireKeys] = useState<Record<number, string>>({});
   const [loadingQuestionnaire, setLoadingQuestionnaire] = useState(false);
   const [savingQuestionnaire, setSavingQuestionnaire] = useState(false);
   const [questionnaireSuccess, setQuestionnaireSuccess] = useState<string | null>(null);
   const [questionFilter, setQuestionFilter] = useState<"all" | "missing" | "completed">("all");
+
+  // Discard confirmation & snapshot state for unsaved changes guard
+  const initialQuestionnaireSnapshotRef = useRef<string>("");
+  const initialBuilderSnapshotRef = useRef<string>("");
+  const [showDiscardQuestionnaireConfirm, setShowDiscardQuestionnaireConfirm] = useState(false);
+  const [showDiscardBuilderConfirm, setShowDiscardBuilderConfirm] = useState(false);
 
   // Toggling state trackers
   const [togglingVisibilityId, setTogglingVisibilityId] = useState<string | null>(null);
@@ -189,6 +196,21 @@ export default function TeacherExamsPage() {
     };
   }, [user, includePublic]);
 
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const isDirty =
+        (questionnaireExam && isQuestionnaireDirty()) ||
+        (isBuilderOpen && isBuilderDirty());
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  });
+
   const openNewBuilder = () => {
     setEditingExam(null);
     setTitle("");
@@ -217,6 +239,17 @@ export default function TeacherExamsPage() {
     }
     setKeys(defaultKeys);
     setQuestionsData(defaultQuestions);
+    initialBuilderSnapshotRef.current = JSON.stringify({
+      title: "",
+      totalQuestions: 50,
+      isPublic: false,
+      shuffleQuestions: false,
+      shuffleOptions: false,
+      hasTimeLimit: false,
+      timeLimitMinutes: 60,
+      keys: defaultKeys,
+      questionsData: defaultQuestions,
+    });
     setIsBuilderOpen(true);
   };
 
@@ -260,7 +293,42 @@ export default function TeacherExamsPage() {
     }
     setKeys(existingKeys);
     setQuestionsData(existingQuestions);
+    initialBuilderSnapshotRef.current = JSON.stringify({
+      title: exam.title,
+      totalQuestions: exam.total_questions,
+      isPublic: exam.is_public,
+      shuffleQuestions: exam.shuffle_questions || false,
+      shuffleOptions: exam.shuffle_options || false,
+      hasTimeLimit: exam.has_time_limit || false,
+      timeLimitMinutes: exam.time_limit_minutes || 60,
+      keys: existingKeys,
+      questionsData: existingQuestions,
+    });
     setIsBuilderOpen(true);
+  };
+
+  const isBuilderDirty = () => {
+    if (!isBuilderOpen) return false;
+    const currentSnapshot = JSON.stringify({
+      title,
+      totalQuestions,
+      isPublic,
+      shuffleQuestions,
+      shuffleOptions,
+      hasTimeLimit,
+      timeLimitMinutes,
+      keys,
+      questionsData,
+    });
+    return currentSnapshot !== initialBuilderSnapshotRef.current;
+  };
+
+  const handleRequestCloseBuilder = () => {
+    if (isBuilderDirty()) {
+      setShowDiscardBuilderConfirm(true);
+    } else {
+      setIsBuilderOpen(false);
+    }
   };
 
   const handleQuestionCountChange = (count: number) => {
@@ -356,6 +424,7 @@ export default function TeacherExamsPage() {
           questions: questions_payload,
         });
       }
+      initialBuilderSnapshotRef.current = "";
       setIsBuilderOpen(false);
       await loadExams();
     } catch (err: unknown) {
@@ -454,6 +523,18 @@ export default function TeacherExamsPage() {
     setQuestionnaireSuccess(null);
     setQuestionFilter("all");
 
+    // Initialize answer keys state for the questionnaire modal
+    const initialKeys: Record<number, string> = {};
+    if (exam.answer_keys) {
+      exam.answer_keys.forEach((ak) => {
+        initialKeys[ak.question_number] = ak.correct_option;
+      });
+    }
+    for (let i = 1; i <= exam.total_questions; i++) {
+      if (!initialKeys[i]) initialKeys[i] = "A";
+    }
+    setQuestionnaireKeys(initialKeys);
+
     try {
       const fetchedQuestions = await teacherApi.getQuestionnaire(exam.id);
       const questionMap: Record<number, QuestionItem> = {};
@@ -478,6 +559,10 @@ export default function TeacherExamsPage() {
         }
       }
       setQuestionnaireList(fullList);
+      initialQuestionnaireSnapshotRef.current = JSON.stringify({
+        questions: fullList,
+        keys: initialKeys,
+      });
     } catch {
       // Fallback to empty template
       const fullList: QuestionItem[] = [];
@@ -493,8 +578,29 @@ export default function TeacherExamsPage() {
         });
       }
       setQuestionnaireList(fullList);
+      initialQuestionnaireSnapshotRef.current = JSON.stringify({
+        questions: fullList,
+        keys: initialKeys,
+      });
     } finally {
       setLoadingQuestionnaire(false);
+    }
+  };
+
+  const isQuestionnaireDirty = () => {
+    if (!questionnaireExam) return false;
+    const currentSnapshot = JSON.stringify({
+      questions: questionnaireList,
+      keys: questionnaireKeys,
+    });
+    return currentSnapshot !== initialQuestionnaireSnapshotRef.current;
+  };
+
+  const handleRequestCloseQuestionnaire = () => {
+    if (isQuestionnaireDirty()) {
+      setShowDiscardQuestionnaireConfirm(true);
+    } else {
+      setQuestionnaireExam(null);
     }
   };
 
@@ -503,7 +609,7 @@ export default function TeacherExamsPage() {
     setSavingQuestionnaire(true);
     setQuestionnaireSuccess(null);
 
-    const payload = questionnaireList
+    const questionsPayload = questionnaireList
       .filter((q) => q.question_text?.trim() || q.option_a || q.explanation)
       .map((q) => ({
         question_number: q.question_number,
@@ -515,9 +621,26 @@ export default function TeacherExamsPage() {
         explanation: q.explanation || null,
       }));
 
+    const keysPayload = Object.entries(questionnaireKeys).map(([qNum, opt]) => ({
+      question_number: parseInt(qNum, 10),
+      correct_option: opt,
+    }));
+
     try {
-      await teacherApi.updateQuestionnaire(questionnaireExam.id, payload);
-      setQuestionnaireSuccess("Questionnaire and study reviewer updated successfully!");
+      await teacherApi.updateQuestionnaire(questionnaireExam.id, questionsPayload, keysPayload);
+      setQuestionnaireSuccess("Questionnaire and answer keys updated successfully!");
+      initialQuestionnaireSnapshotRef.current = JSON.stringify({
+        questions: questionnaireList,
+        keys: questionnaireKeys,
+      });
+      setQuestionnaireExam((prev) =>
+        prev
+          ? {
+              ...prev,
+              answer_keys: keysPayload,
+            }
+          : null
+      );
       await loadExams();
       setTimeout(() => setQuestionnaireSuccess(null), 3000);
     } catch (err: unknown) {
@@ -551,8 +674,9 @@ export default function TeacherExamsPage() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
               <div className="flex items-center gap-3">
                 <button
-                  onClick={() => setIsBuilderOpen(false)}
-                  className="rounded-xl bg-surface-subtle p-2 text-text-muted hover:bg-surface-muted hover:text-text-primary transition-colors"
+                  onClick={handleRequestCloseBuilder}
+                  className="rounded-xl bg-surface-subtle p-2 text-text-muted hover:bg-surface-muted hover:text-text-primary transition-colors cursor-pointer"
+                  title="Back to Exams"
                 >
                   <ChevronLeft className="h-5 w-5" />
                 </button>
@@ -888,15 +1012,70 @@ export default function TeacherExamsPage() {
                       return (
                         <div
                           key={qNum}
-                          className="rounded-2xl border border-border-default bg-surface-base p-4 space-y-3"
+                          className="rounded-2xl border border-border-default bg-surface-base p-4 space-y-3.5 hover:border-border-emphasis transition-colors"
                         >
-                          <div className="flex items-center justify-between">
-                            <span className="font-mono text-xs font-bold text-text-secondary">
-                              Question {qNum} of {totalQuestions}
-                            </span>
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-sage-ghost text-sage border border-sage-border">
-                              Correct Key: {correctKey}
-                            </span>
+                          <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-border-default/60">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-xs font-bold text-text-secondary">
+                                Question {qNum} of {totalQuestions}
+                              </span>
+                              {(() => {
+                                const hasPrompt = !!q.question_text?.trim();
+                                const hasChoices = !!(
+                                  q.option_a?.trim() ||
+                                  q.option_b?.trim() ||
+                                  q.option_c?.trim() ||
+                                  q.option_d?.trim()
+                                );
+                                if (hasPrompt && hasChoices) {
+                                  return (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sage-ghost text-sage border border-sage-border">
+                                      <CheckCircle2 className="h-2.5 w-2.5" />
+                                      Question Ready
+                                    </span>
+                                  );
+                                }
+                                if (hasPrompt) {
+                                  return (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-tan-ghost text-tan border border-tan-border">
+                                      <CheckCircle2 className="h-2.5 w-2.5" />
+                                      Question Added
+                                    </span>
+                                  );
+                                }
+                                return (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-surface-muted text-text-muted">
+                                    No Question Yet
+                                  </span>
+                                );
+                              })()}
+                            </div>
+
+                            {/* Quick Answer Key Picker for this question */}
+                            <div className="flex items-center gap-1.5 bg-surface-overlay px-2 py-1 rounded-xl border border-border-default">
+                              <span className="text-[11px] font-semibold text-text-muted flex items-center gap-1 mr-0.5">
+                                <KeyRound className="h-3 w-3 text-sage" />
+                                Answer Key:
+                              </span>
+                              {(["A", "B", "C", "D"] as const).map((opt) => {
+                                const isSelected = correctKey === opt;
+                                return (
+                                  <button
+                                    type="button"
+                                    key={opt}
+                                    onClick={() => setKeys({ ...keys, [qNum]: opt })}
+                                    title={`Set ${opt} as answer key for Question ${qNum}`}
+                                    className={`h-6 w-6 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center ${
+                                      isSelected
+                                        ? "bg-sage text-white shadow-md shadow-sage/30 scale-105 ring-2 ring-sage/40"
+                                        : "bg-surface-base text-text-muted hover:bg-surface-subtle hover:text-text-primary"
+                                    }`}
+                                  >
+                                    {opt}
+                                  </button>
+                                );
+                              })}
+                            </div>
                           </div>
 
                           {/* Question text */}
@@ -916,44 +1095,76 @@ export default function TeacherExamsPage() {
                           </div>
 
                           {/* Options A - D */}
-                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                            {(["A", "B", "C", "D"] as const).map((opt) => {
-                              const field = `option_${opt.toLowerCase()}` as keyof QuestionItem;
-                              const isCorrect = correctKey === opt;
+                          <div>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <label className="text-[11px] font-medium text-text-muted">
+                                Choices (Click letter or Key pill to set correct answer)
+                              </label>
+                              <span className="text-[10px] text-text-muted font-mono">
+                                Correct Key: <strong className="text-sage">{correctKey}</strong>
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                              {(["A", "B", "C", "D"] as const).map((opt) => {
+                                const field = `option_${opt.toLowerCase()}` as keyof QuestionItem;
+                                const isCorrect = correctKey === opt;
 
-                              return (
-                                <div
-                                  key={opt}
-                                  className={`flex items-center gap-2 rounded-xl border p-2 ${
-                                    isCorrect
-                                      ? "border-sage-border bg-sage-ghost/40"
-                                      : "border-border-default bg-surface-overlay"
-                                  }`}
-                                >
-                                  <span
-                                    className={`flex h-5 w-5 items-center justify-center rounded-md font-mono text-[10px] font-bold ${
+                                return (
+                                  <div
+                                    key={opt}
+                                    className={`group flex items-center gap-2 rounded-xl border p-2 transition-all ${
                                       isCorrect
-                                        ? "bg-sage text-white"
-                                        : "bg-surface-muted text-text-muted"
+                                        ? "border-sage-border bg-sage-ghost/50 ring-1 ring-sage/30 shadow-sm"
+                                        : "border-border-default bg-surface-overlay hover:border-border-emphasis"
                                     }`}
                                   >
-                                    {opt}
-                                  </span>
-                                  <input
-                                    type="text"
-                                    placeholder={`Choice ${opt}`}
-                                    value={(q[field] as string) || ""}
-                                    onChange={(e) =>
-                                      setQuestionsData({
-                                        ...questionsData,
-                                        [qNum]: { ...q, [field]: e.target.value },
-                                      })
-                                    }
-                                    className="w-full bg-transparent text-xs text-text-primary focus:outline-none"
-                                  />
-                                </div>
-                              );
-                            })}
+                                    <button
+                                      type="button"
+                                      onClick={() => setKeys({ ...keys, [qNum]: opt })}
+                                      title={
+                                        isCorrect
+                                          ? "Currently correct Answer Key"
+                                          : `Click to set ${opt} as Answer Key`
+                                      }
+                                      className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg font-mono text-[11px] font-bold transition-all cursor-pointer ${
+                                        isCorrect
+                                          ? "bg-sage text-white shadow-sm ring-2 ring-sage/40"
+                                          : "bg-surface-muted text-text-muted hover:bg-sage/20 hover:text-sage"
+                                      }`}
+                                    >
+                                      {opt}
+                                    </button>
+                                    <input
+                                      type="text"
+                                      placeholder={`Choice ${opt}`}
+                                      value={(q[field] as string) || ""}
+                                      onChange={(e) =>
+                                        setQuestionsData({
+                                          ...questionsData,
+                                          [qNum]: { ...q, [field]: e.target.value },
+                                        })
+                                      }
+                                      className="w-full bg-transparent text-xs text-text-primary focus:outline-none"
+                                    />
+                                    {isCorrect ? (
+                                      <span className="flex items-center gap-1 text-[10px] text-sage font-bold px-2 py-0.5 rounded-md bg-sage/15 whitespace-nowrap border border-sage-border">
+                                        <CheckCircle2 className="h-3 w-3" />
+                                        Key
+                                      </span>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => setKeys({ ...keys, [qNum]: opt })}
+                                        className="text-[10px] text-text-muted hover:text-sage font-medium whitespace-nowrap px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-sage-ghost cursor-pointer"
+                                        title={`Mark choice ${opt} as the correct answer key`}
+                                      >
+                                        Set key
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
 
                           {/* Explanation */}
@@ -981,8 +1192,8 @@ export default function TeacherExamsPage() {
               <div className="flex justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => setIsBuilderOpen(false)}
-                  className="rounded-xl border border-border-emphasis bg-surface-subtle px-5 py-2.5 text-xs font-semibold text-text-secondary hover:bg-surface-muted"
+                  onClick={handleRequestCloseBuilder}
+                  className="rounded-xl border border-border-emphasis bg-surface-subtle px-5 py-2.5 text-xs font-semibold text-text-secondary hover:bg-surface-muted cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -1247,7 +1458,7 @@ export default function TeacherExamsPage() {
       {questionnaireExam && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4"
-          onClick={() => setQuestionnaireExam(null)}
+          onClick={handleRequestCloseQuestionnaire}
         >
           <div
             className="relative flex flex-col bg-surface-overlay border border-border-emphasis rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh]"
@@ -1263,13 +1474,14 @@ export default function TeacherExamsPage() {
                   </h2>
                 </div>
                 <p className="text-xs text-text-muted mt-0.5">
-                  Write question prompts, multiple-choice options, and study explanations. Students can view this reviewer alongside their own score when the exam is Public.
+                  Write question prompts, multiple-choice choices, study explanations, and select correct answer keys.
                 </p>
               </div>
 
               <button
-                onClick={() => setQuestionnaireExam(null)}
-                className="rounded-xl bg-surface-subtle p-2 text-text-secondary hover:bg-surface-muted hover:text-text-primary transition-colors"
+                onClick={handleRequestCloseQuestionnaire}
+                className="rounded-xl bg-surface-subtle p-2 text-text-secondary hover:bg-surface-muted hover:text-text-primary transition-colors cursor-pointer"
+                title="Close questionnaire"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -1297,7 +1509,7 @@ export default function TeacherExamsPage() {
                       : "bg-surface-overlay text-text-secondary"
                   }`}
                 >
-                  Missing Text ({questionnaireList.filter((q) => !q.question_text?.trim()).length})
+                  Missing Question ({questionnaireList.filter((q) => !q.question_text?.trim()).length})
                 </button>
                 <button
                   onClick={() => setQuestionFilter("completed")}
@@ -1307,7 +1519,7 @@ export default function TeacherExamsPage() {
                       : "bg-surface-overlay text-text-secondary"
                   }`}
                 >
-                  Completed ({questionnaireList.filter((q) => q.question_text?.trim()).length})
+                  Question Ready ({questionnaireList.filter((q) => q.question_text?.trim()).length})
                 </button>
               </div>
 
@@ -1331,23 +1543,80 @@ export default function TeacherExamsPage() {
                     return true;
                   })
                   .map((q) => {
-                    const keyObj = questionnaireExam.answer_keys.find(
-                      (ak) => ak.question_number === q.question_number
-                    );
-                    const correctKey = keyObj?.correct_option || "A";
+                    const correctKey = questionnaireKeys[q.question_number] || "A";
 
                     return (
                       <div
                         key={q.question_number}
-                        className="rounded-2xl border border-border-default bg-surface-base p-4 space-y-3"
+                        className="rounded-2xl border border-border-default bg-surface-base p-4 space-y-3.5 hover:border-border-emphasis transition-colors"
                       >
-                        <div className="flex items-center justify-between">
-                          <span className="font-mono text-xs font-bold text-text-secondary">
-                            Question #{q.question_number}
-                          </span>
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-sage-ghost text-sage border border-sage-border">
-                            Correct Key: {correctKey}
-                          </span>
+                        <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-border-default/60">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs font-bold text-text-secondary">
+                              Question #{q.question_number}
+                            </span>
+                            {(() => {
+                              const hasPrompt = !!q.question_text?.trim();
+                              const hasChoices = !!(
+                                q.option_a?.trim() ||
+                                q.option_b?.trim() ||
+                                q.option_c?.trim() ||
+                                q.option_d?.trim()
+                              );
+                              if (hasPrompt && hasChoices) {
+                                return (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-sage-ghost text-sage border border-sage-border">
+                                    <CheckCircle2 className="h-2.5 w-2.5" />
+                                    Question Ready
+                                  </span>
+                                );
+                              }
+                              if (hasPrompt) {
+                                return (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-tan-ghost text-tan border border-tan-border">
+                                    <CheckCircle2 className="h-2.5 w-2.5" />
+                                    Question Added
+                                  </span>
+                                );
+                              }
+                              return (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-surface-muted text-text-muted">
+                                  No Question Yet
+                                </span>
+                              );
+                            })()}
+                          </div>
+
+                          {/* Quick Answer Key Picker for this question */}
+                          <div className="flex items-center gap-1.5 bg-surface-overlay px-2 py-1 rounded-xl border border-border-default">
+                            <span className="text-[11px] font-semibold text-text-muted flex items-center gap-1 mr-0.5">
+                              <KeyRound className="h-3 w-3 text-sage" />
+                              Answer Key:
+                            </span>
+                            {(["A", "B", "C", "D"] as const).map((opt) => {
+                              const isSelected = correctKey === opt;
+                              return (
+                                <button
+                                  type="button"
+                                  key={opt}
+                                  onClick={() =>
+                                    setQuestionnaireKeys((prev) => ({
+                                      ...prev,
+                                      [q.question_number]: opt,
+                                    }))
+                                  }
+                                  title={`Select ${opt} as correct answer for Question ${q.question_number}`}
+                                  className={`h-6 w-6 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center ${
+                                    isSelected
+                                      ? "bg-sage text-white shadow-md shadow-sage/30 scale-105 ring-2 ring-sage/40"
+                                      : "bg-surface-base text-text-muted hover:bg-surface-subtle hover:text-text-primary"
+                                  }`}
+                                >
+                                  {opt}
+                                </button>
+                              );
+                            })}
+                          </div>
                         </div>
 
                         {/* Question Text */}
@@ -1372,51 +1641,88 @@ export default function TeacherExamsPage() {
                         </div>
 
                         {/* Options A - D */}
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                          {(["A", "B", "C", "D"] as const).map((opt) => {
-                            const field = `option_${opt.toLowerCase()}` as keyof QuestionItem;
-                            const isCorrect = correctKey === opt;
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <label className="text-[11px] font-medium text-text-muted">
+                              Choices (Click letter or Key pill to set correct answer)
+                            </label>
+                            <span className="text-[10px] text-text-muted font-mono">
+                              Correct Key: <strong className="text-sage">{correctKey}</strong>
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            {(["A", "B", "C", "D"] as const).map((opt) => {
+                              const field = `option_${opt.toLowerCase()}` as keyof QuestionItem;
+                              const isCorrect = correctKey === opt;
 
-                            return (
-                              <div
-                                key={opt}
-                                className={`flex items-center gap-2 rounded-xl border p-2 ${
-                                  isCorrect
-                                    ? "border-sage-border bg-sage-ghost/40"
-                                    : "border-border-default bg-surface-overlay"
-                                }`}
-                              >
-                                <span
-                                  className={`flex h-5 w-5 items-center justify-center rounded-md font-mono text-[10px] font-bold ${
+                              return (
+                                <div
+                                  key={opt}
+                                  className={`group flex items-center gap-2 rounded-xl border p-2 transition-all ${
                                     isCorrect
-                                      ? "bg-sage text-white"
-                                      : "bg-surface-muted text-text-muted"
+                                      ? "border-sage-border bg-sage-ghost/50 ring-1 ring-sage/30 shadow-sm"
+                                      : "border-border-default bg-surface-overlay hover:border-border-emphasis"
                                   }`}
                                 >
-                                  {opt}
-                                </span>
-                                <input
-                                  type="text"
-                                  placeholder={`Choice ${opt}`}
-                                  value={(q[field] as string) || ""}
-                                  onChange={(e) => {
-                                    const updated = questionnaireList.map((item) =>
-                                      item.question_number === q.question_number
-                                        ? { ...item, [field]: e.target.value }
-                                        : item
-                                    );
-                                    setQuestionnaireList(updated);
-                                  }}
-                                  className="w-full bg-transparent text-xs text-text-primary focus:outline-none"
-                                />
-                                {isCorrect && (
-                                  <span className="text-[10px] text-sage font-bold whitespace-nowrap">
-                                    (Key)
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })}
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setQuestionnaireKeys((prev) => ({
+                                        ...prev,
+                                        [q.question_number]: opt,
+                                      }))
+                                    }
+                                    title={
+                                      isCorrect
+                                        ? "Currently correct Answer Key"
+                                        : `Click to set ${opt} as Answer Key`
+                                    }
+                                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg font-mono text-[11px] font-bold transition-all cursor-pointer ${
+                                      isCorrect
+                                        ? "bg-sage text-white shadow-sm ring-2 ring-sage/40"
+                                        : "bg-surface-muted text-text-muted hover:bg-sage/20 hover:text-sage"
+                                    }`}
+                                  >
+                                    {opt}
+                                  </button>
+                                  <input
+                                    type="text"
+                                    placeholder={`Choice ${opt}`}
+                                    value={(q[field] as string) || ""}
+                                    onChange={(e) => {
+                                      const updated = questionnaireList.map((item) =>
+                                        item.question_number === q.question_number
+                                          ? { ...item, [field]: e.target.value }
+                                          : item
+                                      );
+                                      setQuestionnaireList(updated);
+                                    }}
+                                    className="w-full bg-transparent text-xs text-text-primary focus:outline-none"
+                                  />
+                                  {isCorrect ? (
+                                    <span className="flex items-center gap-1 text-[10px] text-sage font-bold px-2 py-0.5 rounded-md bg-sage/15 whitespace-nowrap border border-sage-border">
+                                      <CheckCircle2 className="h-3 w-3" />
+                                      Key
+                                    </span>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setQuestionnaireKeys((prev) => ({
+                                          ...prev,
+                                          [q.question_number]: opt,
+                                        }))
+                                      }
+                                      className="text-[10px] text-text-muted hover:text-sage font-medium whitespace-nowrap px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity hover:bg-sage-ghost cursor-pointer"
+                                      title={`Mark choice ${opt} as the correct answer key`}
+                                    >
+                                      Set key
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
 
                         {/* Explanation Note */}
@@ -1456,7 +1762,7 @@ export default function TeacherExamsPage() {
               <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  onClick={() => setQuestionnaireExam(null)}
+                  onClick={handleRequestCloseQuestionnaire}
                   className="rounded-xl border border-border-emphasis bg-surface-subtle px-4 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-muted cursor-pointer"
                 >
                   Close
@@ -1479,6 +1785,38 @@ export default function TeacherExamsPage() {
           </div>
         </div>
       )}
+
+      {/* Discard Questionnaire Changes Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showDiscardQuestionnaireConfirm}
+        title="Discard Unsaved Changes?"
+        message="You have unsaved changes in this questionnaire. If you exit now, any modifications to question prompts, choices, or answer keys will be lost."
+        confirmText="Discard Changes"
+        cancelText="Keep Editing"
+        variant="warning"
+        icon={<AlertCircle className="h-5 w-5 text-tan" />}
+        onConfirm={() => {
+          setShowDiscardQuestionnaireConfirm(false);
+          setQuestionnaireExam(null);
+        }}
+        onCancel={() => setShowDiscardQuestionnaireConfirm(false)}
+      />
+
+      {/* Discard Exam Builder Changes Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showDiscardBuilderConfirm}
+        title="Discard Unsaved Changes?"
+        message="You have unsaved changes in this exam. If you go back now, your edits will be discarded."
+        confirmText="Discard Changes"
+        cancelText="Keep Editing"
+        variant="warning"
+        icon={<AlertCircle className="h-5 w-5 text-tan" />}
+        onConfirm={() => {
+          setShowDiscardBuilderConfirm(false);
+          setIsBuilderOpen(false);
+        }}
+        onCancel={() => setShowDiscardBuilderConfirm(false)}
+      />
 
       {/* Delete Exam Confirmation Modal */}
       <ConfirmModal

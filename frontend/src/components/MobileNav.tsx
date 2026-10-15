@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import {
   LayoutDashboard,
@@ -12,31 +12,38 @@ import {
   PenTool,
   Award,
   BookOpen,
+  Users,
 } from "lucide-react";
 
 export function MobileNav() {
   const { user } = useAuth();
   const pathname = usePathname();
-  const [studentActiveTab, setStudentActiveTab] = useState<"available" | "grades" | "reviewers">("available");
+  const router = useRouter();
+  const [studentActiveTab, setStudentActiveTab] = useState<"available" | "grades" | "reviewers" | "friends">("available");
 
   useEffect(() => {
+    if (pathname.startsWith("/student/reviewer")) {
+      setStudentActiveTab("reviewers");
+      return;
+    }
+
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get("tab");
-      if (tab === "available" || tab === "grades" || tab === "reviewers") {
+      if (tab === "available" || tab === "grades" || tab === "reviewers" || tab === "friends") {
         setStudentActiveTab(tab);
       }
     }
 
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail === "available" || detail === "grades" || detail === "reviewers") {
+      if (detail === "available" || detail === "grades" || detail === "reviewers" || detail === "friends") {
         setStudentActiveTab(detail);
       }
     };
     window.addEventListener("studentTabChange", handler);
     return () => window.removeEventListener("studentTabChange", handler);
-  }, []);
+  }, [pathname]);
 
   if (!user) return null;
 
@@ -55,22 +62,37 @@ export function MobileNav() {
     { tab: "available" as const, label: "Exams", icon: PenTool },
     { tab: "grades" as const, label: "Results", icon: Award },
     { tab: "reviewers" as const, label: "Reviewers", icon: BookOpen },
+    { tab: "friends" as const, label: "Friends", icon: Users },
   ];
 
   if (user.role === "STUDENT") {
+    const isReviewerRoute = pathname.startsWith("/student/reviewer");
+
     return (
       <div className="fixed bottom-0 left-0 right-0 z-40 block sm:hidden bg-surface-raised/95 backdrop-blur-xl border-t border-border-default safe-area-bottom shadow-lg">
         <div className="flex items-center justify-around px-2 py-1.5">
           {studentNav.map((item) => {
             const Icon = item.icon;
-            const isActive = studentActiveTab === item.tab;
+            const isActive = isReviewerRoute ? item.tab === "reviewers" : studentActiveTab === item.tab;
+
             return (
               <button
                 key={item.tab}
                 type="button"
                 onClick={() => {
-                  setStudentActiveTab(item.tab);
-                  window.dispatchEvent(new CustomEvent("studentTabChange", { detail: item.tab }));
+                  if (item.tab === "reviewers") {
+                    setStudentActiveTab("reviewers");
+                    if (!isReviewerRoute) {
+                      router.push("/student/reviewer");
+                    }
+                  } else {
+                    setStudentActiveTab(item.tab);
+                    if (isReviewerRoute) {
+                      router.push(`/student/dashboard?tab=${item.tab}`);
+                    } else {
+                      window.dispatchEvent(new CustomEvent("studentTabChange", { detail: item.tab }));
+                    }
+                  }
                 }}
                 className={`flex flex-col items-center gap-0.5 rounded-2xl px-4 py-2 transition-all cursor-pointer ${
                   isActive

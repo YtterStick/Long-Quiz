@@ -8,14 +8,16 @@ import {
   OUTFIT_COLORS,
   ACCENT_COLORS,
   BACKDROP_THEMES,
+  DEFAULT_AVATAR_CONFIG,
 } from "@/types/avatar";
 
 interface StudentAvatarProps {
-  config: StudentAvatarConfig;
+  config?: StudentAvatarConfig | null;
   size?: number | string;
   className?: string;
   showBackdrop?: boolean;
   animate?: boolean;
+  loading?: boolean;
 }
 
 export function StudentAvatar({
@@ -24,13 +26,27 @@ export function StudentAvatar({
   className = "",
   showBackdrop = true,
   animate = false,
+  loading = false,
 }: StudentAvatarProps) {
-  const skin = SKIN_TONES[config.skinTone] || SKIN_TONES.peach;
-  const hair = HAIR_COLORS[config.hairColor] || HAIR_COLORS.midnight;
-  const outfit = OUTFIT_COLORS[config.outfitColor] || OUTFIT_COLORS.steel;
-  const accent = ACCENT_COLORS[config.outfitAccent] || ACCENT_COLORS.cream;
-  const backdrop = BACKDROP_THEMES[config.backdrop] || BACKDROP_THEMES.study_glow;
-  const isFemale = config.gender !== "male";
+  if (loading || !config) {
+    return (
+      <div
+        style={{ width: size, height: size }}
+        className={`relative inline-flex items-center justify-center shrink-0 select-none overflow-hidden rounded-full bg-surface-subtle/80 border border-border-default/80 ${className}`}
+      >
+        <div className="absolute inset-0 bg-linear-to-r from-transparent via-white/20 dark:via-white/5 to-transparent animate-shimmer" />
+        <div className="h-1/2 w-1/2 rounded-full bg-surface-muted/50" />
+      </div>
+    );
+  }
+
+  const safeConfig = config || DEFAULT_AVATAR_CONFIG;
+  const skin = SKIN_TONES[safeConfig.skinTone] || SKIN_TONES.peach;
+  const hair = HAIR_COLORS[safeConfig.hairColor] || HAIR_COLORS.midnight;
+  const outfit = OUTFIT_COLORS[safeConfig.outfitColor] || OUTFIT_COLORS.steel;
+  const accent = ACCENT_COLORS[safeConfig.outfitAccent] || ACCENT_COLORS.cream;
+  const backdrop = BACKDROP_THEMES[safeConfig.backdrop] || BACKDROP_THEMES.study_glow;
+  const isFemale = safeConfig.gender !== "male";
   const shoulderY = isFemale ? 145 : 138;
   const lapelLeftX = isFemale ? 76 : 68;
   const lapelRightX = isFemale ? 124 : 132;

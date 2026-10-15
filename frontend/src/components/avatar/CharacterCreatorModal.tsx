@@ -31,6 +31,7 @@ import {
   DEFAULT_MALE_TEACHER_AVATAR_CONFIG,
 } from "@/types/avatar";
 import { StudentAvatar } from "./StudentAvatar";
+import { SkeletonAvatarCreator } from "@/components/ui/Skeleton";
 import {
   Scissors,
   Shuffle,
@@ -61,6 +62,7 @@ interface CharacterCreatorModalProps {
   sectionName?: string;
   role?: "STUDENT" | "TEACHER";
   isFirstTime?: boolean;
+  loading?: boolean;
   onSave: (config: StudentAvatarConfig) => Promise<void> | void;
 }
 
@@ -576,6 +578,7 @@ export function CharacterCreatorModal({
   sectionName,
   role = "STUDENT",
   isFirstTime = false,
+  loading = false,
   onSave,
 }: CharacterCreatorModalProps) {
   const initGender: GenderId = initialConfig.gender === "male" ? "male" : "female";
@@ -769,6 +772,20 @@ export function CharacterCreatorModal({
 
   if (!isOpen) return null;
 
+  if (loading) {
+    return (
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
+      >
+        <div className="relative flex flex-col w-full max-w-4xl max-h-[92vh] h-[85vh] rounded-[28px] sm:rounded-4xl border border-border-emphasis/80 bg-surface-raised shadow-2xl overflow-hidden">
+          <SkeletonAvatarCreator />
+        </div>
+      </div>
+    );
+  }
+
   const isRawUuid = (val?: string) => {
     if (!val) return false;
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val.trim());
@@ -779,29 +796,32 @@ export function CharacterCreatorModal({
     <div
       role="dialog"
       aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-5 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
     >
-      <div className="relative flex flex-col w-full max-w-4xl max-h-[92vh] rounded-[28px] sm:rounded-4xl border border-border-emphasis/80 bg-surface-raised shadow-2xl overflow-hidden">
+      <div className="relative flex flex-col w-full max-sm:rounded-t-3xl max-sm:h-[94dvh] sm:max-w-4xl sm:h-[88vh] sm:rounded-4xl border border-border-emphasis/80 bg-surface-raised shadow-2xl overflow-hidden">
+        {/* Mobile Drag Indicator */}
+        <div className="w-10 h-1 rounded-full bg-slate-400/50 dark:bg-slate-600 mx-auto mt-2 sm:hidden shrink-0" />
+
         {/* Top Header */}
-        <div className="relative px-5 sm:px-7 py-4 border-b border-border-default/70 bg-surface-base/60 backdrop-blur-sm flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className={`flex h-10 w-10 items-center justify-center rounded-2xl border shadow-inner ${
+        <div className="relative px-4 sm:px-7 py-3 sm:py-4 border-b border-border-default/70 bg-surface-base/60 backdrop-blur-sm flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+            <div className={`flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl sm:rounded-2xl border shadow-inner ${
               role === "TEACHER"
                 ? "bg-steel-ghost text-steel border-steel-border"
                 : "bg-sage-ghost text-sage border-sage-border"
             }`}>
-              {role === "TEACHER" ? <School className="h-5 w-5" /> : <Shirt className="h-5 w-5" />}
+              {role === "TEACHER" ? <School className="h-4 w-4 sm:h-5 sm:w-5" /> : <Shirt className="h-4 w-4 sm:h-5 sm:w-5" />}
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-base sm:text-lg font-black tracking-tight text-text-primary">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <h2 className="text-sm sm:text-lg font-black tracking-tight text-text-primary truncate">
                   {role === "TEACHER"
                     ? "Faculty Character Studio & Closet"
                     : isFirstTime
                     ? "Create Your Student Avatar"
                     : "Student Character & Closet"}
                 </h2>
-                <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold border uppercase ${
+                <span className={`hidden sm:inline-block rounded-full px-2.5 py-0.5 text-[10px] font-bold border uppercase ${
                   role === "TEACHER"
                     ? "bg-steel-ghost text-steel border-steel-border"
                     : "bg-sage-ghost text-sage border-sage-border"
@@ -809,18 +829,18 @@ export function CharacterCreatorModal({
                   {role === "TEACHER" ? "Faculty Studio" : "Character Studio"}
                 </span>
                 {isDirty && (
-                  <span className="rounded-full px-2 py-0.5 text-[10px] font-black border uppercase bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 flex items-center gap-1">
+                  <span className="rounded-full px-2 py-0.5 text-[9px] sm:text-[10px] font-black border uppercase bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30 flex items-center gap-1 shrink-0">
                     <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
                     Unsaved
                   </span>
                 )}
               </div>
-              <p className="text-xs text-text-muted">
+              <p className="text-[11px] sm:text-xs text-text-muted truncate">
                 {role === "TEACHER"
-                  ? "Customize your faculty attire, character look, and teaching motto anytime"
+                  ? "Customize faculty attire and character look"
                   : isFirstTime
-                  ? "Welcome! Choose your character look, outfit, and study motto to personalize your account"
-                  : "Customize your avatar style, outfit colors, and study motto anytime"}
+                  ? "Customize your character look, outfit, and study motto"
+                  : "Customize your avatar style, outfit, and study motto"}
               </p>
             </div>
           </div>
@@ -828,7 +848,7 @@ export function CharacterCreatorModal({
           <button
             type="button"
             onClick={handleRequestClose}
-            className="rounded-xl p-2 text-text-muted hover:text-text-primary hover:bg-surface-subtle transition-colors focus:outline-none cursor-pointer"
+            className="rounded-xl p-1.5 sm:p-2 text-text-muted hover:text-text-primary hover:bg-surface-subtle transition-colors focus:outline-none cursor-pointer shrink-0 min-h-9 min-w-9 flex items-center justify-center"
             aria-label="Close closet modal"
           >
             <X className="h-5 w-5" />
@@ -837,25 +857,122 @@ export function CharacterCreatorModal({
 
         {/* First-time Welcome Banner */}
         {isFirstTime && (
-          <div className="px-5 sm:px-7 py-2.5 bg-sage/10 border-b border-sage-border/50 flex items-center gap-2 text-xs text-sage font-medium shrink-0">
+          <div className="px-4 sm:px-7 py-2 bg-sage/10 border-b border-sage-border/50 flex items-center gap-2 text-xs text-sage font-medium shrink-0">
             <GraduationCap className="h-4 w-4 shrink-0 text-sage" />
-            <span>
-              <strong>Starting Profile Setup:</strong> Welcome to Evalo! Customize your character avatar look, equip outfits, and pick a motto.
+            <span className="truncate">
+              <strong>Starting Profile Setup:</strong> Welcome to Evalo! Customize your avatar look and equip outfits.
             </span>
           </div>
         )}
 
-        {/* Main Content Area (Two Columns) */}
-        <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] flex-1 overflow-y-auto divide-y lg:divide-y-0 lg:divide-x divide-border-default">
-          {/* ── LEFT COLUMN: Avatar Stage & Quick Actions ──────────── */}
-          <div className="p-5 sm:p-6 flex flex-col items-center justify-between gap-5 bg-surface-base/30">
+        {/* ── MOBILE INTERACTIVE PREVIEW & QUICK ACTIONS (lg:hidden) ── */}
+        <div className="block lg:hidden px-4 py-2.5 bg-surface-base/50 border-b border-border-default/70 shrink-0 space-y-2">
+          <div className="flex items-center gap-3">
+            {/* Live Compact Avatar Preview */}
+            <div className="relative shrink-0">
+              <div className="p-1 rounded-full bg-surface-raised border border-border-emphasis/70 shadow-md">
+                <StudentAvatar config={{ ...config, gender: selectedGender }} size={64} animate={true} />
+              </div>
+              <div
+                className={`absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full text-white shadow-xs border border-surface-raised ${
+                  role === "TEACHER" ? "bg-steel" : "bg-sage"
+                }`}
+              >
+                {role === "TEACHER" ? <School className="h-2.5 w-2.5" /> : <GraduationCap className="h-2.5 w-2.5" />}
+              </div>
+            </div>
+
+            {/* Student Name & Badges */}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <h3 className="text-xs sm:text-sm font-black text-text-primary truncate">{studentName}</h3>
+                {studentId && (
+                  <span className="text-[10px] font-mono font-bold text-steel bg-steel-ghost px-1.5 py-0.2 rounded-full border border-steel-border">
+                    ID: {studentId}
+                  </span>
+                )}
+                {cleanSectionName && (
+                  <span className="text-[10px] font-bold text-sage bg-sage-ghost px-1.5 py-0.2 rounded-full border border-sage-border">
+                    {cleanSectionName}
+                  </span>
+                )}
+              </div>
+
+              {/* Presentation Switcher (Female / Male) */}
+              <div className="flex items-center gap-1 mt-1.5">
+                <button
+                  type="button"
+                  onClick={() => handleGenderSwitch("female")}
+                  className={`py-1 px-2.5 rounded-lg text-[11px] font-black transition-all cursor-pointer ${
+                    selectedGender === "female"
+                      ? "bg-sage text-white shadow-xs"
+                      : "bg-surface-subtle text-text-muted hover:text-text-primary"
+                  }`}
+                >
+                  Female (♀)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleGenderSwitch("male")}
+                  className={`py-1 px-2.5 rounded-lg text-[11px] font-black transition-all cursor-pointer ${
+                    selectedGender === "male"
+                      ? "bg-steel text-white shadow-xs"
+                      : "bg-surface-subtle text-text-muted hover:text-text-primary"
+                  }`}
+                >
+                  Male (♂)
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Surprise / Reset buttons */}
+            <div className="flex flex-col gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={handleRandomize}
+                title="Surprise Me!"
+                className="flex items-center justify-center h-8 w-8 rounded-xl bg-steel-ghost text-steel hover:bg-steel hover:text-white border border-steel-border transition shadow-xs cursor-pointer active:scale-95"
+              >
+                <Shuffle className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleReset}
+                title="Reset default look"
+                className="flex items-center justify-center h-8 w-8 rounded-xl bg-surface-subtle text-text-muted hover:text-text-primary border border-border-default transition cursor-pointer active:scale-95"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Starter Presets Bar (Horizontal Scrollable) */}
+          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pt-0.5 -mx-1 px-1">
+            <span className="text-[10px] font-bold text-text-muted shrink-0 uppercase tracking-wider">Presets:</span>
+            {visiblePresets.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => handleSelectPreset(p.config)}
+                className="shrink-0 px-2.5 py-1 rounded-full border border-border-default bg-surface-raised hover:border-steel text-[11px] font-bold text-text-secondary hover:text-text-primary transition cursor-pointer active:scale-95"
+              >
+                {p.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Main Content Area (Two Columns on Desktop, Single Column on Mobile) */}
+        <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] flex-1 min-h-0 overflow-hidden divide-y lg:divide-y-0 lg:divide-x divide-border-default">
+          {/* ── LEFT COLUMN: Avatar Stage & Quick Actions (DESKTOP ONLY) ──────────── */}
+          <div className="hidden lg:flex p-6 flex-col items-center justify-between gap-5 bg-surface-base/30 overflow-y-auto">
             {/* Avatar Spotlight Stage */}
             <div className="flex flex-col items-center text-center w-full">
               <div className="relative group my-2">
                 <div className="absolute -inset-2 rounded-full bg-linear-to-r from-steel/20 via-cream/20 to-sage/20 blur-xl opacity-75 group-hover:opacity-100 transition-opacity" />
 
                 <div className="relative p-2 rounded-full bg-surface-raised border border-border-emphasis/60 shadow-xl">
-                  <StudentAvatar config={{ ...config, gender: selectedGender }} size={170} animate={true} />
+                  <StudentAvatar config={{ ...config, gender: selectedGender }} size={165} animate={true} />
                 </div>
 
                 <div className={`absolute -bottom-2 -right-2 flex h-8 w-8 items-center justify-center rounded-full text-white shadow-md border-2 border-surface-raised ${
@@ -960,10 +1077,10 @@ export function CharacterCreatorModal({
           </div>
 
           {/* ── RIGHT COLUMN: Customization Tabs & Wardrobe Studio ── */}
-          <div className="p-5 sm:p-6 flex flex-col justify-between overflow-y-auto">
-            <div className="space-y-4">
-              {/* Gender Selector: Female / Male Toggle */}
-              <div className="flex items-center justify-between p-1.5 rounded-2xl bg-surface-base border border-border-default shadow-xs">
+          <div className="flex flex-col flex-1 min-h-0 overflow-y-auto p-3.5 sm:p-6">
+            <div className="space-y-3 sm:space-y-4 flex-1">
+              {/* Gender Selector: Female / Male Toggle (DESKTOP ONLY, since mobile has it in top bar) */}
+              <div className="hidden lg:flex items-center justify-between p-1.5 rounded-2xl bg-surface-base border border-border-default shadow-xs">
                 <span className="text-xs font-black uppercase tracking-wider text-text-secondary pl-2 flex items-center gap-1.5">
                   <SlidersHorizontal className="h-3.5 w-3.5 text-steel" />
                   Presentation:
@@ -1450,29 +1567,18 @@ export function CharacterCreatorModal({
           </div>
         </div>
 
-        {/* Modal Footer */}
-        <div className="px-5 sm:px-7 py-3.5 border-t border-border-default/70 bg-surface-base/60 backdrop-blur-sm flex items-center justify-between shrink-0">
+        {/* Modal Footer (Pinned, elevated, safe-area-bottom for mobile) */}
+        <div className="px-4 sm:px-7 py-3 sm:py-3.5 border-t border-border-default/80 bg-surface-raised/95 backdrop-blur-md flex items-center justify-between shrink-0 safe-area-bottom z-10">
           <div className="text-[11px] text-text-muted hidden sm:block">
             <span>Your character avatar and motto are saved to your account and shown across campus.</span>
           </div>
 
-          <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
-            {isDirty && (
-              <button
-                type="button"
-                onClick={() => setShowDiscardConfirm(true)}
-                disabled={saving}
-                className="px-3.5 py-2.5 rounded-xl border border-rose-500/30 text-rose-600 dark:text-rose-400 hover:bg-rose-500/10 text-xs font-bold transition-colors cursor-pointer"
-              >
-                Discard Changes
-              </button>
-            )}
-
+          <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 sm:gap-2.5 w-full sm:w-auto justify-end">
             <button
               type="button"
               onClick={handleRequestClose}
               disabled={saving}
-              className="px-4 py-2.5 rounded-xl border border-border-default hover:bg-surface-subtle text-xs font-bold text-text-secondary transition-colors cursor-pointer"
+              className="flex items-center justify-center min-h-11 sm:min-h-10 px-4 py-2.5 rounded-xl sm:rounded-2xl border border-border-default hover:bg-surface-subtle text-xs font-bold text-text-secondary transition-colors cursor-pointer active:scale-95"
             >
               Cancel
             </button>
@@ -1481,7 +1587,7 @@ export function CharacterCreatorModal({
               type="button"
               onClick={handleSave}
               disabled={saving}
-              className={`flex items-center justify-center gap-2 px-6 py-2.5 rounded-2xl text-white text-xs font-black shadow-lg transition-all active:scale-95 disabled:opacity-50 cursor-pointer ${
+              className={`flex items-center justify-center min-h-11 sm:min-h-10 gap-2 px-4 sm:px-6 py-2.5 rounded-xl sm:rounded-2xl text-white text-xs font-black shadow-lg transition-all active:scale-95 disabled:opacity-50 cursor-pointer ${
                 role === "TEACHER"
                   ? "bg-steel hover:bg-steel-light shadow-steel/25 hover:shadow-steel/35"
                   : "bg-sage hover:bg-sage-light shadow-sage/25 hover:shadow-sage/35"
@@ -1490,17 +1596,17 @@ export function CharacterCreatorModal({
               {saving ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Equipping Character...
+                  <span>Equipping...</span>
                 </>
               ) : savedSuccess ? (
                 <>
                   <Check className="h-4 w-4 text-white" />
-                  Equipped!
+                  <span>Equipped!</span>
                 </>
               ) : (
                 <>
                   <Check className="h-4 w-4" />
-                  Save & Equip Look
+                  <span>Save &amp; Equip Look</span>
                 </>
               )}
             </button>

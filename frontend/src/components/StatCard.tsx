@@ -9,10 +9,9 @@ interface StatCardProps {
   subtitle?: string;
   icon: LucideIcon;
   color?: "tan" | "steel" | "sage" | "cream" | "burgundy";
-  badge?: string;
 }
 
-export function StatCard({ title, value, subtitle, icon: Icon, color = "steel", badge }: StatCardProps) {
+export function StatCard({ title, value, subtitle, icon: Icon, color = "steel" }: StatCardProps) {
   const colorMap = {
     tan: {
       bg: "bg-tan-ghost",
@@ -55,20 +54,13 @@ export function StatCard({ title, value, subtitle, icon: Icon, color = "steel", 
 
   return (
     <div
-      className={`relative overflow-hidden glass-card glass-card-hover flex items-center justify-between rounded-[24px] p-5.5 border border-border-default transition-all duration-300 ${style.glow}`}
+      className={`relative overflow-hidden glass-card glass-card-hover flex items-center justify-between rounded-3xl p-5.5 border border-border-default transition-all duration-300 ${style.glow}`}
     >
       {/* Subtle decorative corner accent */}
       <div className={`pointer-events-none absolute -right-6 -bottom-6 h-20 w-20 rounded-full ${style.bg} blur-xl opacity-60`} />
 
       <div className="relative z-10">
-        <div className="flex items-center gap-2">
-          <p className="text-[11px] font-bold text-text-muted uppercase tracking-wider">{title}</p>
-          {badge && (
-            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${style.bg} ${style.text} border ${style.border}`}>
-              {badge}
-            </span>
-          )}
-        </div>
+        <p className="text-[11px] font-bold text-text-muted uppercase tracking-wider">{title}</p>
         <h3 className="mt-1.5 text-2xl sm:text-3xl font-black tracking-tight text-text-primary">{value}</h3>
         {subtitle && <p className="mt-1 text-xs text-text-muted font-medium">{subtitle}</p>}
       </div>

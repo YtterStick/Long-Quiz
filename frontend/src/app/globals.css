@@ -301,6 +301,20 @@ select:disabled {
   box-shadow: 0 6px 16px -2px rgba(61, 107, 132, 0.45);
 }
 
+/* Shimmer animation for Skeleton loaders */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 1.8s ease-in-out infinite;
+}
+
 /* Custom scrollbars */
 ::-webkit-scrollbar {
   width: 8px;
@@ -404,4 +418,34 @@ select:disabled {
 .rotate-y-180 {
   transform: rotateY(180deg);
 }
+
+/* ── Student Reviewer UI helpers ───────────────────────── */
+@keyframes rv-fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes rv-pop-in {
+  from { opacity: 0; transform: scale(0.96) translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+.rv-fade { animation: rv-fade-up 0.28s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.rv-pop { animation: rv-pop-in 0.16s ease-out both; transform-origin: top right; }
+
+.rv-btn-primary {
+  background: linear-gradient(135deg, var(--color-steel-dim) 0%, var(--color-steel) 100%);
+  color: #ffffff;
+  transition: filter 0.2s ease, transform 0.15s ease, box-shadow 0.2s ease;
+}
+.rv-btn-primary:hover:not(:disabled) { filter: brightness(1.08); }
+.dark .rv-btn-primary { color: #0d141b; }
+
+.rv-chip-active {
+  background-color: var(--color-text-primary);
+  color: var(--color-surface-raised);
+}
+
+.rv-progress {
+  background: linear-gradient(90deg, var(--color-steel) 0%, var(--color-sage) 100%);
+}
+
 

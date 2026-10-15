@@ -170,6 +170,7 @@ class QuestionItem(BaseModel):
 
 class QuestionnaireUpdate(BaseModel):
     questions: List[QuestionItem]
+    answer_keys: Optional[List[AnswerKeyItem]] = None
 
 
 class ExamVisibilityUpdate(BaseModel):

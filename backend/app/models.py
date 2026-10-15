@@ -267,3 +267,59 @@ class StudentGenerationLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     student: Mapped[Optional["Student"]] = relationship("Student")
+
+
+class FriendshipStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    ACCEPTED = "ACCEPTED"
+    DECLINED = "DECLINED"
+
+
+class Friendship(Base):
+    __tablename__ = "friendships"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    sender_student_id: Mapped[str] = mapped_column(String, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    receiver_student_id: Mapped[str] = mapped_column(String, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    status: Mapped[FriendshipStatus] = mapped_column(
+        SAEnum(FriendshipStatus, name="friendship_status"),
+        default=FriendshipStatus.PENDING,
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    sender: Mapped[Optional["Student"]] = relationship("Student", foreign_keys=[sender_student_id])
+    receiver: Mapped[Optional["Student"]] = relationship("Student", foreign_keys=[receiver_student_id])
+
+
+class FriendSharedDeck(Base):
+    """Decks shared directly between student friends."""
+    __tablename__ = "friend_shared_decks"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    sender_student_id: Mapped[str] = mapped_column(String, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    receiver_student_id: Mapped[str] = mapped_column(String, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    deck_data: Mapped[str] = mapped_column(Text, nullable=False)  # JSON serialized GeneratedReviewerDeck
+    note: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    sender: Mapped[Optional["Student"]] = relationship("Student", foreign_keys=[sender_student_id])
+    receiver: Mapped[Optional["Student"]] = relationship("Student", foreign_keys=[receiver_student_id])
+
+
+class CustomStudentDeck(Base):
+    """Custom student decks created or edited manually by the student and saved in the cloud."""
+    __tablename__ = "custom_student_decks"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    student_id: Mapped[str] = mapped_column(String, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    deck_data: Mapped[str] = mapped_column(Text, nullable=False)  # JSON serialized GeneratedReviewerDeck
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    student: Mapped[Optional["Student"]] = relationship("Student")
+

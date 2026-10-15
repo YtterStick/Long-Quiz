@@ -107,9 +107,14 @@ export function LiveExamMonitorModal({
         onStatusChanged(res.is_online_active, res.is_started);
       }
     } catch (err: unknown) {
-      console.error("Failed to fetch exam monitor data:", err);
       const msg = err instanceof Error ? err.message : "Failed to load live roster";
-      setFetchError(msg);
+      if (isManual) {
+        console.warn("Manual monitor refresh failed:", msg);
+        setFetchError(msg);
+      } else {
+        // Transient network blip during background 3-second auto-polling
+        setFetchError((prev) => (data ? prev : msg));
+      }
     } finally {
       setLoading(false);
       if (isManual) setRefreshing(false);

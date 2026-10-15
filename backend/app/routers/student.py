@@ -1,6 +1,7 @@
 """Student routes: dashboard, grades, reviewer, exam results."""
 
 from datetime import datetime, timezone
+import json
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body
 from pydantic import BaseModel
@@ -9,8 +10,9 @@ from sqlalchemy import select, and_, or_
 from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models import (
-    User, Student, ExamSubmission, Exam, ExamAnswerKey, ExamQuestion,
-    Role, Teacher, SubmissionAnswer, SectionExam, ExamLobbyEntry
+    User, Student, Section, ExamSubmission, Exam, ExamAnswerKey, ExamQuestion,
+    Role, Teacher, SubmissionAnswer, SectionExam, ExamLobbyEntry,
+    Friendship, FriendshipStatus, FriendSharedDeck, CustomStudentDeck
 )
 from app.schemas import (
     GradeItem, SubmissionAnswerOut, AnswerKeyOut, QuestionOut, ExamOut,
@@ -1057,5 +1059,713 @@ async def generate_reviewer_from_file(
     result["quota_used"] = used + 1
     result["quota_remaining"] = max(0, MAX_WEEKLY_HANDOUT_GENERATIONS - (used + 1))
     return result
+
+
+# ─── Friends & Study Circle Schemas ──────────────────────────────────────────
+
+class FriendRequestCreate(BaseModel):
+    target_student_id: str
+
+
+class FriendRequestAction(BaseModel):
+    action: str  # "ACCEPT" or "DECLINE"
+
+
+class ShareDeckRequest(BaseModel):
+    receiver_student_id: str
+    title: str
+    deck_data: dict
+    note: Optional[str] = None
+
+
+class CustomDeckCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    deck_data: dict
+
+
+class CustomDeckUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    deck_data: Optional[dict] = None
+
+
+def _serialize_student_card(st: Student) -> dict:
+    return {
+        "student_id": st.id,
+        "student_number": st.student_number,
+        "full_student_id": format_full_student_id(st.student_number),
+        "first_name": st.user.first_name if st.user else "",
+        "last_name": st.user.last_name if st.user else "",
+        "full_name": f"{st.user.first_name} {st.user.last_name}" if st.user else "",
+        "username": st.user.username if st.user else "",
+        "avatar_config": st.avatar_config,
+        "bio": st.bio,
+        "section_id": st.section_id,
+        "section_name": st.section.name if st.section else None,
+    }
+
+
+# ─── Friends Endpoints ────────────────────────────────────────────────────────
+
+@router.get("/friends")
+async def get_student_friends(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.STUDENT)),
+):
+    """
+    Returns accepted friends, pending incoming requests, sent outgoing requests,
+    and same-section classmates for quick connecting.
+    """
+    student = await _get_student(current_user, db)
+
+    # 1. Fetch all friendships involving the student
+    friendships_res = await db.execute(
+        select(Friendship)
+        .options(
+            selectinload(Friendship.sender).selectinload(Student.user),
+            selectinload(Friendship.sender).selectinload(Student.section),
+            selectinload(Friendship.receiver).selectinload(Student.user),
+            selectinload(Friendship.receiver).selectinload(Student.section),
+        )
+        .where(
+            or_(
+                Friendship.sender_student_id == student.id,
+                Friendship.receiver_student_id == student.id,
+            )
+        )
+    )
+    friendships = friendships_res.scalars().all()
+
+    friends_list = []
+    incoming_requests = []
+    outgoing_requests = []
+    connected_student_ids = {student.id}
+
+    for f in friendships:
+        if f.status == FriendshipStatus.ACCEPTED:
+            partner = f.receiver if f.sender_student_id == student.id else f.sender
+            if partner and partner.user:
+                connected_student_ids.add(partner.id)
+                card = _serialize_student_card(partner)
+                card["friendship_id"] = f.id
+                card["since"] = f.created_at.isoformat()
+                friends_list.append(card)
+        elif f.status == FriendshipStatus.PENDING:
+            if f.receiver_student_id == student.id and f.sender and f.sender.user:
+                connected_student_ids.add(f.sender.id)
+                card = _serialize_student_card(f.sender)
+                card["request_id"] = f.id
+                card["requested_at"] = f.created_at.isoformat()
+                incoming_requests.append(card)
+            elif f.sender_student_id == student.id and f.receiver and f.receiver.user:
+                connected_student_ids.add(f.receiver.id)
+                card = _serialize_student_card(f.receiver)
+                card["request_id"] = f.id
+                card["requested_at"] = f.created_at.isoformat()
+                outgoing_requests.append(card)
+
+    # 2. Section Classmates (Quick Connect suggestions)
+    classmates = []
+    if student.section_id:
+        classmates_res = await db.execute(
+            select(Student)
+            .options(
+                selectinload(Student.user),
+                selectinload(Student.section),
+            )
+            .where(
+                Student.section_id == student.section_id,
+                Student.id.not_in(connected_student_ids),
+            )
+            .limit(20)
+        )
+        raw_classmates = classmates_res.scalars().all()
+        for cm in raw_classmates:
+            if cm.user:
+                classmates.append(_serialize_student_card(cm))
+
+    return {
+        "friends": friends_list,
+        "incoming_requests": incoming_requests,
+        "outgoing_requests": outgoing_requests,
+        "classmates": classmates,
+    }
+
+
+@router.get("/friends/search")
+async def search_students(
+    q: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.STUDENT)),
+):
+    """
+    Search students by full name, username, or student number.
+    Returns relationship status: 'FRIEND', 'PENDING_INCOMING', 'PENDING_OUTGOING', or 'NONE'.
+    """
+    query_str = q.strip()
+    if not query_str or len(query_str) < 2:
+        return []
+
+    student = await _get_student(current_user, db)
+
+    # Search students
+    search_conds: list = [
+        User.first_name.ilike(f"%{query_str}%"),
+        User.last_name.ilike(f"%{query_str}%"),
+        User.username.ilike(f"%{query_str}%"),
+    ]
+    if query_str.isdigit():
+        search_conds.append(Student.student_number == int(query_str))
+
+    res = await db.execute(
+        select(Student)
+        .join(User, Student.user_id == User.id)
+        .options(selectinload(Student.user), selectinload(Student.section))
+        .where(
+            Student.id != student.id,
+            or_(*search_conds),
+        )
+        .limit(15)
+    )
+    candidates = res.scalars().all()
+
+    # Get friendship statuses with these candidates
+    candidate_ids = [c.id for c in candidates]
+    if not candidate_ids:
+        return []
+
+    f_res = await db.execute(
+        select(Friendship).where(
+            or_(
+                and_(Friendship.sender_student_id == student.id, Friendship.receiver_student_id.in_(candidate_ids)),
+                and_(Friendship.receiver_student_id == student.id, Friendship.sender_student_id.in_(candidate_ids)),
+            )
+        )
+    )
+    friendships = f_res.scalars().all()
+    status_map = {}
+    for f in friendships:
+        other_id = f.receiver_student_id if f.sender_student_id == student.id else f.sender_student_id
+        if f.status == FriendshipStatus.ACCEPTED:
+            status_map[other_id] = "FRIEND"
+        elif f.status == FriendshipStatus.PENDING:
+            if f.sender_student_id == student.id:
+                status_map[other_id] = "PENDING_OUTGOING"
+            else:
+                status_map[other_id] = "PENDING_INCOMING"
+
+    results = []
+    for c in candidates:
+        if c.user:
+            item = _serialize_student_card(c)
+            item["relationship_status"] = status_map.get(c.id, "NONE")
+            results.append(item)
+
+    return results
+
+
+@router.post("/friends/request")
+async def send_friend_request(
+    payload: FriendRequestCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.STUDENT)),
+):
+    """Sends a friend request to another student."""
+    student = await _get_student(current_user, db)
+    if payload.target_student_id == student.id:
+        raise HTTPException(status_code=400, detail="You cannot add yourself as a friend.")
+
+    target_res = await db.execute(select(Student).where(Student.id == payload.target_student_id))
+    target = target_res.scalar_one_or_none()
+    if not target:
+        raise HTTPException(status_code=404, detail="Student not found.")
+
+    # Check existing relationship
+    f_res = await db.execute(
+        select(Friendship).where(
+            or_(
+                and_(Friendship.sender_student_id == student.id, Friendship.receiver_student_id == target.id),
+                and_(Friendship.receiver_student_id == student.id, Friendship.sender_student_id == target.id),
+            )
+        )
+    )
+    existing = f_res.scalar_one_or_none()
+    if existing:
+        if existing.status == FriendshipStatus.ACCEPTED:
+            raise HTTPException(status_code=400, detail="You are already friends.")
+        elif existing.status == FriendshipStatus.PENDING:
+            if existing.sender_student_id == student.id:
+                raise HTTPException(status_code=400, detail="Friend request already sent.")
+            else:
+                # Target already sent us a request, auto-accept it!
+                existing.status = FriendshipStatus.ACCEPTED
+                await db.commit()
+                return {"ok": True, "message": "Mutual friend request accepted!"}
+        elif existing.status == FriendshipStatus.DECLINED:
+            # Reopen as pending
+            existing.sender_student_id = student.id
+            existing.receiver_student_id = target.id
+            existing.status = FriendshipStatus.PENDING
+            await db.commit()
+            return {"ok": True, "message": "Friend request sent."}
+
+    new_friendship = Friendship(
+        sender_student_id=student.id,
+        receiver_student_id=target.id,
+        status=FriendshipStatus.PENDING,
+    )
+    db.add(new_friendship)
+    await db.commit()
+    return {"ok": True, "message": "Friend request sent."}
+
+
+@router.put("/friends/request/{request_id}")
+async def handle_friend_request(
+    request_id: str,
+    payload: FriendRequestAction,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.STUDENT)),
+):
+    """Accepts or declines an incoming friend request."""
+    student = await _get_student(current_user, db)
+    f_res = await db.execute(
+        select(Friendship).where(
+            Friendship.id == request_id,
+            Friendship.receiver_student_id == student.id,
+        )
+    )
+    friendship = f_res.scalar_one_or_none()
+    if not friendship:
+        raise HTTPException(status_code=404, detail="Friend request not found.")
+
+    if payload.action.upper() == "ACCEPT":
+        friendship.status = FriendshipStatus.ACCEPTED
+        await db.commit()
+        return {"ok": True, "message": "Friend request accepted."}
+    elif payload.action.upper() == "DECLINE":
+        await db.delete(friendship)
+        await db.commit()
+        return {"ok": True, "message": "Friend request declined."}
+    else:
+        raise HTTPException(status_code=400, detail="Invalid action. Use ACCEPT or DECLINE.")
+
+
+@router.delete("/friends/{friend_student_id}")
+async def remove_friend(
+    friend_student_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.STUDENT)),
+):
+    """Removes a friend or cancels a pending request."""
+    student = await _get_student(current_user, db)
+    f_res = await db.execute(
+        select(Friendship).where(
+            or_(
+                and_(Friendship.sender_student_id == student.id, Friendship.receiver_student_id == friend_student_id),
+                and_(Friendship.receiver_student_id == student.id, Friendship.sender_student_id == friend_student_id),
+            )
+        )
+    )
+    friendship = f_res.scalar_one_or_none()
+    if not friendship:
+        raise HTTPException(status_code=404, detail="Friendship not found.")
+
+    await db.delete(friendship)
+    await db.commit()
+    return {"ok": True, "message": "Friend removed."}
+
+
+# ─── Deck Sharing with Friends ────────────────────────────────────────────────
+
+@router.post("/reviewer/share")
+async def share_deck_with_friend(
+    payload: ShareDeckRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.STUDENT)),
+):
+    """Shares an AI reviewer or custom deck directly with an accepted friend."""
+    student = await _get_student(current_user, db)
+
+    # Verify friend status
+    f_res = await db.execute(
+        select(Friendship).where(
+            Friendship.status == FriendshipStatus.ACCEPTED,
+            or_(
+                and_(Friendship.sender_student_id == student.id, Friendship.receiver_student_id == payload.receiver_student_id),
+                and_(Friendship.receiver_student_id == student.id, Friendship.sender_student_id == payload.receiver_student_id),
+            )
+        )
+    )
+    is_friend = f_res.scalar_one_or_none()
+    if not is_friend:
+        raise HTTPException(status_code=403, detail="You can only share decks with accepted study friends.")
+
+    shared_deck = FriendSharedDeck(
+        sender_student_id=student.id,
+        receiver_student_id=payload.receiver_student_id,
+        title=payload.title,
+        deck_data=json.dumps(payload.deck_data),
+        note=payload.note,
+    )
+    db.add(shared_deck)
+    await db.commit()
+    return {"ok": True, "message": f"Successfully shared '{payload.title}' with your friend."}
+
+
+@router.get("/reviewer/shared-with-me")
+async def get_decks_shared_with_me(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.STUDENT)),
+):
+    """Retrieves all decks shared directly with current student by friends."""
+    student = await _get_student(current_user, db)
+    res = await db.execute(
+        select(FriendSharedDeck)
+        .options(
+            selectinload(FriendSharedDeck.sender).selectinload(Student.user),
+            selectinload(FriendSharedDeck.sender).selectinload(Student.section),
+        )
+        .where(FriendSharedDeck.receiver_student_id == student.id)
+        .order_by(FriendSharedDeck.created_at.desc())
+    )
+    items = res.scalars().all()
+
+    out = []
+    for item in items:
+        sender_card = _serialize_student_card(item.sender) if item.sender else None
+        try:
+            deck_parsed = json.loads(item.deck_data)
+        except Exception:
+            deck_parsed = {}
+        out.append({
+            "id": item.id,
+            "title": item.title,
+            "note": item.note,
+            "created_at": item.created_at.isoformat(),
+            "sender": sender_card,
+            "deck": deck_parsed,
+        })
+    return out
+
+
+@router.delete("/reviewer/shared-with-me/{share_id}")
+async def dismiss_shared_deck(
+    share_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.STUDENT)),
+):
+    """Dismisses/deletes a deck shared with the current student."""
+    student = await _get_student(current_user, db)
+    res = await db.execute(
+        select(FriendSharedDeck).where(
+            FriendSharedDeck.id == share_id,
+            FriendSharedDeck.receiver_student_id == student.id,
+        )
+    )
+    item = res.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Shared deck not found.")
+
+    await db.delete(item)
+    await db.commit()
+    return {"ok": True, "message": "Shared deck dismissed."}
+
+
+# ─── Custom & Cloud Saved Decks ──────────────────────────────────────────────
+
+@router.get("/reviewer/custom-decks")
+async def get_custom_decks(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.STUDENT)),
+):
+    """Lists student's custom created or saved study decks."""
+    student = await _get_student(current_user, db)
+    res = await db.execute(
+        select(CustomStudentDeck)
+        .where(CustomStudentDeck.student_id == student.id)
+        .order_by(CustomStudentDeck.updated_at.desc())
+    )
+    decks = res.scalars().all()
+    out = []
+    for d in decks:
+        try:
+            deck_parsed = json.loads(d.deck_data)
+        except Exception:
+            deck_parsed = {}
+        out.append({
+            "id": d.id,
+            "title": d.title,
+            "description": d.description,
+            "created_at": d.created_at.isoformat(),
+            "updated_at": d.updated_at.isoformat(),
+            "deck": deck_parsed,
+        })
+    return out
+
+
+@router.post("/reviewer/custom-decks")
+async def create_custom_deck(
+    payload: CustomDeckCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.STUDENT)),
+):
+    """Creates a new custom student flashcard/reviewer deck in cloud storage."""
+    student = await _get_student(current_user, db)
+    new_deck = CustomStudentDeck(
+        student_id=student.id,
+        title=payload.title.strip() or "Custom Study Deck",
+        description=payload.description.strip() if payload.description else None,
+        deck_data=json.dumps(payload.deck_data),
+    )
+    db.add(new_deck)
+    await db.commit()
+    await db.refresh(new_deck)
+
+    return {
+        "id": new_deck.id,
+        "title": new_deck.title,
+        "description": new_deck.description,
+        "created_at": new_deck.created_at.isoformat(),
+        "updated_at": new_deck.updated_at.isoformat(),
+        "deck": payload.deck_data,
+    }
+
+
+@router.put("/reviewer/custom-decks/{deck_id}")
+async def update_custom_deck(
+    deck_id: str,
+    payload: CustomDeckUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.STUDENT)),
+):
+    """Updates an existing custom student deck."""
+    student = await _get_student(current_user, db)
+    res = await db.execute(
+        select(CustomStudentDeck).where(
+            CustomStudentDeck.id == deck_id,
+            CustomStudentDeck.student_id == student.id,
+        )
+    )
+    deck = res.scalar_one_or_none()
+    if not deck:
+        raise HTTPException(status_code=404, detail="Custom deck not found.")
+
+    if payload.title is not None:
+        deck.title = payload.title.strip()
+    if payload.description is not None:
+        deck.description = payload.description.strip()
+    if payload.deck_data is not None:
+        deck.deck_data = json.dumps(payload.deck_data)
+
+    deck.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(deck)
+
+    try:
+        parsed = json.loads(deck.deck_data)
+    except Exception:
+        parsed = {}
+
+    return {
+        "id": deck.id,
+        "title": deck.title,
+        "description": deck.description,
+        "created_at": deck.created_at.isoformat(),
+        "updated_at": deck.updated_at.isoformat(),
+        "deck": parsed,
+    }
+
+
+@router.delete("/reviewer/custom-decks/{deck_id}")
+async def delete_custom_deck(
+    deck_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.STUDENT)),
+):
+    """Deletes a custom student deck."""
+    student = await _get_student(current_user, db)
+    res = await db.execute(
+        select(CustomStudentDeck).where(
+            CustomStudentDeck.id == deck_id,
+            CustomStudentDeck.student_id == student.id,
+        )
+    )
+    deck = res.scalar_one_or_none()
+    if not deck:
+        raise HTTPException(status_code=404, detail="Custom deck not found.")
+
+    await db.delete(deck)
+    await db.commit()
+    return {"ok": True, "message": "Deck deleted."}
+
+
+@router.get("/notifications")
+async def get_student_notifications(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.STUDENT)),
+):
+    """
+    Returns aggregated notifications for current student:
+    - Pending incoming friend requests
+    - Reviewer decks shared by friends
+    - Available online exams ready to take
+    - Newly released grades
+    """
+    student = await _get_student(current_user, db)
+    notifications: list[dict] = []
+
+    # 1. Pending incoming friend requests
+    friend_requests_res = await db.execute(
+        select(Friendship)
+        .options(
+            selectinload(Friendship.sender).selectinload(Student.user),
+            selectinload(Friendship.sender).selectinload(Student.section),
+        )
+        .where(
+            Friendship.receiver_student_id == student.id,
+            Friendship.status == FriendshipStatus.PENDING,
+        )
+        .order_by(Friendship.created_at.desc())
+    )
+    pending_friendships = friend_requests_res.scalars().all()
+    for f in pending_friendships:
+        sender_user = f.sender.user if f.sender else None
+        sender_name = f"{sender_user.first_name} {sender_user.last_name}" if sender_user else "A student"
+        sender_id_formatted = format_full_student_id(f.sender.student_number) if f.sender else ""
+        section_name = f.sender.section.name if f.sender and f.sender.section else None
+        notifications.append({
+            "id": f"friend_req_{f.id}",
+            "type": "FRIEND_REQUEST",
+            "title": "Friend Request",
+            "message": f"{sender_name} sent you a study circle friend request.",
+            "created_at": f.created_at.isoformat(),
+            "data": {
+                "request_id": f.id,
+                "sender_student_id": f.sender_student_id,
+                "sender_name": sender_name,
+                "sender_full_student_id": sender_id_formatted,
+                "section_name": section_name,
+                "avatar_config": f.sender.avatar_config if f.sender else None,
+            },
+        })
+
+    # 2. Decks shared directly with me by friends
+    shared_decks_res = await db.execute(
+        select(FriendSharedDeck)
+        .options(
+            selectinload(FriendSharedDeck.sender).selectinload(Student.user),
+        )
+        .where(FriendSharedDeck.receiver_student_id == student.id)
+        .order_by(FriendSharedDeck.created_at.desc())
+        .limit(10)
+    )
+    shared_decks = shared_decks_res.scalars().all()
+    for sd in shared_decks:
+        sender_user = sd.sender.user if sd.sender else None
+        sender_name = f"{sender_user.first_name} {sender_user.last_name}" if sender_user else "A friend"
+        notifications.append({
+            "id": f"deck_shared_{sd.id}",
+            "type": "SHARED_DECK",
+            "title": "Study Deck Shared",
+            "message": f"{sender_name} shared '{sd.title}' with you.",
+            "created_at": sd.created_at.isoformat(),
+            "data": {
+                "deck_id": sd.id,
+                "title": sd.title,
+                "note": sd.note,
+                "sender_name": sender_name,
+                "avatar_config": sd.sender.avatar_config if sd.sender else None,
+            },
+        })
+
+    # 3. Active Online Exams available for this student's section
+    exam_online_map = {}
+    if student.section_id:
+        se_res = await db.execute(
+            select(SectionExam)
+            .options(selectinload(SectionExam.exam))
+            .where(
+                SectionExam.section_id == student.section_id,
+                SectionExam.is_online_active == True,
+            )
+            .order_by(SectionExam.created_at.desc())
+        )
+        for se in se_res.scalars().all():
+            if se.exam:
+                exam_online_map[se.exam.id] = se.exam
+    else:
+        e_res = await db.execute(
+            select(Exam)
+            .where(Exam.is_online_active == True)
+            .order_by(Exam.created_at.desc())
+        )
+        for e in e_res.scalars().all():
+            exam_online_map[e.id] = e
+
+    if exam_online_map:
+        subs_res = await db.execute(
+            select(ExamSubmission.exam_id).where(
+                ExamSubmission.student_id == student.id,
+                ExamSubmission.exam_id.in_(list(exam_online_map.keys())),
+            )
+        )
+        submitted_exam_ids = set(subs_res.scalars().all())
+
+        for exam_id, exam in exam_online_map.items():
+            if exam_id not in submitted_exam_ids:
+                notifications.append({
+                    "id": f"exam_avail_{exam.id}",
+                    "type": "EXAM_AVAILABLE",
+                    "title": "Online Quiz Active",
+                    "message": f"'{exam.title}' ({exam.total_questions} questions) is currently open for your section.",
+                    "created_at": exam.created_at.isoformat(),
+                    "data": {
+                        "exam_id": exam.id,
+                        "title": exam.title,
+                        "total_questions": exam.total_questions,
+                    },
+                })
+
+    # 4. Released Exam Grades
+    grades_res = await db.execute(
+        select(ExamSubmission)
+        .join(Exam, ExamSubmission.exam_id == Exam.id)
+        .options(selectinload(ExamSubmission.exam))
+        .where(
+            ExamSubmission.student_id == student.id,
+            or_(
+                ExamSubmission.is_published == True,
+                Exam.is_grades_released == True,
+            ),
+        )
+        .order_by(ExamSubmission.scanned_at.desc())
+        .limit(5)
+    )
+    released_submissions = grades_res.scalars().all()
+    for sub in released_submissions:
+        if sub.exam:
+            pct = round((sub.total_score / sub.max_score * 100) if sub.max_score > 0 else 0.0, 1)
+            time_val = sub.scanned_at.isoformat() if sub.scanned_at else datetime.now(timezone.utc).isoformat()
+            notifications.append({
+                "id": f"grade_rel_{sub.id}",
+                "type": "GRADE_RELEASED",
+                "title": "Exam Results Released",
+                "message": f"Grades for '{sub.exam.title}' are published: {pct}% ({sub.total_score}/{sub.max_score}).",
+                "created_at": time_val,
+                "data": {
+                    "exam_id": sub.exam_id,
+                    "title": sub.exam.title,
+                    "percentage": pct,
+                    "total_score": sub.total_score,
+                    "max_score": sub.max_score,
+                },
+            })
+
+    # Sort notifications by created_at descending
+    notifications.sort(key=lambda x: str(x.get("created_at", "")), reverse=True)
+    return notifications
+
+
 
 

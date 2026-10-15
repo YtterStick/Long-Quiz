@@ -230,9 +230,9 @@ export default function AdminDashboard() {
         <div className="mb-8">
           <WelcomeHero
             role="admin"
+            showRoleBadge={false}
             name={user?.first_name}
             loading={authLoading}
-            meta="Super Admin"
             description="Manage system users, teachers, sections, and overall system activity across your school."
             actions={
               <button

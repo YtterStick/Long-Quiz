@@ -3,7 +3,7 @@ import React from "react";
 export function Skeleton({ className = "" }: { className?: string }) {
   return (
     <div
-      className={`animate-pulse rounded-xl bg-surface-subtle ${className}`}
+      className={`relative overflow-hidden rounded-xl bg-surface-subtle/80 before:absolute before:inset-0 before:-translate-x-full before:animate-shimmer before:bg-linear-to-r before:from-transparent before:via-white/20 dark:before:via-white/5 before:to-transparent ${className}`}
     />
   );
 }
@@ -394,9 +394,15 @@ export function SkeletonDashboardPage({
             <Skeleton className="h-8 w-24 rounded-xl" />
             <Skeleton className="h-8 w-24 rounded-xl" />
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <Skeleton className="h-9 w-9 rounded-xl" />
-            <Skeleton className="h-9 w-9 rounded-full" />
+            <div className="flex items-center gap-2.5 rounded-2xl bg-surface-overlay/80 border border-border-default px-3 py-1.5">
+              <Skeleton className="h-7 w-7 rounded-full shrink-0" />
+              <div className="hidden sm:flex flex-col gap-1">
+                <Skeleton className="h-3 w-20" />
+                <Skeleton className="h-2 w-12" />
+              </div>
+            </div>
           </div>
         </div>
       </header>
@@ -407,7 +413,6 @@ export function SkeletonDashboardPage({
         <div className="rounded-3xl border border-border-default bg-surface-raised p-6 sm:p-8 relative overflow-hidden">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
             <div className="space-y-3.5 flex-1 min-w-0">
-              <Skeleton className="h-5 w-32 rounded-full" />
               <Skeleton className="h-9 w-3/5 sm:w-2/5" />
               <Skeleton className="h-4 w-4/5" />
               <div className="flex items-center gap-2 pt-2">
@@ -415,10 +420,12 @@ export function SkeletonDashboardPage({
                 <Skeleton className="h-10 w-32 rounded-2xl" />
               </div>
             </div>
-            {/* Spotlight avatar placeholder */}
+            {/* Spotlight avatar placeholder with frame */}
             <div className="shrink-0 flex flex-col items-center gap-2">
-              <Skeleton className="h-28 w-28 sm:h-32 sm:w-32 rounded-full" />
-              <Skeleton className="h-3 w-24" />
+              <div className="relative p-1.5 rounded-full bg-surface-raised border border-border-emphasis/70 shadow-lg">
+                <Skeleton className="h-28 w-28 sm:h-32 sm:w-32 rounded-full" />
+              </div>
+              <Skeleton className="h-3 w-28 rounded-full" />
             </div>
           </div>
         </div>
@@ -460,6 +467,101 @@ export function SkeletonDashboardPage({
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+/**
+ * Skeleton for Avatar Creator Studio & Modal
+ */
+export function SkeletonAvatarCreator() {
+  return (
+    <div className="flex flex-col w-full h-full bg-surface-raised rounded-[28px] sm:rounded-4xl border border-border-default overflow-hidden animate-in fade-in duration-200">
+      {/* Top Header */}
+      <div className="px-5 sm:px-7 py-4 border-b border-border-default/70 bg-surface-base/60 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-10 w-10 rounded-2xl shrink-0" />
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-5 w-48" />
+              <Skeleton className="h-4 w-24 rounded-full" />
+            </div>
+            <Skeleton className="h-3 w-64" />
+          </div>
+        </div>
+        <Skeleton className="h-8 w-8 rounded-xl" />
+      </div>
+
+      {/* Main Studio Body */}
+      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] flex-1 overflow-hidden divide-y lg:divide-y-0 lg:divide-x divide-border-default">
+        {/* Left Column: Avatar Spotlight Stage */}
+        <div className="p-5 sm:p-6 flex flex-col items-center justify-between gap-6 bg-surface-base/30">
+          <div className="flex flex-col items-center text-center w-full space-y-4">
+            {/* Avatar Spotlight Ring */}
+            <div className="p-2 rounded-full bg-surface-raised border border-border-emphasis/60 shadow-xl">
+              <Skeleton className="h-36 w-36 sm:h-40 sm:w-40 rounded-full" />
+            </div>
+
+            {/* Gender Toggle Pill */}
+            <Skeleton className="h-10 w-44 rounded-2xl" />
+
+            {/* Quick Randomize & Reset */}
+            <div className="flex items-center gap-2 pt-1">
+              <Skeleton className="h-8 w-28 rounded-xl" />
+              <Skeleton className="h-8 w-20 rounded-xl" />
+            </div>
+          </div>
+
+          {/* Identity preview card */}
+          <div className="w-full p-3.5 rounded-2xl border border-border-default bg-surface-base/60 space-y-2">
+            <Skeleton className="h-3 w-20" />
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-3 w-48" />
+          </div>
+        </div>
+
+        {/* Right Column: Customization Tabs & Wardrobe Grid */}
+        <div className="flex flex-col flex-1 p-5 sm:p-7 space-y-5 overflow-y-auto">
+          {/* Studio Tab bar */}
+          <div className="flex items-center gap-2 pb-2 border-b border-border-default/60 overflow-x-auto">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-9 w-24 rounded-xl shrink-0" />
+            ))}
+          </div>
+
+          {/* Color Palettes Skeleton */}
+          <div className="space-y-2">
+            <Skeleton className="h-3 w-28" />
+            <div className="flex items-center gap-2">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <Skeleton key={i} className="h-7 w-7 rounded-full shrink-0" />
+              ))}
+            </div>
+          </div>
+
+          {/* Options Grid */}
+          <div className="space-y-2">
+            <Skeleton className="h-3 w-32" />
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="p-3 rounded-2xl border border-border-default bg-surface-base/60 space-y-2 flex flex-col items-center">
+                  <Skeleton className="h-12 w-12 rounded-xl" />
+                  <Skeleton className="h-3 w-16" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Footer Skeleton */}
+      <div className="px-5 sm:px-7 py-3.5 border-t border-border-default/70 bg-surface-base/60 flex items-center justify-between shrink-0">
+        <Skeleton className="h-3 w-72 hidden sm:block" />
+        <div className="flex items-center gap-2.5">
+          <Skeleton className="h-9 w-20 rounded-xl" />
+          <Skeleton className="h-9 w-36 rounded-2xl" />
+        </div>
+      </div>
     </div>
   );
 }

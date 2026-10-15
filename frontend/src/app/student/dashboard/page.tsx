@@ -37,6 +37,7 @@ import {
   Shuffle,
   Shirt,
   UserCog,
+  Users,
 } from "lucide-react";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
 import {
@@ -49,6 +50,7 @@ import {
 } from "@/components/ui/Skeleton";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { StudentHandoutReviewer } from "@/components/StudentHandoutReviewer";
+import { StudentFriendsCircle } from "@/components/StudentFriendsCircle";
 import { WelcomeHero } from "@/components/WelcomeHero";
 import { StudentAvatar } from "@/components/avatar/StudentAvatar";
 import { CharacterCreatorModal } from "@/components/avatar/CharacterCreatorModal";
@@ -178,7 +180,7 @@ export default function StudentDashboard() {
   const router = useRouter();
 
   const [mounted, setMounted] = useState(false);
-  const [activeTab, setActiveTab] = useState<"available" | "grades" | "reviewers">("available");
+  const [activeTab, setActiveTab] = useState<"available" | "grades" | "reviewers" | "friends">("available");
   const [info, setInfo] = useState<StudentInfo | null>(null);
   const [avatarConfig, setAvatarConfig] = useState<StudentAvatarConfig>(DEFAULT_AVATAR_CONFIG);
   const [closetModalOpen, setClosetModalOpen] = useState(false);
@@ -342,7 +344,11 @@ export default function StudentDashboard() {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get("tab");
-      if (tabParam === "available" || tabParam === "grades" || tabParam === "reviewers") {
+      if (tabParam === "available" || tabParam === "grades" || tabParam === "reviewers" || tabParam === "friends") {
+        if (tabParam === "reviewers" && window.innerWidth < 768) {
+          router.replace("/student/reviewer");
+          return;
+        }
         setActiveTab(tabParam);
         if (tabParam === "reviewers") {
           loadPublicReviewers();
@@ -352,7 +358,11 @@ export default function StudentDashboard() {
 
     const handleTabChange = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail === "available" || detail === "grades" || detail === "reviewers") {
+      if (detail === "available" || detail === "grades" || detail === "reviewers" || detail === "friends") {
+        if (detail === "reviewers" && typeof window !== "undefined" && window.innerWidth < 768) {
+          router.push("/student/reviewer");
+          return;
+        }
         setActiveTab(detail);
         if (detail === "reviewers") {
           loadPublicReviewers();
@@ -361,9 +371,13 @@ export default function StudentDashboard() {
     };
     window.addEventListener("studentTabChange", handleTabChange);
     return () => window.removeEventListener("studentTabChange", handleTabChange);
-  }, []);
+  }, [router]);
 
-  const handleTabSelect = (tab: "available" | "grades" | "reviewers") => {
+  const handleTabSelect = (tab: "available" | "grades" | "reviewers" | "friends") => {
+    if (tab === "reviewers" && typeof window !== "undefined" && window.innerWidth < 768) {
+      router.push("/student/reviewer");
+      return;
+    }
     setActiveTab(tab);
     if (tab === "reviewers") {
       loadPublicReviewers();
@@ -878,73 +892,81 @@ export default function StudentDashboard() {
       />
 
       <main className="mx-auto max-w-7xl px-3 sm:px-6 py-5 sm:py-8 pb-24 sm:pb-12 space-y-6">
-        {/* Shared role hero with personalized dynamic character */}
-        <WelcomeHero
-          role="student"
-          showRoleBadge={false}
-          name={user?.first_name ? `${user.first_name} ${user.last_name || ""}`.trim() : "Student"}
-          description={
-            info?.bio || avatarConfig?.bio || "Take live proctored online exams, review graded bubble sheet results, and explore study reviewers."
-          }
-          actions={
-            <button
-              type="button"
-              onClick={() => setClosetModalOpen(true)}
-              className="group inline-flex items-center gap-2 rounded-2xl bg-sage hover:bg-sage-light text-white px-4 py-2.5 text-xs font-black shadow-lg shadow-sage/25 hover:shadow-sage/35 transition-all active:scale-95 cursor-pointer"
-            >
-              <Shirt className="h-4 w-4" />
-              Open Wardrobe Studio
-            </button>
-          }
-          aside={
-            info && info.average_percentage !== undefined ? (
-              <div className="flex items-center gap-3 rounded-2xl bg-surface-base/80 border border-border-default p-3.5 shadow-sm shrink-0">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sage-ghost text-sage border border-sage-border shadow-inner">
-                  <Award className="h-5 w-5" />
+        {/* Shared role hero with personalized dynamic character — hidden on Reviewers for clean study experience */}
+        {activeTab !== "reviewers" && (
+          <WelcomeHero
+            role="student"
+            showRoleBadge={false}
+            name={user?.first_name ? `${user.first_name} ${user.last_name || ""}`.trim() : "Student"}
+            description={
+              info?.bio || avatarConfig?.bio || "Take live proctored online exams, review graded bubble sheet results, and explore study reviewers."
+            }
+            actions={
+              <button
+                type="button"
+                onClick={() => setClosetModalOpen(true)}
+                className="group inline-flex items-center gap-2 rounded-2xl bg-sage hover:bg-sage-light text-white px-4 py-2.5 text-xs font-black shadow-lg shadow-sage/25 hover:shadow-sage/35 transition-all active:scale-95 cursor-pointer"
+              >
+                <Shirt className="h-4 w-4" />
+                Open Wardrobe Studio
+              </button>
+            }
+            aside={
+              info && info.average_percentage !== undefined ? (
+                <div className="flex items-center gap-3 rounded-2xl bg-surface-base/80 border border-border-default p-3.5 shadow-sm shrink-0">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sage-ghost text-sage border border-sage-border shadow-inner">
+                    <Award className="h-5 w-5" />
+                  </div>
+                  <div className="text-left">
+                    <span className="block text-[10px] font-bold uppercase tracking-wider text-text-muted">Overall Average</span>
+                    <span className="text-lg font-black text-sage font-mono">{info.average_percentage}%</span>
+                  </div>
                 </div>
-                <div className="text-left">
-                  <span className="block text-[10px] font-bold uppercase tracking-wider text-text-muted">Overall Average</span>
-                  <span className="text-lg font-black text-sage font-mono">{info.average_percentage}%</span>
+              ) : null
+            }
+            customIllustration={
+              <button
+                type="button"
+                onClick={() => setClosetModalOpen(true)}
+                className="group relative cursor-pointer flex flex-col items-center focus:outline-none"
+                title="Click to customize your student character in the Closet Studio!"
+              >
+                <div className="relative p-1.5 rounded-full bg-surface-raised border border-border-emphasis/70 shadow-lg group-hover:shadow-xl group-hover:border-sage transition-all duration-300 group-hover:scale-105">
+                  <div className="hidden sm:block">
+                    <StudentAvatar config={avatarConfig} size={135} animate={true} />
+                  </div>
+                  <div className="sm:hidden">
+                    <StudentAvatar config={avatarConfig} size={82} animate={true} />
+                  </div>
+                  <div className="absolute -bottom-1 -right-1 flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-full bg-sage text-white shadow-md border-2 border-surface-raised group-hover:scale-110 transition-transform">
+                    <Shirt className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                  </div>
                 </div>
-              </div>
-            ) : null
-          }
-          customIllustration={
-            <button
-              type="button"
-              onClick={() => setClosetModalOpen(true)}
-              className="group relative cursor-pointer flex flex-col items-center focus:outline-none"
-              title="Click to customize your student character in the Closet Studio!"
-            >
-              <div className="relative p-1.5 rounded-full bg-surface-raised border border-border-emphasis/70 shadow-lg group-hover:shadow-xl group-hover:border-sage transition-all duration-300 group-hover:scale-105">
-                <StudentAvatar config={avatarConfig} size={135} animate={true} />
-                <div className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-sage text-white shadow-md border-2 border-surface-raised group-hover:scale-110 transition-transform">
-                  <Shirt className="h-3.5 w-3.5" />
-                </div>
-              </div>
-              <span className="mt-1.5 text-[10px] font-bold text-text-muted group-hover:text-sage transition-colors flex items-center gap-1">
-                <Shirt className="h-2.5 w-2.5" />
-                Customize Character
-              </span>
-            </button>
-          }
-        />
+                <span className="mt-1.5 text-[10px] font-bold text-text-muted group-hover:text-sage transition-colors flex items-center gap-1">
+                  <Shirt className="h-2.5 w-2.5" />
+                  <span className="hidden sm:inline">Customize Character</span>
+                  <span className="sm:hidden">Wardrobe</span>
+                </span>
+              </button>
+            }
+          />
+        )}
 
-        {/* Modern Segmented Tab Switcher */}
-        <div className="p-1.5 rounded-[22px] bg-surface-raised border border-border-default grid grid-cols-3 gap-1.5 shadow-sm">
+        {/* Modern Segmented Tab Switcher with sticky elevation (desktop/tablet only, hidden on mobile) */}
+        <div className="hidden sm:grid p-1.5 rounded-2xl sm:rounded-[22px] bg-surface-raised/95 backdrop-blur-md border border-border-default grid-cols-2 lg:grid-cols-4 gap-1.5 shadow-sm sticky top-16 sm:top-20 z-20">
           <button
             type="button"
             onClick={() => handleTabSelect("available")}
-            className={`flex items-center justify-center gap-2 py-3 rounded-[16px] text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 px-2 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer min-h-11 ${
               activeTab === "available"
                 ? "bg-steel text-white shadow-md shadow-steel/25"
                 : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
             }`}
           >
-            <PenTool className="h-4 w-4 shrink-0" />
+            <PenTool className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
             <span className="hidden sm:inline">Available Exams</span>
             <span className="sm:hidden">Exams</span>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+            <span className={`text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full font-mono font-bold shrink-0 ${
               activeTab === "available" ? "bg-white/20 text-white" : "bg-surface-subtle text-text-muted"
             }`}>
               {availableExams.length}
@@ -954,16 +976,16 @@ export default function StudentDashboard() {
           <button
             type="button"
             onClick={() => handleTabSelect("grades")}
-            className={`flex items-center justify-center gap-2 py-3 rounded-[16px] text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 px-2 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer min-h-11 ${
               activeTab === "grades"
                 ? "bg-steel text-white shadow-md shadow-steel/25"
                 : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
             }`}
           >
-            <Award className="h-4 w-4 shrink-0" />
+            <Award className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
             <span className="hidden sm:inline">My Graded Exams</span>
             <span className="sm:hidden">Results</span>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+            <span className={`text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full font-mono font-bold shrink-0 ${
               activeTab === "grades" ? "bg-white/20 text-white" : "bg-surface-subtle text-text-muted"
             }`}>
               {grades.length}
@@ -973,15 +995,29 @@ export default function StudentDashboard() {
           <button
             type="button"
             onClick={() => handleTabSelect("reviewers")}
-            className={`flex items-center justify-center gap-2 py-3 rounded-[16px] text-xs font-bold transition-all cursor-pointer ${
+            className={`flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 px-2 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer min-h-11 ${
               activeTab === "reviewers"
                 ? "bg-steel text-white shadow-md shadow-steel/25"
                 : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
             }`}
           >
-            <BookOpen className="h-4 w-4 shrink-0" />
+            <BookOpen className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
             <span className="hidden sm:inline">Study Reviewers</span>
             <span className="sm:hidden">Reviewers</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleTabSelect("friends")}
+            className={`flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 px-2 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer min-h-11 ${
+              activeTab === "friends"
+                ? "bg-steel text-white shadow-md shadow-steel/25"
+                : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
+            }`}
+          >
+            <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+            <span className="hidden sm:inline">Friends &amp; Study Circle</span>
+            <span className="sm:hidden">Friends</span>
           </button>
         </div>
 
@@ -1491,33 +1527,33 @@ export default function StudentDashboard() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-1.5 p-1 bg-surface-subtle border border-border-default rounded-xl self-start sm:self-auto">
+              <div className="grid grid-cols-2 sm:flex items-center gap-1.5 p-1 bg-surface-subtle border border-border-default rounded-xl w-full sm:w-auto">
                 <button
                   type="button"
                   onClick={() => setReviewerSectionMode("ai_handout")}
-                  className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  className={`flex items-center justify-center gap-1.5 sm:gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer min-h-10 ${
                     reviewerSectionMode === "ai_handout"
                       ? "bg-steel text-white shadow-sm shadow-steel/20"
                       : "text-text-muted hover:text-text-primary"
                   }`}
                 >
-                  <BookOpen className="h-3.5 w-3.5 text-steel-light" />
-                  <span>AI Handout Reviewer</span>
-                  <span className="text-[10px] bg-white/20 text-white px-1.5 py-0.2 rounded font-mono">NEW</span>
+                  <BookOpen className="h-3.5 w-3.5 text-steel-light shrink-0" />
+                  <span className="truncate">AI Handout</span>
+                  <span className="text-[10px] bg-white/20 text-white px-1.5 py-0.2 rounded font-mono shrink-0">NEW</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setReviewerSectionMode("public_exams")}
-                  className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  className={`flex items-center justify-center gap-1.5 sm:gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer min-h-10 ${
                     reviewerSectionMode === "public_exams"
                       ? "bg-steel text-white shadow-sm shadow-steel/20"
                       : "text-text-muted hover:text-text-primary"
                   }`}
                 >
-                  <FileText className="h-3.5 w-3.5" />
-                  <span>Teacher Reviewers</span>
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono ${
+                  <FileText className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">Teacher Decks</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded font-mono shrink-0 ${
                     reviewerSectionMode === "public_exams" ? "bg-white/20 text-white" : "bg-surface-muted text-text-muted"
                   }`}>
                     {publicReviewers.length}
@@ -1678,6 +1714,11 @@ export default function StudentDashboard() {
         )}
       </div>
     )}
+
+        {/* TAB 3: Friends & Study Circle */}
+        {activeTab === "friends" && (
+          <StudentFriendsCircle />
+        )}
       </main>
 
       <PasswordChangeModal
