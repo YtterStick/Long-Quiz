@@ -101,7 +101,7 @@ export function SkeletonSectionGrid({ count = 3 }: { count?: number }) {
 
 export function SkeletonStudentInfoCard() {
   return (
-    <div className="glass-card rounded-2xl p-5 border border-border-default relative overflow-hidden">
+    <div className="rounded-2xl border border-border-default bg-surface-raised p-5 relative overflow-hidden shadow-xs">
       <div className="flex items-center justify-between">
         <div className="space-y-2">
           <Skeleton className="h-3 w-36" />
@@ -116,9 +116,9 @@ export function SkeletonStudentInfoCard() {
 
 export function SkeletonStudentStats() {
   return (
-    <div className="grid grid-cols-3 gap-2.5 sm:gap-4 mb-6 sm:mb-8">
-      {Array.from({ length: 3 }).map((_, i) => (
-        <div key={i} className="glass-card rounded-2xl p-3 sm:p-5 border border-border-default flex items-center justify-between">
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mb-6 sm:mb-8">
+      {Array.from({ length: 4 }).map((_, i) => (
+        <div key={i} className="rounded-2xl border border-border-default bg-surface-raised p-3.5 sm:p-5 flex items-center justify-between shadow-xs">
           <div className="space-y-1.5 sm:space-y-2">
             <Skeleton className="h-2.5 sm:h-3 w-16 sm:w-24" />
             <Skeleton className="h-5 sm:h-7 w-10 sm:w-14" />
@@ -157,7 +157,7 @@ export function SkeletonStudentExamGrid({ count = 4 }: { count?: number }) {
       {Array.from({ length: count }).map((_, i) => (
         <div
           key={i}
-          className="glass-card rounded-2xl p-4 sm:p-5 border border-border-default flex flex-col justify-between space-y-4"
+          className="rounded-2xl border border-border-default bg-surface-raised p-4 sm:p-5 flex flex-col justify-between space-y-4 shadow-xs"
         >
           <div className="space-y-3">
             <div className="flex items-center justify-between">
@@ -389,11 +389,33 @@ export function SkeletonDashboardPage({
             <Skeleton className="h-9 w-9 rounded-xl" />
             <Skeleton className="h-6 w-28" />
           </div>
-          <div className="hidden md:flex items-center gap-2">
-            <Skeleton className="h-8 w-24 rounded-xl" />
-            <Skeleton className="h-8 w-24 rounded-xl" />
-            <Skeleton className="h-8 w-24 rounded-xl" />
-          </div>
+
+          {/* Desktop Navigation Links Skeleton matching role navigation */}
+          {role === "student" && (
+            <div className="hidden sm:flex items-center gap-1.5 ml-6 border-l border-border-default pl-6">
+              <Skeleton className="h-8 w-24 rounded-xl" />
+              <Skeleton className="h-8 w-32 rounded-xl" />
+              <Skeleton className="h-8 w-32 rounded-xl" />
+              <Skeleton className="h-8 w-32 rounded-xl" />
+              <Skeleton className="h-8 w-28 rounded-xl" />
+            </div>
+          )}
+
+          {role === "teacher" && (
+            <div className="hidden sm:flex items-center gap-1.5 ml-6 border-l border-border-default pl-6">
+              <Skeleton className="h-8 w-24 rounded-xl" />
+              <Skeleton className="h-8 w-24 rounded-xl" />
+              <Skeleton className="h-8 w-20 rounded-xl" />
+              <Skeleton className="h-8 w-24 rounded-xl" />
+            </div>
+          )}
+
+          {role === "admin" && (
+            <div className="hidden sm:flex items-center gap-1.5 ml-6 border-l border-border-default pl-6">
+              <Skeleton className="h-8 w-24 rounded-xl" />
+            </div>
+          )}
+
           <div className="flex items-center gap-2.5">
             <Skeleton className="h-9 w-9 rounded-xl" />
             <div className="flex items-center gap-2.5 rounded-2xl bg-surface-overlay/80 border border-border-default px-3 py-1.5">
@@ -433,15 +455,16 @@ export function SkeletonDashboardPage({
         {/* Role-Specific Body */}
         {role === "student" && (
           <div className="space-y-6">
-            {/* 3 Stats cards */}
+            {/* 4 Stats cards */}
             <SkeletonStudentStats />
 
-            {/* Tab navigation pills */}
-            <div className="flex items-center gap-2 border-b border-border-default pb-3">
-              <Skeleton className="h-9 w-36 rounded-xl" />
-              <Skeleton className="h-9 w-32 rounded-xl" />
-              <Skeleton className="h-9 w-40 rounded-xl" />
-              <Skeleton className="h-9 w-36 rounded-xl" />
+            {/* 5-tab switcher skeleton */}
+            <div className="hidden sm:grid p-1.5 rounded-2xl bg-surface-raised border border-border-default grid-cols-2 lg:grid-cols-5 gap-1.5 shadow-xs">
+              <Skeleton className="h-10 w-full rounded-xl" />
+              <Skeleton className="h-10 w-full rounded-xl" />
+              <Skeleton className="h-10 w-full rounded-xl" />
+              <Skeleton className="h-10 w-full rounded-xl" />
+              <Skeleton className="h-10 w-full rounded-xl" />
             </div>
 
             {/* Exam card grid */}

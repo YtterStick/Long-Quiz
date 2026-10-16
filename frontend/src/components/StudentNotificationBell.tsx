@@ -7,7 +7,6 @@ import {
   Check,
   X,
   RefreshCw,
-  Loader2,
   Users,
   BookOpen,
   Award,
@@ -17,10 +16,12 @@ import {
   CheckCircle2,
   ChevronRight,
   Trash2,
+  CheckCheck,
 } from "lucide-react";
 import { student as studentApi, StudentNotificationItem } from "@/lib/api";
 import { StudentAvatar } from "@/components/avatar/StudentAvatar";
 import { parseAvatarConfig } from "@/types/avatar";
+import { SkeletonNotificationList } from "@/components/ui/Skeleton";
 
 function formatTimeAgo(dateStr: string) {
   try {
@@ -40,32 +41,57 @@ function formatTimeAgo(dateStr: string) {
 export function StudentNotificationBell() {
   const router = useRouter();
   const [notifications, setNotifications] = useState<StudentNotificationItem[]>([]);
+  const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  const [completedActions, setCompletedActions] = useState<Record<string, "ACCEPTED" | "DECLINED" | "VIEWED">>({});
   const [loading, setLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
-  const [filterType, setFilterType] = useState<"ALL" | "FRIENDS" | "DECKS" | "EXAMS">("ALL");
+  const [filterType, setFilterType] = useState<"ALL" | "UNREAD" | "FRIENDS" | "DECKS" | "EXAMS">("ALL");
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Load dismissed notification IDs from localStorage
+  // Load read notifications, dismissed IDs, and action statuses from localStorage
   useEffect(() => {
     try {
-      const stored = localStorage.getItem("evalo_student_dismissed_notifs");
-      if (stored) {
-        setDismissedIds(new Set(JSON.parse(stored)));
+      const storedRead = localStorage.getItem("evalo_student_read_notifs");
+      if (storedRead) {
+        setReadIds(new Set(JSON.parse(storedRead)));
+      }
+      const storedDismissed = localStorage.getItem("evalo_student_dismissed_notifs");
+      if (storedDismissed) {
+        setDismissedIds(new Set(JSON.parse(storedDismissed)));
+      }
+      const storedActions = localStorage.getItem("evalo_student_notif_actions");
+      if (storedActions) {
+        setCompletedActions(JSON.parse(storedActions));
       }
     } catch {
-      // ignore storage error
+      // ignore storage errors
     }
   }, []);
+
+  const saveReadIds = (newSet: Set<string>) => {
+    setReadIds(newSet);
+    try {
+      localStorage.setItem("evalo_student_read_notifs", JSON.stringify(Array.from(newSet)));
+    } catch {
+      // ignore
+    }
+  };
 
   const saveDismissedIds = (newSet: Set<string>) => {
     setDismissedIds(newSet);
     try {
-      localStorage.setItem(
-        "evalo_student_dismissed_notifs",
-        JSON.stringify(Array.from(newSet))
-      );
+      localStorage.setItem("evalo_student_dismissed_notifs", JSON.stringify(Array.from(newSet)));
+    } catch {
+      // ignore
+    }
+  };
+
+  const saveCompletedActions = (newActions: Record<string, "ACCEPTED" | "DECLINED" | "VIEWED">) => {
+    setCompletedActions(newActions);
+    try {
+      localStorage.setItem("evalo_student_notif_actions", JSON.stringify(newActions));
     } catch {
       // ignore
     }
@@ -75,7 +101,28 @@ export function StudentNotificationBell() {
     try {
       setLoading(true);
       const data = await studentApi.getNotifications();
-      setNotifications(data || []);
+      const notifs = data || [];
+      setNotifications(notifs);
+
+      // Auto-mark notifications that backend returned as is_done
+      setReadIds((prev) => {
+        let changed = false;
+        const next = new Set(prev);
+        notifs.forEach((n) => {
+          if (n.is_done && !next.has(n.id)) {
+            next.add(n.id);
+            changed = true;
+          }
+        });
+        if (changed) {
+          try {
+            localStorage.setItem("evalo_student_read_notifs", JSON.stringify(Array.from(next)));
+          } catch {
+            // ignore
+          }
+        }
+        return changed ? next : prev;
+      });
     } catch {
       // silently ignore if offline/not authenticated
     } finally {
@@ -85,12 +132,10 @@ export function StudentNotificationBell() {
 
   useEffect(() => {
     fetchNotifications();
-    // Poll every 30 seconds for live friend requests and exam updates
     const interval = setInterval(fetchNotifications, 30000);
     return () => clearInterval(interval);
   }, []);
 
-  // Listen to custom updates from other components
   useEffect(() => {
     const handleUpdate = () => {
       fetchNotifications();
@@ -112,6 +157,18 @@ export function StudentNotificationBell() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen]);
 
+  const markAsRead = (notifId: string) => {
+    const updated = new Set(readIds);
+    updated.add(notifId);
+    saveReadIds(updated);
+  };
+
+  const handleMarkAllAsRead = () => {
+    const updated = new Set(readIds);
+    notifications.forEach((n) => updated.add(n.id));
+    saveReadIds(updated);
+  };
+
   const handleDismiss = (notifId: string) => {
     const updated = new Set(dismissedIds);
     updated.add(notifId);
@@ -130,10 +187,11 @@ export function StudentNotificationBell() {
     try {
       setActionLoadingId(reqId);
       await studentApi.respondFriendRequest(reqId, "ACCEPT");
-      // Remove from list & dismissed
-      handleDismiss(notif.id);
+      // Keep in list! Mark as read and save completed action status
+      markAsRead(notif.id);
+      const updatedActions = { ...completedActions, [notif.id]: "ACCEPTED" as const };
+      saveCompletedActions(updatedActions);
       await fetchNotifications();
-      // Notify friends circle to refresh
       window.dispatchEvent(new Event("evalo_friends_updated"));
     } catch (err: any) {
       alert(err?.detail || "Failed to accept friend request");
@@ -148,7 +206,9 @@ export function StudentNotificationBell() {
     try {
       setActionLoadingId(reqId);
       await studentApi.respondFriendRequest(reqId, "DECLINE");
-      handleDismiss(notif.id);
+      markAsRead(notif.id);
+      const updatedActions = { ...completedActions, [notif.id]: "DECLINED" as const };
+      saveCompletedActions(updatedActions);
       await fetchNotifications();
       window.dispatchEvent(new Event("evalo_friends_updated"));
     } catch (err: any) {
@@ -159,37 +219,49 @@ export function StudentNotificationBell() {
   };
 
   const handleOpenReviewerDeck = (notif: StudentNotificationItem) => {
-    handleDismiss(notif.id);
+    markAsRead(notif.id);
+    const updatedActions = { ...completedActions, [notif.id]: "VIEWED" as const };
+    saveCompletedActions(updatedActions);
     setIsOpen(false);
     router.push("/student/reviewer");
   };
 
   const handleNavigateToExam = (notif: StudentNotificationItem) => {
-    handleDismiss(notif.id);
+    markAsRead(notif.id);
+    const updatedActions = { ...completedActions, [notif.id]: "VIEWED" as const };
+    saveCompletedActions(updatedActions);
     setIsOpen(false);
     window.dispatchEvent(new CustomEvent("studentTabChange", { detail: "available" }));
     router.push("/student/dashboard?tab=available");
   };
 
   const handleNavigateToGrades = (notif: StudentNotificationItem) => {
-    handleDismiss(notif.id);
+    markAsRead(notif.id);
+    const updatedActions = { ...completedActions, [notif.id]: "VIEWED" as const };
+    saveCompletedActions(updatedActions);
     setIsOpen(false);
     window.dispatchEvent(new CustomEvent("studentTabChange", { detail: "grades" }));
     router.push("/student/dashboard?tab=grades");
   };
 
-  // Active notifications (not dismissed)
+  // Active notifications (not manually deleted by user)
   const activeNotifications = notifications.filter((n) => !dismissedIds.has(n.id));
+
+  // Determine read status: read if in readIds or marked is_done or in completedActions
+  const isNotificationRead = (n: StudentNotificationItem) => {
+    return Boolean(readIds.has(n.id) || n.is_done || completedActions[n.id]);
+  };
 
   // Filtered notifications
   const displayedNotifications = activeNotifications.filter((n) => {
+    if (filterType === "UNREAD") return !isNotificationRead(n);
     if (filterType === "FRIENDS") return n.type === "FRIEND_REQUEST";
     if (filterType === "DECKS") return n.type === "SHARED_DECK";
     if (filterType === "EXAMS") return n.type === "EXAM_AVAILABLE" || n.type === "GRADE_RELEASED";
     return true;
   });
 
-  const unreadCount = activeNotifications.length;
+  const unreadCount = activeNotifications.filter((n) => !isNotificationRead(n)).length;
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -206,7 +278,7 @@ export function StudentNotificationBell() {
             : "border-border-default bg-surface-overlay text-text-muted hover:text-text-primary hover:border-border-emphasis"
         }`}
         aria-label="Student Notifications"
-        title={unreadCount > 0 ? `${unreadCount} new notification(s)` : "Notifications"}
+        title={unreadCount > 0 ? `${unreadCount} unread notification(s)` : "Notifications"}
       >
         <Bell className="h-4 w-4" />
         {unreadCount > 0 && (
@@ -223,21 +295,34 @@ export function StudentNotificationBell() {
           <div className="flex items-center justify-between border-b border-border-default pb-2.5 mb-2.5 px-1">
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-text-primary">Notifications</span>
-              {unreadCount > 0 && (
+              {unreadCount > 0 ? (
                 <span className="rounded-full bg-tan/15 px-2 py-0.5 text-[10px] font-bold text-tan border border-tan/30">
-                  {unreadCount} new
+                  {unreadCount} unread
                 </span>
+              ) : (
+                <span className="text-[10px] font-medium text-text-muted">All read</span>
               )}
             </div>
             <div className="flex items-center gap-1">
               {unreadCount > 0 && (
                 <button
                   type="button"
-                  onClick={handleClearAll}
-                  className="text-[11px] font-medium text-text-muted hover:text-text-primary px-2 py-1 rounded-lg hover:bg-surface-subtle transition-colors cursor-pointer"
-                  title="Clear all"
+                  onClick={handleMarkAllAsRead}
+                  className="flex items-center gap-1 text-[11px] font-medium text-sage hover:text-sage-light px-2 py-1 rounded-lg hover:bg-surface-subtle transition-colors cursor-pointer"
+                  title="Mark all as read"
                 >
-                  Clear all
+                  <CheckCheck className="h-3 w-3" />
+                  <span>Mark read</span>
+                </button>
+              )}
+              {activeNotifications.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearAll}
+                  className="text-[11px] font-medium text-text-muted hover:text-text-primary px-1.5 py-1 rounded-lg hover:bg-surface-subtle transition-colors cursor-pointer"
+                  title="Clear all from view"
+                >
+                  Clear
                 </button>
               )}
               <button
@@ -260,18 +345,31 @@ export function StudentNotificationBell() {
                 onClick={() => setFilterType("ALL")}
                 className={`px-2.5 py-1 rounded-lg font-medium transition cursor-pointer shrink-0 ${
                   filterType === "ALL"
-                    ? "bg-steel text-white shadow-xs"
+                    ? "bg-steel text-white shadow-xs font-bold"
                     : "text-text-muted hover:bg-surface-subtle hover:text-text-primary"
                 }`}
               >
                 All ({activeNotifications.length})
               </button>
+              {unreadCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setFilterType("UNREAD")}
+                  className={`px-2.5 py-1 rounded-lg font-medium transition cursor-pointer shrink-0 ${
+                    filterType === "UNREAD"
+                      ? "bg-tan text-white shadow-xs font-bold"
+                      : "text-tan hover:bg-tan/10"
+                  }`}
+                >
+                  Unread ({unreadCount})
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setFilterType("FRIENDS")}
                 className={`px-2.5 py-1 rounded-lg font-medium transition cursor-pointer shrink-0 ${
                   filterType === "FRIENDS"
-                    ? "bg-steel text-white shadow-xs"
+                    ? "bg-steel text-white shadow-xs font-bold"
                     : "text-text-muted hover:bg-surface-subtle hover:text-text-primary"
                 }`}
               >
@@ -282,7 +380,7 @@ export function StudentNotificationBell() {
                 onClick={() => setFilterType("DECKS")}
                 className={`px-2.5 py-1 rounded-lg font-medium transition cursor-pointer shrink-0 ${
                   filterType === "DECKS"
-                    ? "bg-steel text-white shadow-xs"
+                    ? "bg-steel text-white shadow-xs font-bold"
                     : "text-text-muted hover:bg-surface-subtle hover:text-text-primary"
                 }`}
               >
@@ -293,7 +391,7 @@ export function StudentNotificationBell() {
                 onClick={() => setFilterType("EXAMS")}
                 className={`px-2.5 py-1 rounded-lg font-medium transition cursor-pointer shrink-0 ${
                   filterType === "EXAMS"
-                    ? "bg-steel text-white shadow-xs"
+                    ? "bg-steel text-white shadow-xs font-bold"
                     : "text-text-muted hover:bg-surface-subtle hover:text-text-primary"
                 }`}
               >
@@ -302,21 +400,22 @@ export function StudentNotificationBell() {
             </div>
           )}
 
-          {/* List */}
+          {/* Notifications List with Skeleton Loader */}
           <div className="max-h-80 overflow-y-auto space-y-2 pr-0.5">
             {loading && notifications.length === 0 ? (
-              <div className="py-8 text-center space-y-2">
-                <Loader2 className="h-6 w-6 animate-spin text-steel mx-auto" />
-                <p className="text-xs text-text-muted">Checking notifications...</p>
-              </div>
+              <SkeletonNotificationList count={3} />
             ) : displayedNotifications.length === 0 ? (
               <div className="py-8 text-center space-y-2 px-4">
                 <div className="flex h-10 w-10 mx-auto items-center justify-center rounded-2xl bg-surface-subtle border border-border-default text-text-muted">
                   <Check className="h-5 w-5 text-sage" />
                 </div>
-                <p className="text-xs font-semibold text-text-primary">All caught up!</p>
+                <p className="text-xs font-semibold text-text-primary">
+                  {filterType === "UNREAD" ? "No unread notifications!" : "All caught up!"}
+                </p>
                 <p className="text-[11px] text-text-muted leading-relaxed">
-                  No pending friend requests, shared decks, or exam updates right now.
+                  {filterType === "UNREAD"
+                    ? "You've viewed all pending notifications."
+                    : "No notifications found in this category."}
                 </p>
               </div>
             ) : (
@@ -325,40 +424,66 @@ export function StudentNotificationBell() {
                 const isSharedDeck = notif.type === "SHARED_DECK";
                 const isExamAvail = notif.type === "EXAM_AVAILABLE";
                 const isGradeRel = notif.type === "GRADE_RELEASED";
+                const isRead = isNotificationRead(notif);
+                const actionState = completedActions[notif.id] || (notif.is_done ? (notif.data.status === "ACCEPTED" ? "ACCEPTED" : "VIEWED") : null);
 
                 return (
                   <div
                     key={notif.id}
-                    className="group relative rounded-xl border border-border-default bg-surface-base/80 p-3 hover:border-steel/40 transition-all space-y-2"
+                    onClick={() => {
+                      if (!isRead) markAsRead(notif.id);
+                    }}
+                    className={`group relative rounded-xl border p-3 transition-all space-y-2 ${
+                      isRead
+                        ? "bg-surface-base/50 border-border-default/70 opacity-90 hover:opacity-100"
+                        : "bg-surface-base border-border-emphasis hover:border-steel/50 shadow-xs"
+                    }`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2.5 min-w-0">
                         {isFriendReq ? (
-                          <div className="shrink-0">
+                          <div className="shrink-0 relative">
                             <StudentAvatar
                               config={parseAvatarConfig(notif.data.avatar_config)}
                               size={34}
                             />
+                            {!isRead && (
+                              <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-steel ring-2 ring-surface-base" />
+                            )}
                           </div>
                         ) : isSharedDeck ? (
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-steel-ghost text-steel border border-steel-border/50">
+                          <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-steel-ghost text-steel border border-steel-border/50">
                             <Sparkles className="h-4 w-4" />
+                            {!isRead && (
+                              <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-steel ring-2 ring-surface-base" />
+                            )}
                           </div>
                         ) : isExamAvail ? (
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-cream-ghost text-cream border border-cream-border/50">
+                          <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-cream-ghost text-cream border border-cream-border/50">
                             <PenTool className="h-4 w-4" />
+                            {!isRead && (
+                              <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-cream ring-2 ring-surface-base" />
+                            )}
                           </div>
                         ) : (
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-sage-ghost text-sage border border-sage-border/50">
+                          <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-sage-ghost text-sage border border-sage-border/50">
                             <Award className="h-4 w-4" />
+                            {!isRead && (
+                              <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-sage ring-2 ring-surface-base" />
+                            )}
                           </div>
                         )}
 
                         <div className="min-w-0">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="text-[10px] font-bold uppercase tracking-wider text-steel">
                               {notif.title}
                             </span>
+                            {isRead && (
+                              <span className="text-[9px] font-medium text-text-muted flex items-center gap-0.5">
+                                <Check className="h-2.5 w-2.5 text-sage" /> Read
+                              </span>
+                            )}
                           </div>
                           <p className="text-xs font-bold text-text-primary leading-tight truncate">
                             {isFriendReq
@@ -381,39 +506,58 @@ export function StudentNotificationBell() {
                         </span>
                         <button
                           type="button"
-                          onClick={() => handleDismiss(notif.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDismiss(notif.id);
+                          }}
                           className="rounded-md p-1 text-text-muted hover:text-burgundy-light hover:bg-surface-subtle transition-colors cursor-pointer"
-                          title="Dismiss notification"
+                          title="Remove from list"
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </div>
 
-                    {/* Action buttons */}
+                    {/* Action buttons with persistent completed state */}
                     {isFriendReq && (
-                      <div className="flex items-center gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => handleAcceptFriendRequest(notif)}
-                          disabled={actionLoadingId === notif.data.request_id}
-                          className="flex-1 inline-flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl bg-sage hover:bg-sage-light text-white text-xs font-semibold shadow-xs transition cursor-pointer disabled:opacity-50"
-                        >
-                          {actionLoadingId === notif.data.request_id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <Check className="h-3.5 w-3.5" />
-                          )}
-                          <span>Accept Request</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeclineFriendRequest(notif)}
-                          disabled={actionLoadingId === notif.data.request_id}
-                          className="py-1.5 px-3 rounded-xl border border-border-default bg-surface-subtle hover:bg-burgundy-ghost text-text-muted hover:text-burgundy-light text-xs font-semibold transition cursor-pointer disabled:opacity-50"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
+                      <div className="pt-1">
+                        {actionState === "ACCEPTED" || notif.data.status === "ACCEPTED" ? (
+                          <div className="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-lg bg-sage/10 text-sage text-xs font-semibold border border-sage/20">
+                            <CheckCircle2 className="h-3.5 w-3.5 text-sage" />
+                            <span>Request Accepted</span>
+                          </div>
+                        ) : actionState === "DECLINED" || notif.data.status === "DECLINED" ? (
+                          <div className="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-lg bg-surface-subtle text-text-muted text-xs font-medium border border-border-default">
+                            <X className="h-3.5 w-3.5" />
+                            <span>Request Declined</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAcceptFriendRequest(notif);
+                              }}
+                              disabled={actionLoadingId === notif.data.request_id}
+                              className="flex-1 inline-flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl bg-sage hover:bg-sage-light text-white text-xs font-semibold shadow-xs transition cursor-pointer disabled:opacity-50"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                              <span>Accept Request</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeclineFriendRequest(notif);
+                              }}
+                              disabled={actionLoadingId === notif.data.request_id}
+                              className="py-1.5 px-3 rounded-xl border border-border-default bg-surface-subtle hover:bg-burgundy-ghost text-text-muted hover:text-burgundy-light text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
 
@@ -421,27 +565,40 @@ export function StudentNotificationBell() {
                       <div className="pt-1">
                         <button
                           type="button"
-                          onClick={() => handleOpenReviewerDeck(notif)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenReviewerDeck(notif);
+                          }}
                           className="w-full inline-flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl bg-steel/15 hover:bg-steel text-steel hover:text-white border border-steel/30 text-xs font-semibold transition cursor-pointer"
                         >
                           <BookOpen className="h-3.5 w-3.5" />
-                          <span>Open Reviewer</span>
+                          <span>{actionState === "VIEWED" ? "Open Study Reviewer Again" : "Open Study Reviewer"}</span>
                           <ChevronRight className="h-3 w-3 ml-0.5" />
                         </button>
                       </div>
                     )}
 
                     {isExamAvail && (
-                      <div className="pt-1">
-                        <button
-                          type="button"
-                          onClick={() => handleNavigateToExam(notif)}
-                          className="w-full inline-flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl gradient-bg-primary text-text-primary text-xs font-semibold shadow-xs hover:opacity-95 transition cursor-pointer"
-                        >
-                          <PenTool className="h-3.5 w-3.5" />
-                          <span>Go to Online Exam</span>
-                          <ChevronRight className="h-3 w-3 ml-0.5" />
-                        </button>
+                      <div className="pt-1 flex items-center justify-between gap-2">
+                        {notif.is_done || notif.data.is_submitted ? (
+                          <div className="inline-flex items-center gap-1.5 py-1 px-2.5 rounded-lg bg-sage-ghost text-sage text-xs font-semibold border border-sage-border">
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            <span>Exam Submitted</span>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleNavigateToExam(notif);
+                            }}
+                            className="w-full inline-flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl gradient-bg-primary text-text-primary text-xs font-semibold shadow-xs hover:opacity-95 transition cursor-pointer"
+                          >
+                            <PenTool className="h-3.5 w-3.5" />
+                            <span>Go to Online Exam</span>
+                            <ChevronRight className="h-3 w-3 ml-0.5" />
+                          </button>
+                        )}
                       </div>
                     )}
 
@@ -449,7 +606,10 @@ export function StudentNotificationBell() {
                       <div className="pt-1">
                         <button
                           type="button"
-                          onClick={() => handleNavigateToGrades(notif)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleNavigateToGrades(notif);
+                          }}
                           className="w-full inline-flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl bg-sage-ghost hover:bg-sage text-sage hover:text-white border border-sage-border/50 text-xs font-semibold transition cursor-pointer"
                         >
                           <Award className="h-3.5 w-3.5" />
@@ -468,3 +628,4 @@ export function StudentNotificationBell() {
     </div>
   );
 }
+

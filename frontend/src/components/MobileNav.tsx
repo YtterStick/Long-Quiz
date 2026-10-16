@@ -19,7 +19,7 @@ export function MobileNav() {
   const { user } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
-  const [studentActiveTab, setStudentActiveTab] = useState<"available" | "grades" | "reviewers" | "friends">("available");
+  const [studentActiveTab, setStudentActiveTab] = useState<"dashboard" | "available" | "grades" | "reviewers" | "friends">("dashboard");
 
   useEffect(() => {
     if (pathname.startsWith("/student/reviewer")) {
@@ -30,14 +30,16 @@ export function MobileNav() {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get("tab");
-      if (tab === "available" || tab === "grades" || tab === "reviewers" || tab === "friends") {
+      if (tab === "available" || tab === "grades" || tab === "reviewers" || tab === "friends" || tab === "dashboard") {
         setStudentActiveTab(tab);
+      } else if (pathname.startsWith("/student/dashboard")) {
+        setStudentActiveTab("dashboard");
       }
     }
 
     const handler = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail === "available" || detail === "grades" || detail === "reviewers" || detail === "friends") {
+      if (detail === "available" || detail === "grades" || detail === "reviewers" || detail === "friends" || detail === "dashboard") {
         setStudentActiveTab(detail);
       }
     };
@@ -59,6 +61,7 @@ export function MobileNav() {
   ];
 
   const studentNav = [
+    { tab: "dashboard" as const, label: "Home", icon: LayoutDashboard },
     { tab: "available" as const, label: "Exams", icon: PenTool },
     { tab: "grades" as const, label: "Results", icon: Award },
     { tab: "reviewers" as const, label: "Reviewers", icon: BookOpen },
@@ -70,7 +73,7 @@ export function MobileNav() {
 
     return (
       <div className="fixed bottom-0 left-0 right-0 z-40 block sm:hidden bg-surface-raised/95 backdrop-blur-xl border-t border-border-default safe-area-bottom shadow-lg">
-        <div className="flex items-center justify-around px-2 py-1.5">
+        <div className="flex items-center justify-around px-1 py-1.5">
           {studentNav.map((item) => {
             const Icon = item.icon;
             const isActive = isReviewerRoute ? item.tab === "reviewers" : studentActiveTab === item.tab;
@@ -87,16 +90,18 @@ export function MobileNav() {
                     }
                   } else {
                     setStudentActiveTab(item.tab);
+                    const targetUrl = item.tab === "dashboard" ? "/student/dashboard" : `/student/dashboard?tab=${item.tab}`;
                     if (isReviewerRoute) {
-                      router.push(`/student/dashboard?tab=${item.tab}`);
+                      router.push(targetUrl);
                     } else {
                       window.dispatchEvent(new CustomEvent("studentTabChange", { detail: item.tab }));
+                      window.history.pushState({}, "", targetUrl);
                     }
                   }
                 }}
-                className={`flex flex-col items-center gap-0.5 rounded-2xl px-4 py-2 transition-all cursor-pointer ${
+                className={`flex flex-col items-center gap-0.5 rounded-2xl px-2.5 py-1.5 transition-all cursor-pointer ${
                   isActive
-                    ? "bg-steel-ghost text-steel font-bold"
+                    ? "bg-sage-ghost text-sage font-bold"
                     : "text-text-muted hover:text-text-secondary active:scale-95"
                 }`}
               >

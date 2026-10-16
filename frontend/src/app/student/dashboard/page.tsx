@@ -38,6 +38,8 @@ import {
   Shirt,
   UserCog,
   Users,
+  LayoutDashboard,
+  Sparkles,
 } from "lucide-react";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
 import {
@@ -180,7 +182,7 @@ export default function StudentDashboard() {
   const router = useRouter();
 
   const [mounted, setMounted] = useState(false);
-  const [activeTab, setActiveTab] = useState<"available" | "grades" | "reviewers" | "friends">("available");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "available" | "grades" | "reviewers" | "friends">("dashboard");
   const [info, setInfo] = useState<StudentInfo | null>(null);
   const [avatarConfig, setAvatarConfig] = useState<StudentAvatarConfig>(DEFAULT_AVATAR_CONFIG);
   const [closetModalOpen, setClosetModalOpen] = useState(false);
@@ -344,7 +346,7 @@ export default function StudentDashboard() {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get("tab");
-      if (tabParam === "available" || tabParam === "grades" || tabParam === "reviewers" || tabParam === "friends") {
+      if (tabParam === "available" || tabParam === "grades" || tabParam === "reviewers" || tabParam === "friends" || tabParam === "dashboard") {
         if (tabParam === "reviewers" && window.innerWidth < 768) {
           router.replace("/student/reviewer");
           return;
@@ -353,12 +355,14 @@ export default function StudentDashboard() {
         if (tabParam === "reviewers") {
           loadPublicReviewers();
         }
+      } else {
+        setActiveTab("dashboard");
       }
     }
 
     const handleTabChange = (e: Event) => {
       const detail = (e as CustomEvent).detail;
-      if (detail === "available" || detail === "grades" || detail === "reviewers" || detail === "friends") {
+      if (detail === "available" || detail === "grades" || detail === "reviewers" || detail === "friends" || detail === "dashboard") {
         if (detail === "reviewers" && typeof window !== "undefined" && window.innerWidth < 768) {
           router.push("/student/reviewer");
           return;
@@ -373,7 +377,7 @@ export default function StudentDashboard() {
     return () => window.removeEventListener("studentTabChange", handleTabChange);
   }, [router]);
 
-  const handleTabSelect = (tab: "available" | "grades" | "reviewers" | "friends") => {
+  const handleTabSelect = (tab: "dashboard" | "available" | "grades" | "reviewers" | "friends") => {
     if (tab === "reviewers" && typeof window !== "undefined" && window.innerWidth < 768) {
       router.push("/student/reviewer");
       return;
@@ -385,7 +389,11 @@ export default function StudentDashboard() {
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("studentTabChange", { detail: tab }));
       const url = new URL(window.location.href);
-      url.searchParams.set("tab", tab);
+      if (tab === "dashboard") {
+        url.searchParams.delete("tab");
+      } else {
+        url.searchParams.set("tab", tab);
+      }
       window.history.replaceState({}, "", url.toString());
     }
   };
@@ -953,13 +961,27 @@ export default function StudentDashboard() {
         )}
 
         {/* Modern Segmented Tab Switcher with sticky elevation (desktop/tablet only, hidden on mobile) */}
-        <div className="hidden sm:grid p-1.5 rounded-2xl sm:rounded-[22px] bg-surface-raised/95 backdrop-blur-md border border-border-default grid-cols-2 lg:grid-cols-4 gap-1.5 shadow-sm sticky top-16 sm:top-20 z-20">
+        <div className="hidden sm:grid p-1.5 rounded-2xl sm:rounded-[22px] bg-surface-raised/95 backdrop-blur-md border border-border-default grid-cols-2 lg:grid-cols-5 gap-1.5 shadow-sm sticky top-16 sm:top-20 z-20">
+          <button
+            type="button"
+            onClick={() => handleTabSelect("dashboard")}
+            className={`flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 px-2 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer min-h-11 ${
+              activeTab === "dashboard"
+                ? "bg-sage text-white shadow-md shadow-sage/25"
+                : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
+            }`}
+          >
+            <LayoutDashboard className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+            <span className="hidden sm:inline">Dashboard</span>
+            <span className="sm:hidden">Home</span>
+          </button>
+
           <button
             type="button"
             onClick={() => handleTabSelect("available")}
             className={`flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 px-2 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer min-h-11 ${
               activeTab === "available"
-                ? "bg-steel text-white shadow-md shadow-steel/25"
+                ? "bg-sage text-white shadow-md shadow-sage/25"
                 : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
             }`}
           >
@@ -978,7 +1000,7 @@ export default function StudentDashboard() {
             onClick={() => handleTabSelect("grades")}
             className={`flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 px-2 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer min-h-11 ${
               activeTab === "grades"
-                ? "bg-steel text-white shadow-md shadow-steel/25"
+                ? "bg-sage text-white shadow-md shadow-sage/25"
                 : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
             }`}
           >
@@ -997,7 +1019,7 @@ export default function StudentDashboard() {
             onClick={() => handleTabSelect("reviewers")}
             className={`flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 px-2 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer min-h-11 ${
               activeTab === "reviewers"
-                ? "bg-steel text-white shadow-md shadow-steel/25"
+                ? "bg-sage text-white shadow-md shadow-sage/25"
                 : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
             }`}
           >
@@ -1011,7 +1033,7 @@ export default function StudentDashboard() {
             onClick={() => handleTabSelect("friends")}
             className={`flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 px-2 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer min-h-11 ${
               activeTab === "friends"
-                ? "bg-steel text-white shadow-md shadow-steel/25"
+                ? "bg-sage text-white shadow-md shadow-sage/25"
                 : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
             }`}
           >
@@ -1020,6 +1042,316 @@ export default function StudentDashboard() {
             <span className="sm:hidden">Friends</span>
           </button>
         </div>
+
+        {/* TAB: Dashboard Overview */}
+        {activeTab === "dashboard" && (
+          <div className="space-y-6">
+            {/* 4 Summary Stat Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              <div
+                onClick={() => handleTabSelect("available")}
+                className="rounded-2xl border border-border-default bg-surface-raised p-4 sm:p-5 hover:border-sage/40 transition-all cursor-pointer shadow-xs group"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted">Available Exams</span>
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sage-ghost text-sage group-hover:scale-105 transition-transform">
+                    <PenTool className="h-4.5 w-4.5" />
+                  </div>
+                </div>
+                <div className="mt-3 flex items-baseline justify-between">
+                  <span className="text-2xl sm:text-3xl font-black text-text-primary font-mono">{availableExams.length}</span>
+                  <span className="text-[11px] font-bold text-sage flex items-center gap-0.5">
+                    Take now <ArrowRight className="h-3 w-3" />
+                  </span>
+                </div>
+              </div>
+
+              <div
+                onClick={() => handleTabSelect("grades")}
+                className="rounded-2xl border border-border-default bg-surface-raised p-4 sm:p-5 hover:border-steel/40 transition-all cursor-pointer shadow-xs group"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted">Average Score</span>
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-steel-ghost text-steel group-hover:scale-105 transition-transform">
+                    <Award className="h-4.5 w-4.5" />
+                  </div>
+                </div>
+                <div className="mt-3 flex items-baseline justify-between">
+                  <span className="text-2xl sm:text-3xl font-black text-steel font-mono">
+                    {info?.average_percentage !== undefined ? `${info.average_percentage}%` : "—"}
+                  </span>
+                  <span className="text-[11px] font-bold text-steel flex items-center gap-0.5">
+                    View grades <ArrowRight className="h-3 w-3" />
+                  </span>
+                </div>
+              </div>
+
+              <div
+                onClick={() => handleTabSelect("grades")}
+                className="rounded-2xl border border-border-default bg-surface-raised p-4 sm:p-5 hover:border-cream-border/60 transition-all cursor-pointer shadow-xs group"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted">Graded Exams</span>
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cream-ghost text-cream group-hover:scale-105 transition-transform">
+                    <CheckCircle2 className="h-4.5 w-4.5" />
+                  </div>
+                </div>
+                <div className="mt-3 flex items-baseline justify-between">
+                  <span className="text-2xl sm:text-3xl font-black text-text-primary font-mono">{grades.length}</span>
+                  <span className="text-[11px] font-bold text-cream flex items-center gap-0.5">
+                    History <ArrowRight className="h-3 w-3" />
+                  </span>
+                </div>
+              </div>
+
+              <div
+                onClick={() => handleTabSelect("friends")}
+                className="rounded-2xl border border-border-default bg-surface-raised p-4 sm:p-5 hover:border-tan-border/60 transition-all cursor-pointer shadow-xs group"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted">Study Circle</span>
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-tan-ghost text-tan group-hover:scale-105 transition-transform">
+                    <Users className="h-4.5 w-4.5" />
+                  </div>
+                </div>
+                <div className="mt-3 flex items-baseline justify-between">
+                  <span className="text-2xl sm:text-3xl font-black text-text-primary font-mono">Friends</span>
+                  <span className="text-[11px] font-bold text-tan flex items-center gap-0.5">
+                    Circle <ArrowRight className="h-3 w-3" />
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 1: Available Exams Quick Overview */}
+            <div className="rounded-[28px] border border-border-default bg-surface-raised p-5 sm:p-7 shadow-xs space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold text-text-primary flex items-center gap-2">
+                    <PenTool className="h-4.5 w-4.5 text-sage" />
+                    Available Online Exams
+                  </h2>
+                  <p className="text-xs text-text-muted mt-0.5">
+                    Live exams ready for your section. Take them on desktop with instant automatic grading.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleTabSelect("available")}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-sage hover:text-sage-light transition shrink-0 cursor-pointer"
+                >
+                  <span>View All ({availableExams.length})</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              {availableExams.length === 0 ? (
+                <div className="py-8 text-center border-2 border-dashed border-border-default rounded-2xl p-4 space-y-1">
+                  <p className="text-xs font-semibold text-text-secondary">No Online Exams Currently Open</p>
+                  <p className="text-[11px] text-text-muted">
+                    When your instructors open questionnaires for your section, they will immediately appear here.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {availableExams.slice(0, 2).map((exam) => (
+                    <div
+                      key={exam.id}
+                      className="rounded-2xl border border-border-default bg-surface-base p-4 sm:p-5 flex flex-col justify-between space-y-3.5 shadow-xs"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <span className="rounded-full bg-steel/15 px-2.5 py-0.5 text-[10px] font-bold text-steel-light border border-steel/30">
+                            {exam.teacher_name}
+                          </span>
+                          <span className="text-[11px] font-mono font-bold text-text-muted">
+                            {exam.total_questions} Questions
+                          </span>
+                        </div>
+                        <h3 className="text-sm sm:text-base font-bold text-text-primary leading-snug">
+                          {exam.title}
+                        </h3>
+                        <p className="text-xs text-text-muted mt-1">
+                          Teacher: <span className="font-semibold text-text-secondary">{exam.teacher_name || "Instructor"}</span>
+                        </p>
+                      </div>
+
+                      <div className="pt-3 border-t border-border-subtle flex items-center justify-between gap-3">
+                        <span className="text-[11px] text-text-muted font-mono">
+                          {exam.has_submitted ? "✓ Completed" : "Open for your section"}
+                        </span>
+                        {exam.has_submitted ? (
+                          <button
+                            type="button"
+                            onClick={() => handleTabSelect("grades")}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sage-ghost border border-sage-border text-sage text-xs font-bold transition hover:bg-sage hover:text-white cursor-pointer"
+                          >
+                            <Award className="h-3.5 w-3.5" />
+                            <span>View Score</span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenTakeExam(exam.id)}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl gradient-bg-primary text-text-primary text-xs font-bold shadow-xs hover:opacity-95 transition cursor-pointer"
+                          >
+                            <Play className="h-3.5 w-3.5 fill-current" />
+                            <span>Take Exam</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Section 2: Recent Graded Exam Results */}
+            <div className="rounded-[28px] border border-border-default bg-surface-raised p-5 sm:p-7 shadow-xs space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold text-text-primary flex items-center gap-2">
+                    <Award className="h-4.5 w-4.5 text-steel" />
+                    Recent Graded Results
+                  </h2>
+                  <p className="text-xs text-text-muted mt-0.5">
+                    Bubble sheet and online exam evaluations with verified scoring.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleTabSelect("grades")}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-steel hover:text-steel-light transition shrink-0 cursor-pointer"
+                >
+                  <span>View All ({grades.length})</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              {grades.length === 0 ? (
+                <div className="py-8 text-center border-2 border-dashed border-border-default rounded-2xl p-4 space-y-1">
+                  <p className="text-xs font-semibold text-text-secondary">No Graded Submissions Yet</p>
+                  <p className="text-[11px] text-text-muted">
+                    Once your exam results or paper bubble sheets are graded by your instructor, your scores will appear here.
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {grades.slice(0, 2).map((grade, gIdx) => {
+                    const pct = grade.percentage ?? (grade.max_score > 0 ? (grade.total_score / grade.max_score) * 100 : 0);
+                    const isPassed = pct >= 75;
+
+                    return (
+                      <div
+                        key={grade.exam_id || gIdx}
+                        className="rounded-2xl border border-border-default bg-surface-base p-4 sm:p-5 flex flex-col justify-between space-y-3.5 shadow-xs"
+                      >
+                        <div>
+                          <div className="flex items-center justify-between gap-2 mb-2">
+                            <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold border ${
+                              isPassed
+                                ? "bg-sage-ghost text-sage border-sage-border"
+                                : "bg-burgundy-ghost text-burgundy-light border-burgundy-border"
+                            }`}>
+                              {isPassed ? "PASSED" : "NEEDS IMPROVEMENT"}
+                            </span>
+                            <span className="text-xs font-mono font-bold text-text-muted">
+                              {grade.total_score} / {grade.max_score}
+                            </span>
+                          </div>
+                          <h3 className="text-sm sm:text-base font-bold text-text-primary leading-snug">
+                            {grade.exam_title}
+                          </h3>
+                        </div>
+
+                        <div className="pt-3 border-t border-border-subtle flex items-center justify-between gap-3">
+                          <span className="text-lg font-black font-mono text-text-primary">
+                            {Math.round(pct)}%
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleTabSelect("grades")}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-border-default bg-surface-subtle text-xs font-bold text-text-primary hover:bg-surface-muted transition cursor-pointer"
+                          >
+                            <Eye className="h-3.5 w-3.5 text-steel" />
+                            <span>View Breakdown</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Section 3: Dual Spotlight Hub (Reviewer & Study Circle) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Reviewer Spotlight Card */}
+              <div className="rounded-[28px] border border-steel-border/60 bg-linear-to-br from-steel/10 to-surface-raised p-6 sm:p-7 shadow-xs flex flex-col justify-between space-y-5">
+                <div className="space-y-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-steel/20 text-steel border border-steel/30 shadow-xs">
+                    <Sparkles className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-steel font-mono">
+                      AI Study Engine
+                    </span>
+                    <h3 className="text-lg font-bold text-text-primary mt-0.5">
+                      Flashcards &amp; Practice Reviewer
+                    </h3>
+                  </div>
+                  <p className="text-xs text-text-muted leading-relaxed">
+                    Upload your STI course handouts or PDF notes to automatically generate pointers, key terms, 3D flip flashcards, and practice quiz decks.
+                  </p>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => router.push("/student/reviewer")}
+                    className="inline-flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl bg-steel hover:bg-steel-light text-white text-xs font-bold shadow-md shadow-steel/25 transition cursor-pointer"
+                  >
+                    <BookOpen className="h-4 w-4" />
+                    <span>Open Reviewer Studio</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Study Circle Spotlight Card */}
+              <div className="rounded-[28px] border border-sage-border/60 bg-linear-to-br from-sage/10 to-surface-raised p-6 sm:p-7 shadow-xs flex flex-col justify-between space-y-5">
+                <div className="space-y-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-sage/20 text-sage border border-sage/30 shadow-xs">
+                    <Users className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-sage font-mono">
+                      Classmate Circle
+                    </span>
+                    <h3 className="text-lg font-bold text-text-primary mt-0.5">
+                      Friends &amp; Study Circle
+                    </h3>
+                  </div>
+                  <p className="text-xs text-text-muted leading-relaxed">
+                    Add your classmates by student number, share your custom generated reviewer decks, and study together for upcoming exams.
+                  </p>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleTabSelect("friends")}
+                    className="inline-flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl bg-sage hover:bg-sage-light text-white text-xs font-bold shadow-md shadow-sage/25 transition cursor-pointer"
+                  >
+                    <Users className="h-4 w-4" />
+                    <span>View Study Circle</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* TAB 0: Available Online Exams */}
         {activeTab === "available" && (

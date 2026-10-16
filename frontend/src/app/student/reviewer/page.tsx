@@ -18,6 +18,7 @@ import {
   Lightbulb,
   Sparkles,
   Search,
+  LayoutDashboard,
 } from "lucide-react";
 
 interface QuestionItem {
@@ -101,21 +102,27 @@ export default function StudentReviewerPage() {
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <Link
               href="/student/dashboard"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl sm:rounded-2xl border border-border-default bg-surface-base text-text-secondary hover:text-text-primary hover:bg-surface-subtle transition active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border-default bg-surface-base text-text-secondary hover:text-text-primary hover:bg-surface-subtle transition active:scale-95 text-xs font-bold shadow-xs shrink-0"
               title="Return to Student Dashboard"
               aria-label="Return to Student Dashboard"
             >
-              <ChevronLeft className="h-5 w-5" />
+              <ChevronLeft className="h-4 w-4" />
+              <LayoutDashboard className="h-3.5 w-3.5 text-sage" />
+              <span className="hidden sm:inline">Dashboard</span>
             </Link>
 
             <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-steel uppercase tracking-wider font-mono">
+              <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-text-muted">
+                <Link href="/student/dashboard" className="hover:text-text-primary transition-colors">
+                  Dashboard
+                </Link>
+                <span>/</span>
+                <span className="inline-flex items-center gap-1 font-bold text-steel uppercase tracking-wider font-mono">
                   <Sparkles className="h-3 w-3" />
                   Study Reviewers
                 </span>
               </div>
-              <h1 className="text-base sm:text-xl font-black text-text-primary truncate leading-tight">
+              <h1 className="text-base sm:text-xl font-black text-text-primary truncate leading-tight mt-0.5">
                 Flashcards &amp; Practice Reviewer
               </h1>
             </div>

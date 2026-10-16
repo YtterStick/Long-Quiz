@@ -19,6 +19,10 @@ import {
   Moon,
   Shirt,
   UserCog,
+  PenTool,
+  Award,
+  BookOpen,
+  Users,
 } from "lucide-react";
 import { ExamIcon } from "@/components/ui/ExamIcon";
 import { MobileNav } from "@/components/MobileNav";
@@ -137,6 +141,39 @@ export function Navbar({ onOpenPasswordModal, onOpenCloset }: NavbarProps) {
     { href: "/teacher/scan", label: "Scan Sheet", icon: ScanLine },
   ];
 
+  const studentNav = [
+    { href: "/student/dashboard", tab: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/student/dashboard?tab=available", tab: "available", label: "Available Exams", icon: PenTool },
+    { href: "/student/dashboard?tab=grades", tab: "grades", label: "My Graded Exams", icon: Award },
+    { href: "/student/reviewer", tab: "reviewers", label: "Study Reviewers", icon: BookOpen },
+    { href: "/student/dashboard?tab=friends", tab: "friends", label: "Friends Circle", icon: Users },
+  ];
+
+  const [studentCurrentTab, setStudentCurrentTab] = useState<string>("dashboard");
+
+  useEffect(() => {
+    if (user?.role === "STUDENT") {
+      if (pathname.startsWith("/student/reviewer")) {
+        setStudentCurrentTab("reviewers");
+        return;
+      }
+      if (pathname.startsWith("/student/dashboard")) {
+        if (typeof window !== "undefined") {
+          const tab = new URLSearchParams(window.location.search).get("tab") || "dashboard";
+          setStudentCurrentTab(tab);
+        }
+      }
+      const handler = (e: Event) => {
+        const detail = (e as CustomEvent).detail;
+        if (detail) {
+          setStudentCurrentTab(detail);
+        }
+      };
+      window.addEventListener("studentTabChange", handler);
+      return () => window.removeEventListener("studentTabChange", handler);
+    }
+  }, [user, pathname]);
+
   const homeHref = user
     ? user.role === "ADMIN"
       ? "/admin/dashboard"
@@ -160,7 +197,7 @@ export function Navbar({ onOpenPasswordModal, onOpenCloset }: NavbarProps) {
               </div>
             </Link>
 
-            {/* Desktop Navigation Links */}
+            {/* Teacher Desktop Navigation Links */}
             {user.role === "TEACHER" && (
               <nav className="hidden sm:flex items-center gap-1.5 ml-6 border-l border-border-default pl-6">
                 {teacherNav.map((item) => {
@@ -173,6 +210,46 @@ export function Navbar({ onOpenPasswordModal, onOpenCloset }: NavbarProps) {
                       className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all duration-150 ${
                         isActive
                           ? "bg-steel text-white shadow-sm shadow-steel/25"
+                          : "text-text-muted hover:text-text-primary hover:bg-surface-subtle/80"
+                      }`}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </nav>
+            )}
+
+            {/* Student Desktop Navigation Links */}
+            {user.role === "STUDENT" && (
+              <nav className="hidden sm:flex items-center gap-1.5 ml-6 border-l border-border-default pl-6">
+                {studentNav.map((item) => {
+                  const isReviewerRoute = pathname.startsWith("/student/reviewer");
+                  const isActive = isReviewerRoute
+                    ? item.tab === "reviewers"
+                    : pathname.startsWith("/student/dashboard")
+                    ? studentCurrentTab === item.tab
+                    : false;
+                  const Icon = item.icon;
+
+                  return (
+                    <Link
+                      key={item.tab}
+                      href={item.href}
+                      onClick={(e) => {
+                        if (pathname.startsWith("/student/dashboard")) {
+                          if (item.tab === "reviewers") return;
+                          e.preventDefault();
+                          setStudentCurrentTab(item.tab);
+                          window.dispatchEvent(new CustomEvent("studentTabChange", { detail: item.tab }));
+                          const url = item.tab === "dashboard" ? "/student/dashboard" : `/student/dashboard?tab=${item.tab}`;
+                          window.history.pushState({}, "", url);
+                        }
+                      }}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer ${
+                        isActive
+                          ? "bg-sage text-white shadow-sm shadow-sage/25"
                           : "text-text-muted hover:text-text-primary hover:bg-surface-subtle/80"
                       }`}
                     >
