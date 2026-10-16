@@ -1,0 +1,16 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.env
+.env.local
+*.db
+*.sqlite3
+.git
+.gitignore
+.pytest_cache
+pyrightconfig.json

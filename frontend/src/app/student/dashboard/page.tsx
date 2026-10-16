@@ -900,8 +900,8 @@ export default function StudentDashboard() {
       />
 
       <main className="mx-auto max-w-7xl px-3 sm:px-6 py-5 sm:py-8 pb-24 sm:pb-12 space-y-6">
-        {/* Shared role hero with personalized dynamic character — hidden on Reviewers for clean study experience */}
-        {activeTab !== "reviewers" && (
+        {/* WelcomeHero is shown ONLY in the Dashboard overview tab (clean view for exams, grades, reviewers, friends) */}
+        {activeTab === "dashboard" && (
           <WelcomeHero
             role="student"
             showRoleBadge={false}
@@ -959,89 +959,6 @@ export default function StudentDashboard() {
             }
           />
         )}
-
-        {/* Modern Segmented Tab Switcher with sticky elevation (desktop/tablet only, hidden on mobile) */}
-        <div className="hidden sm:grid p-1.5 rounded-2xl sm:rounded-[22px] bg-surface-raised/95 backdrop-blur-md border border-border-default grid-cols-2 lg:grid-cols-5 gap-1.5 shadow-sm sticky top-16 sm:top-20 z-20">
-          <button
-            type="button"
-            onClick={() => handleTabSelect("dashboard")}
-            className={`flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 px-2 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer min-h-11 ${
-              activeTab === "dashboard"
-                ? "bg-sage text-white shadow-md shadow-sage/25"
-                : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
-            }`}
-          >
-            <LayoutDashboard className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-            <span className="hidden sm:inline">Dashboard</span>
-            <span className="sm:hidden">Home</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleTabSelect("available")}
-            className={`flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 px-2 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer min-h-11 ${
-              activeTab === "available"
-                ? "bg-sage text-white shadow-md shadow-sage/25"
-                : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
-            }`}
-          >
-            <PenTool className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-            <span className="hidden sm:inline">Available Exams</span>
-            <span className="sm:hidden">Exams</span>
-            <span className={`text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full font-mono font-bold shrink-0 ${
-              activeTab === "available" ? "bg-white/20 text-white" : "bg-surface-subtle text-text-muted"
-            }`}>
-              {availableExams.length}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleTabSelect("grades")}
-            className={`flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 px-2 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer min-h-11 ${
-              activeTab === "grades"
-                ? "bg-sage text-white shadow-md shadow-sage/25"
-                : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
-            }`}
-          >
-            <Award className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-            <span className="hidden sm:inline">My Graded Exams</span>
-            <span className="sm:hidden">Results</span>
-            <span className={`text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full font-mono font-bold shrink-0 ${
-              activeTab === "grades" ? "bg-white/20 text-white" : "bg-surface-subtle text-text-muted"
-            }`}>
-              {grades.length}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleTabSelect("reviewers")}
-            className={`flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 px-2 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer min-h-11 ${
-              activeTab === "reviewers"
-                ? "bg-sage text-white shadow-md shadow-sage/25"
-                : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
-            }`}
-          >
-            <BookOpen className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-            <span className="hidden sm:inline">Study Reviewers</span>
-            <span className="sm:hidden">Reviewers</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleTabSelect("friends")}
-            className={`flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 px-2 rounded-xl sm:rounded-2xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer min-h-11 ${
-              activeTab === "friends"
-                ? "bg-sage text-white shadow-md shadow-sage/25"
-                : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
-            }`}
-          >
-            <Users className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
-            <span className="hidden sm:inline">Friends &amp; Study Circle</span>
-            <span className="sm:hidden">Friends</span>
-          </button>
-        </div>
 
         {/* TAB: Dashboard Overview */}
         {activeTab === "dashboard" && (
