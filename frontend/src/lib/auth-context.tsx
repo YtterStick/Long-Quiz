@@ -132,6 +132,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = () => {
     clearSession();
+    if (typeof window !== "undefined") {
+      window.location.href = "/";
+    }
   };
 
   return (

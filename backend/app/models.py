@@ -121,6 +121,8 @@ class SectionExam(Base):
     is_grades_released: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     # Teacher has released the exam to students waiting in the lobby
     is_started: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
+    # Teacher has locked the lobby so late students cannot enter
+    is_lobby_locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="false")
     # What students see once grades are released: "FULL" (score + questionnaire + answer key) or "SCORES_ONLY"
     release_mode: Mapped[str] = mapped_column(String, default="FULL", nullable=False, server_default="FULL")
     # Section overrides (if set, overrides base exam settings)

@@ -532,7 +532,7 @@ export default function TeacherScanPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Section Picker */}
             <div>
-              <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+              <label className="text-xs font-bold text-text-secondary uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
                 <Users className="h-3.5 w-3.5 text-tan" />
                 Select Section
               </label>
@@ -560,7 +560,7 @@ export default function TeacherScanPage() {
 
             {/* Exam Picker */}
             <div>
-              <label className="block text-xs font-bold text-text-secondary uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+              <label className="text-xs font-bold text-text-secondary uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
                 <BookOpen className="h-3.5 w-3.5 text-tan" />
                 Select Exam / Quiz
               </label>

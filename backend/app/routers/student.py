@@ -538,6 +538,18 @@ async def get_exam_for_taking(
                     status_code=403,
                     detail="Your teacher hasn't started this exam yet. Please wait in the lobby.",
                 )
+            if getattr(se, "is_lobby_locked", False):
+                entry_check = await db.execute(
+                    select(ExamLobbyEntry.id).where(
+                        ExamLobbyEntry.section_exam_id == se.id,
+                        ExamLobbyEntry.student_id == student.id,
+                    )
+                )
+                if not entry_check.first():
+                    raise HTTPException(
+                        status_code=403,
+                        detail="The exam lobby has been locked by your teacher. Late entry is not permitted.",
+                    )
 
     # Fallback check on Exam table directly
     if not is_active:

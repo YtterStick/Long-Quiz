@@ -320,10 +320,23 @@ export const teacher = {
       { method: "PUT", body: { is_started } }
     ),
 
+  toggleLockLobby: (sectionId: string, examId: string, is_lobby_locked?: boolean) =>
+    request<{ is_lobby_locked: boolean; is_started: boolean; is_online_active: boolean }>(
+      `/api/teacher/sections/${sectionId}/exams/${examId}/lock-lobby`,
+      { method: "PUT", body: is_lobby_locked !== undefined ? { is_lobby_locked } : undefined }
+    ),
+
+  endSectionExam: (sectionId: string, examId: string) =>
+    request<{ message: string; is_started: boolean; is_online_active: boolean; is_lobby_locked: boolean }>(
+      `/api/teacher/sections/${sectionId}/exams/${examId}/end`,
+      { method: "POST" }
+    ),
+
   monitorSectionExam: (sectionId: string, examId: string) =>
     request<{
       is_online_active: boolean;
       is_started: boolean;
+      is_lobby_locked?: boolean;
       total_students: number;
       counts: { in_lobby: number; ready: number; taking: number; submitted: number; not_joined: number };
       students: Array<{

@@ -877,7 +877,7 @@ export default function StudentDashboard() {
 
   const showPasswordReset = mustResetPassword || Boolean(user?.must_change_password);
 
-  if (!mounted || authLoading || (loading && !info)) {
+  if (!mounted || authLoading || !user || user.role !== "STUDENT" || (loading && !info)) {
     return <SkeletonDashboardPage role="student" />;
   }
 

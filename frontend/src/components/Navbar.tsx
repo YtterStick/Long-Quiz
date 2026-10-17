@@ -404,7 +404,7 @@ export function Navbar({ onOpenPasswordModal, onOpenCloset }: NavbarProps) {
       />
 
       {/* Standalone Wardrobe / Avatar Studio Modal */}
-      {(user.role === "STUDENT" || user.role === "TEACHER") && (
+      {user && (user.role === "STUDENT" || user.role === "TEACHER") && (
         <CharacterCreatorModal
           isOpen={closetModalOpen}
           onClose={() => setClosetModalOpen(false)}

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { teacher as teacherApi } from "@/lib/api";
 import {
   X,
@@ -20,8 +20,17 @@ import {
   FileCheck2,
   RotateCcw,
   Zap,
+  Lock,
+  Unlock,
+  PowerOff,
+  FileSpreadsheet,
+  Copy,
+  Check,
+  UserCheck,
+  UserX,
 } from "lucide-react";
 import { SkeletonLiveRoster } from "@/components/ui/Skeleton";
+import { ConfirmModal } from "@/components/ConfirmModal";
 
 interface StudentAnswer {
   question_number: number;
@@ -54,6 +63,7 @@ interface MonitorStudent {
 interface MonitorData {
   is_online_active: boolean;
   is_started: boolean;
+  is_lobby_locked?: boolean;
   total_students: number;
   counts: {
     in_lobby: number;
@@ -90,7 +100,17 @@ export function LiveExamMonitorModal({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+
+  // Exam controls: Pause vs End vs Lock
   const [togglingStart, setTogglingStart] = useState(false);
+  const [lockingLobby, setLockingLobby] = useState(false);
+  const [endingExam, setEndingExam] = useState(false);
+  const [endExamConfirmOpen, setEndExamConfirmOpen] = useState(false);
+
+  // Excel / Clipboard states
+  const [exportingExcel, setExportingExcel] = useState(false);
+  const [copiedClipboard, setCopiedClipboard] = useState(false);
+
   const [selectedStudentForAnswers, setSelectedStudentForAnswers] = useState<MonitorStudent | null>(null);
   const [retakeTarget, setRetakeTarget] = useState<MonitorStudent | null>(null);
   const [resetCounters, setResetCounters] = useState(true);
@@ -112,14 +132,13 @@ export function LiveExamMonitorModal({
         console.warn("Manual monitor refresh failed:", msg);
         setFetchError(msg);
       } else {
-        // Transient network blip during background 3-second auto-polling
         setFetchError((prev) => (data ? prev : msg));
       }
     } finally {
       setLoading(false);
       if (isManual) setRefreshing(false);
     }
-  }, [sectionId, examId, onStatusChanged]);
+  }, [sectionId, examId, onStatusChanged, data]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -139,20 +158,135 @@ export function LiveExamMonitorModal({
     return () => clearInterval(interval);
   }, [isOpen, fetchMonitor]);
 
-  const handleToggleStart = async () => {
+  // Pause Exam (freezes students, leaves online active so teacher can resume)
+  const handlePauseExam = async () => {
     if (!data) return;
-    const nextStart = !data.is_started;
     setTogglingStart(true);
     try {
-      const res = await teacherApi.startSectionExam(sectionId, examId, nextStart);
-      setData((prev) => (prev ? { ...prev, is_started: res.is_started } : prev));
+      const res = await teacherApi.startSectionExam(sectionId, examId, false);
+      setData((prev) => (prev ? { ...prev, is_started: false } : prev));
       if (onStatusChanged) {
-        onStatusChanged(res.is_online_active, res.is_started);
+        onStatusChanged(res.is_online_active, false);
       }
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to toggle exam start");
+      alert(err instanceof Error ? err.message : "Failed to pause exam");
     } finally {
       setTogglingStart(false);
+    }
+  };
+
+  // Resume or Start Exam
+  const handleResumeOrStartExam = async () => {
+    if (!data) return;
+    setTogglingStart(true);
+    try {
+      const res = await teacherApi.startSectionExam(sectionId, examId, true);
+      setData((prev) => (prev ? { ...prev, is_started: true } : prev));
+      if (onStatusChanged) {
+        onStatusChanged(res.is_online_active, true);
+      }
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to start exam");
+    } finally {
+      setTogglingStart(false);
+    }
+  };
+
+  // Lock Lobby (blocks latecomers from taking)
+  const handleToggleLockLobby = async () => {
+    if (!data) return;
+    const nextLocked = !data.is_lobby_locked;
+    setLockingLobby(true);
+    try {
+      const res = await teacherApi.toggleLockLobby(sectionId, examId, nextLocked);
+      setData((prev) => (prev ? { ...prev, is_lobby_locked: res.is_lobby_locked } : prev));
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to toggle lobby lock");
+    } finally {
+      setLockingLobby(false);
+    }
+  };
+
+  // End Exam (auto disables online quiz access, finalizes exam session)
+  const handleConfirmEndExam = async () => {
+    setEndExamConfirmOpen(false);
+    setEndingExam(true);
+    try {
+      await teacherApi.endSectionExam(sectionId, examId);
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              is_started: false,
+              is_online_active: false,
+              is_lobby_locked: true,
+            }
+          : prev
+      );
+      if (onStatusChanged) {
+        onStatusChanged(false, false);
+      }
+      setRetakeNotice("Exam ended. Online quiz access has been disabled for this class.");
+      setTimeout(() => setRetakeNotice(null), 5000);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to end exam");
+    } finally {
+      setEndingExam(false);
+    }
+  };
+
+  // Export complete records including absent students to Excel
+  const handleExportExcel = async () => {
+    setExportingExcel(true);
+    try {
+      const cleanSec = sectionName.replace(/[^a-zA-Z0-9_-]/g, "_");
+      const cleanExam = examTitle.replace(/[^a-zA-Z0-9_-]/g, "_");
+      await teacherApi.downloadSectionExamExcel(sectionId, examId, `Gradebook_${cleanSec}_${cleanExam}.xlsx`);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to export Excel file");
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
+  // Copy records formatted for Excel / Sheets
+  const handleCopyForExcel = async () => {
+    if (!data || !data.students) return;
+    const headers = [
+      "No.",
+      "Student ID",
+      "Student Name",
+      "Attendance",
+      "Status",
+      "Score",
+      "Max Score",
+      "Violations",
+      "Submitted At"
+    ];
+    const rows = data.students.map((s, idx) => {
+      const isAbsent = s.status === "NOT_JOINED";
+      const attendance = isAbsent ? "ABSENT" : "PRESENT";
+      const score = s.status === "SUBMITTED" ? (s.total_score ?? 0) : 0;
+      const subAt = s.submitted_at ? new Date(s.submitted_at).toLocaleString() : "-";
+      return [
+        idx + 1,
+        `02000${String(s.student_number).padStart(6, "0")}`,
+        s.name,
+        attendance,
+        s.status,
+        score,
+        s.max_score || totalQuestions,
+        s.violations,
+        subAt
+      ].join("\t");
+    });
+    const tsv = [headers.join("\t"), ...rows].join("\n");
+    try {
+      await navigator.clipboard.writeText(tsv);
+      setCopiedClipboard(true);
+      setTimeout(() => setCopiedClipboard(false), 2500);
+    } catch {
+      alert("Unable to copy to clipboard automatically. Try exporting to Excel.");
     }
   };
 
@@ -176,27 +310,35 @@ export function LiveExamMonitorModal({
   // View & Filter States
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "in_lobby" | "taking" | "submitted" | "violations" | "offline">("all");
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "present" | "absent" | "in_lobby" | "taking" | "submitted" | "violations"
+  >("all");
 
   const totalTabSwitches = data?.students.reduce((sum, s) => sum + (s.tab_switches || 0), 0) ?? 0;
   const totalFullscreenExits = data?.students.reduce((sum, s) => sum + (s.fullscreen_exits || 0), 0) ?? 0;
   const violationStudents = data?.students.filter((s) => s.tab_switches > 0 || s.fullscreen_exits > 0) ?? [];
 
+  const presentCount = (data?.students ?? []).filter((s) => s.status !== "NOT_JOINED").length;
+  const absentCount = (data?.students ?? []).filter((s) => s.status === "NOT_JOINED").length;
+
   // Filtered Students list
-  const filteredStudents = (data?.students ?? []).filter((s) => {
-    const matchesSearch =
-      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      String(s.student_number).includes(searchQuery);
+  const filteredStudents = useMemo(() => {
+    return (data?.students ?? []).filter((s) => {
+      const matchesSearch =
+        s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        String(s.student_number).includes(searchQuery);
 
-    if (!matchesSearch) return false;
+      if (!matchesSearch) return false;
 
-    if (statusFilter === "in_lobby") return s.status === "IN_LOBBY";
-    if (statusFilter === "taking") return s.status === "TAKING";
-    if (statusFilter === "submitted") return s.status === "SUBMITTED";
-    if (statusFilter === "violations") return s.tab_switches > 0 || s.fullscreen_exits > 0;
-    if (statusFilter === "offline") return s.status === "NOT_JOINED" || s.status === "DISCONNECTED";
-    return true;
-  });
+      if (statusFilter === "present") return s.status !== "NOT_JOINED";
+      if (statusFilter === "absent") return s.status === "NOT_JOINED";
+      if (statusFilter === "in_lobby") return s.status === "IN_LOBBY";
+      if (statusFilter === "taking") return s.status === "TAKING";
+      if (statusFilter === "submitted") return s.status === "SUBMITTED";
+      if (statusFilter === "violations") return s.tab_switches > 0 || s.fullscreen_exits > 0;
+      return true;
+    });
+  }, [data?.students, searchQuery, statusFilter]);
 
   if (!isOpen) return null;
 
@@ -223,12 +365,19 @@ export function LiveExamMonitorModal({
                 </span>
               ) : data?.is_online_active ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-tan-ghost px-3 py-0.5 text-[11px] font-bold text-tan border border-tan-border">
-                  <Clock className="h-3 w-3" />
-                  Lobby Open • Waiting for Start
+                  <Pause className="h-3 w-3" />
+                  Exam Paused / Waiting in Lobby
                 </span>
               ) : (
-                <span className="rounded-full bg-surface-subtle px-3 py-0.5 text-[11px] font-bold text-text-muted border border-border-default">
-                  Lobby Closed
+                <span className="rounded-full bg-burgundy-ghost px-3 py-0.5 text-[11px] font-bold text-burgundy-light border border-burgundy-border">
+                  Exam Ended / Closed
+                </span>
+              )}
+
+              {data?.is_lobby_locked && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2.5 py-0.5 text-[10px] font-bold">
+                  <Lock className="h-3 w-3" />
+                  Lobby Locked
                 </span>
               )}
             </div>
@@ -238,11 +387,12 @@ export function LiveExamMonitorModal({
               {examTitle}
             </h2>
             <p className="text-xs text-text-muted mt-0.5">
-              Real-time student lobby presence, active focus detection, and instant grading monitor.
+              Live attendance, proctored focus detection, and instant section records.
             </p>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          {/* Action Button Controls */}
+          <div className="flex items-center flex-wrap gap-2">
             <button
               type="button"
               onClick={() => fetchMonitor(true)}
@@ -254,31 +404,94 @@ export function LiveExamMonitorModal({
               <span className="hidden sm:inline">Refresh</span>
             </button>
 
+            {/* Lock Lobby Button */}
             {data?.is_online_active && (
               <button
                 type="button"
-                onClick={handleToggleStart}
-                disabled={togglingStart}
-                className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-bold transition-all cursor-pointer shadow-lg active:scale-95 ${
-                  data.is_started
-                    ? "bg-burgundy text-white hover:bg-burgundy-light shadow-burgundy/25"
-                    : "bg-steel text-white hover:bg-steel-light shadow-steel/25"
+                onClick={handleToggleLockLobby}
+                disabled={lockingLobby}
+                className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition-all cursor-pointer ${
+                  data.is_lobby_locked
+                    ? "bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30"
+                    : "bg-surface-subtle text-text-secondary border-border-default hover:bg-surface-muted hover:text-text-primary"
                 }`}
+                title={data.is_lobby_locked ? "Click to unlock lobby for late students" : "Lock lobby to block latecomers"}
               >
-                {togglingStart ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : data.is_started ? (
+                {lockingLobby ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : data.is_lobby_locked ? (
                   <>
-                    <Pause className="h-4 w-4" />
-                    Pause / End Exam
+                    <Lock className="h-3.5 w-3.5 text-amber-400" />
+                    <span>Lobby Locked</span>
                   </>
                 ) : (
                   <>
-                    <Play className="h-4 w-4 fill-current" />
-                    Start Exam for Class ({data.counts.in_lobby}/{data.total_students} Ready)
+                    <Unlock className="h-3.5 w-3.5 text-text-muted" />
+                    <span>Lock Lobby</span>
                   </>
                 )}
               </button>
+            )}
+
+            {/* Separate Pause & End Exam Controls */}
+            {data?.is_online_active && (
+              <>
+                {data.is_started ? (
+                  <button
+                    type="button"
+                    onClick={handlePauseExam}
+                    disabled={togglingStart}
+                    className="flex items-center gap-1.5 rounded-xl bg-tan-ghost text-tan border border-tan-border hover:bg-tan/20 px-3.5 py-2 text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95"
+                    title="Pause exam timer and questions for all students"
+                  >
+                    {togglingStart ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <>
+                        <Pause className="h-3.5 w-3.5" />
+                        <span>Pause Exam</span>
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleResumeOrStartExam}
+                    disabled={togglingStart}
+                    className="flex items-center gap-1.5 rounded-xl bg-steel text-white hover:bg-steel-light px-3.5 py-2 text-xs font-bold transition-all cursor-pointer shadow-lg shadow-steel/25 active:scale-95"
+                  >
+                    {togglingStart ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <>
+                        <Play className="h-3.5 w-3.5 fill-current" />
+                        <span>
+                          {data.counts.taking > 0 || data.counts.submitted > 0
+                            ? "Resume Exam"
+                            : `Start Exam (${data.counts.in_lobby}/${data.total_students} Ready)`}
+                        </span>
+                      </>
+                    )}
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setEndExamConfirmOpen(true)}
+                  disabled={endingExam}
+                  className="flex items-center gap-1.5 rounded-xl bg-burgundy text-white hover:bg-burgundy-light px-3.5 py-2 text-xs font-bold transition-all cursor-pointer shadow-lg shadow-burgundy/25 active:scale-95"
+                  title="Conclude exam and auto-disable online quiz"
+                >
+                  {endingExam ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <>
+                      <PowerOff className="h-3.5 w-3.5" />
+                      <span>End Exam</span>
+                    </>
+                  )}
+                </button>
+              </>
             )}
 
             <button
@@ -326,14 +539,55 @@ export function LiveExamMonitorModal({
                 <div
                   style={{ width: `${offlinePercent}%` }}
                   className="h-full bg-surface-subtle transition-all duration-500"
-                  title={`Offline: ${data?.counts.not_joined} (${offlinePercent}%)`}
+                  title={`Offline / Absent: ${data?.counts.not_joined} (${offlinePercent}%)`}
                 />
               )}
             </div>
           </div>
 
-          {/* Metric Chips */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          {/* Metric Chips with Present vs Absent */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+            <div
+              onClick={() => setStatusFilter("present")}
+              className={`rounded-2xl border p-3 flex items-center justify-between cursor-pointer transition-all ${
+                statusFilter === "present"
+                  ? "border-sage bg-sage-ghost shadow-sm"
+                  : "border-border-default bg-surface-base hover:border-sage-border"
+              }`}
+            >
+              <div>
+                <span className="text-[11px] text-sage block font-bold">Present in Session</span>
+                <strong className="text-lg font-black text-sage">
+                  {presentCount}{" "}
+                  <span className="text-[10px] text-text-muted font-normal">
+                    / {data?.total_students || 0}
+                  </span>
+                </strong>
+              </div>
+              <div className="h-8 w-8 rounded-xl bg-sage-ghost text-sage border border-sage-border flex items-center justify-center">
+                <UserCheck className="h-4 w-4" />
+              </div>
+            </div>
+
+            <div
+              onClick={() => setStatusFilter("absent")}
+              className={`rounded-2xl border p-3 flex items-center justify-between cursor-pointer transition-all ${
+                statusFilter === "absent"
+                  ? "border-burgundy-border bg-burgundy-ghost shadow-sm"
+                  : "border-border-default bg-surface-base hover:border-burgundy-border"
+              }`}
+            >
+              <div>
+                <span className="text-[11px] text-burgundy-light block font-bold">Absent (Marked 0)</span>
+                <strong className="text-lg font-black text-burgundy-light">
+                  {absentCount}
+                </strong>
+              </div>
+              <div className="h-8 w-8 rounded-xl bg-burgundy-ghost text-burgundy-light border border-burgundy-border flex items-center justify-center">
+                <UserX className="h-4 w-4" />
+              </div>
+            </div>
+
             <div
               onClick={() => setStatusFilter("in_lobby")}
               className={`rounded-2xl border p-3 flex items-center justify-between cursor-pointer transition-all ${
@@ -347,7 +601,7 @@ export function LiveExamMonitorModal({
                 <strong className="text-lg font-black text-tan">
                   {data?.counts.in_lobby || 0}{" "}
                   <span className="text-[10px] text-text-muted font-normal">
-                    ({data?.counts.ready || 0} fullscreen)
+                    ({data?.counts.ready || 0} ready)
                   </span>
                 </strong>
               </div>
@@ -386,41 +640,38 @@ export function LiveExamMonitorModal({
               <div>
                 <span className="text-[11px] text-text-muted block font-medium">Submitted</span>
                 <strong className="text-lg font-black text-sage">
-                  {data?.counts.submitted || 0}{" "}
-                  <span className="text-[10px] text-text-muted font-normal">
-                    / {data?.total_students || 0}
-                  </span>
+                  {data?.counts.submitted || 0}
                 </strong>
               </div>
               <div className="h-8 w-8 rounded-xl bg-sage-ghost text-sage border border-sage-border flex items-center justify-center">
                 <CheckCircle2 className="h-4 w-4" />
               </div>
             </div>
-
-            <div
-              onClick={() => setStatusFilter("offline")}
-              className={`rounded-2xl border p-3 flex items-center justify-between cursor-pointer transition-all ${
-                statusFilter === "offline"
-                  ? "border-border-emphasis bg-surface-subtle shadow-sm"
-                  : "border-border-default bg-surface-base hover:border-border-emphasis"
-              }`}
-            >
-              <div>
-                <span className="text-[11px] text-text-muted block font-medium">Offline / Not Joined</span>
-                <strong className="text-lg font-black text-text-muted">
-                  {data?.counts.not_joined || 0}
-                </strong>
-              </div>
-              <div className="h-8 w-8 rounded-xl bg-surface-subtle text-text-muted border border-border-default flex items-center justify-center">
-                <Users className="h-4 w-4" />
-              </div>
-            </div>
           </div>
         </div>
 
+        {/* ── Lobby Lock Alert Banner ──────────────── */}
+        {data?.is_lobby_locked && (
+          <div className="mx-4 sm:mx-6 mt-3 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs flex items-center justify-between gap-3 animate-in fade-in">
+            <div className="flex items-center gap-2.5 text-amber-300 font-semibold">
+              <Lock className="h-4 w-4 shrink-0 text-amber-400" />
+              <span>
+                <strong>Lobby Locked:</strong> Late students who are not already inside the lobby will be blocked from joining this exam.
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleToggleLockLobby}
+              className="shrink-0 text-[11px] font-bold text-amber-300 underline hover:text-white transition-colors cursor-pointer"
+            >
+              Unlock Lobby
+            </button>
+          </div>
+        )}
+
         {/* ── Active Incident / Violation Alert Banner ──────────────── */}
         {violationStudents.length > 0 && (
-          <div className="mx-4 sm:mx-6 mt-4 p-3.5 rounded-2xl bg-burgundy-ghost border border-burgundy-border text-xs flex items-center justify-between gap-3 animate-in fade-in">
+          <div className="mx-4 sm:mx-6 mt-3 p-3 rounded-2xl bg-burgundy-ghost border border-burgundy-border text-xs flex items-center justify-between gap-3 animate-in fade-in">
             <div className="flex items-center gap-2.5 text-burgundy-light font-semibold">
               <ShieldAlert className="h-4 w-4 shrink-0 text-burgundy-light" />
               <span>
@@ -438,23 +689,24 @@ export function LiveExamMonitorModal({
         )}
 
         {retakeNotice && (
-          <div className="mx-4 sm:mx-6 mt-4 flex items-center gap-2 rounded-2xl border border-sage-border bg-sage-ghost px-4 py-3 text-xs font-semibold text-sage animate-in fade-in">
+          <div className="mx-4 sm:mx-6 mt-3 flex items-center gap-2 rounded-2xl border border-sage-border bg-sage-ghost px-4 py-2.5 text-xs font-semibold text-sage animate-in fade-in">
             <RotateCcw className="h-4 w-4 shrink-0" />
             <span>{retakeNotice}</span>
           </div>
         )}
 
-        {/* ── Filter Toolbar & View Switcher ────────────────────────── */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 sm:px-6 pt-4 pb-2 shrink-0">
+        {/* ── Filter Toolbar, Search, & Export Tools ────────────────── */}
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 px-4 sm:px-6 pt-3 pb-2 shrink-0">
           {/* Status Filter Chips */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
             {[
               { id: "all", label: `All (${data?.students.length || 0})` },
+              { id: "present", label: `Present (${presentCount})` },
+              { id: "absent", label: `Absent (${absentCount})` },
               { id: "in_lobby", label: `In Lobby (${data?.counts.in_lobby || 0})` },
               { id: "taking", label: `Taking (${data?.counts.taking || 0})` },
               { id: "submitted", label: `Submitted (${data?.counts.submitted || 0})` },
               { id: "violations", label: `Violations (${violationStudents.length})` },
-              { id: "offline", label: `Offline (${data?.counts.not_joined || 0})` },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -471,15 +723,16 @@ export function LiveExamMonitorModal({
             ))}
           </div>
 
-          {/* Search + View Toggle */}
-          <div className="flex items-center gap-2">
+          {/* Search + View Toggle + Excel Tools */}
+          <div className="flex items-center flex-wrap gap-2">
             <input
               type="text"
               placeholder="Search student..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="rounded-xl border border-border-default bg-surface-base px-3 py-1.5 text-xs text-text-primary placeholder:text-text-faint focus:border-steel focus:outline-none transition-all w-36 sm:w-48"
+              className="rounded-xl border border-border-default bg-surface-base px-3 py-1.5 text-xs text-text-primary placeholder:text-text-faint focus:border-steel focus:outline-none transition-all w-32 sm:w-44"
             />
+
             <div className="flex items-center rounded-xl bg-surface-subtle p-0.5 border border-border-default">
               <button
                 type="button"
@@ -502,6 +755,41 @@ export function LiveExamMonitorModal({
                 Table
               </button>
             </div>
+
+            {/* Excel & Copy Tools */}
+            <button
+              type="button"
+              onClick={handleCopyForExcel}
+              className="flex items-center gap-1.5 rounded-xl border border-border-default bg-surface-subtle px-3 py-1.5 text-xs font-semibold text-text-secondary hover:text-text-primary hover:bg-surface-muted transition-colors cursor-pointer"
+              title="Copy records to clipboard for Excel / Google Sheets"
+            >
+              {copiedClipboard ? (
+                <>
+                  <Check className="h-3.5 w-3.5 text-sage" />
+                  <span className="text-sage font-bold">Copied!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="h-3.5 w-3.5 text-tan" />
+                  <span>Copy</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              disabled={exportingExcel}
+              className="flex items-center gap-1.5 rounded-xl bg-sage-ghost text-sage border border-sage-border hover:bg-sage/20 px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
+              title="Download full class gradebook (.xlsx) including absent students"
+            >
+              {exportingExcel ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-sage" />
+              ) : (
+                <FileSpreadsheet className="h-3.5 w-3.5 text-sage" />
+              )}
+              <span>Export Excel</span>
+            </button>
           </div>
         </div>
 
@@ -538,22 +826,25 @@ export function LiveExamMonitorModal({
               </button>
             </div>
           ) : viewMode === "grid" ? (
-            /* ── VISUAL STUDENT CARDS GALLERY ────────────────────────── */
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            /* ── STUDENT CARDS GRID ──────────────────────────────────── */
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredStudents.map((student) => {
                 const hasViolations = student.tab_switches > 0 || student.fullscreen_exits > 0;
+                const isAbsent = student.status === "NOT_JOINED";
                 const initials = student.name
                   .split(" ")
                   .map((n) => n[0])
-                  .join("")
                   .slice(0, 2)
+                  .join("")
                   .toUpperCase();
 
                 return (
                   <div
                     key={student.student_id}
                     className={`rounded-2xl p-4 border transition-all relative flex flex-col justify-between ${
-                      hasViolations
+                      isAbsent
+                        ? "bg-burgundy-ghost/10 border-burgundy-border/40 hover:border-burgundy-border"
+                        : hasViolations
                         ? "bg-burgundy-ghost/15 border-burgundy-border/60 hover:border-burgundy-border"
                         : student.status === "SUBMITTED"
                         ? "bg-sage-ghost/10 border-sage-border/50 hover:border-sage-border"
@@ -570,7 +861,9 @@ export function LiveExamMonitorModal({
                         <div className="flex items-center gap-2.5">
                           <div
                             className={`h-10 w-10 rounded-2xl flex items-center justify-center font-bold text-xs shadow-inner shrink-0 ${
-                              student.status === "SUBMITTED"
+                              isAbsent
+                                ? "bg-burgundy-ghost text-burgundy-light border border-burgundy-border"
+                                : student.status === "SUBMITTED"
                                 ? "bg-sage-ghost text-sage border border-sage-border"
                                 : student.status === "TAKING"
                                 ? "bg-steel-ghost text-steel border border-steel-border"
@@ -586,14 +879,19 @@ export function LiveExamMonitorModal({
                               {student.name}
                             </div>
                             <div className="font-mono text-[10px] text-text-muted mt-0.5">
-                              ID: {student.student_number}
+                              ID: 02000{String(student.student_number).padStart(6, "0")}
                             </div>
                           </div>
                         </div>
 
                         {/* Status Pill */}
                         <div>
-                          {student.status === "SUBMITTED" ? (
+                          {isAbsent ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-burgundy-ghost px-2.5 py-0.5 text-[10px] font-bold text-burgundy-light border border-burgundy-border">
+                              <UserX className="h-3 w-3" />
+                              ABSENT (0)
+                            </span>
+                          ) : student.status === "SUBMITTED" ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-sage-ghost px-2.5 py-0.5 text-[10px] font-bold text-sage border border-sage-border">
                               <CheckCircle2 className="h-3 w-3" />
                               Submitted
@@ -608,13 +906,9 @@ export function LiveExamMonitorModal({
                               <Clock className="h-3 w-3" />
                               Ready in Lobby
                             </span>
-                          ) : student.status === "DISCONNECTED" ? (
+                          ) : (
                             <span className="inline-flex items-center gap-1 rounded-full bg-surface-subtle px-2 py-0.5 text-[10px] font-bold text-text-muted border border-border-default">
                               Disconnected
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-surface-base px-2 py-0.5 text-[10px] font-semibold text-text-faint border border-border-default">
-                              Not Joined
                             </span>
                           )}
                         </div>
@@ -622,57 +916,66 @@ export function LiveExamMonitorModal({
 
                       {/* Proctoring & Integrity Health */}
                       <div className="space-y-2 py-2 border-t border-border-default/50 text-xs">
-                        {/* Focus & Fullscreen status */}
-                        {(student.status === "IN_LOBBY" || student.status === "TAKING") && (
-                          <div className="flex items-center justify-between text-[11px]">
-                            <span className="text-text-muted flex items-center gap-1">
-                              <Maximize2 className="h-3.5 w-3.5 text-text-faint" />
-                              Screen:
-                            </span>
-                            <span
-                              className={`font-semibold ${
-                                student.is_fullscreen ? "text-sage" : "text-burgundy-light font-bold"
-                              }`}
-                            >
-                              {student.is_fullscreen ? "Fullscreen Locked" : "Windowed"}
-                            </span>
+                        {isAbsent ? (
+                          <div className="flex items-center justify-between text-[11px] text-burgundy-light font-semibold">
+                            <span>Exam Score:</span>
+                            <span className="font-mono font-bold">0 / {totalQuestions} (Did not attend)</span>
                           </div>
-                        )}
-
-                        {/* Live Answer progress if taking */}
-                        {student.status === "TAKING" && (
-                          <div className="flex items-center justify-between text-[11px]">
-                            <span className="text-text-muted">Progress:</span>
-                            <span className="font-bold text-steel font-mono">
-                              {student.answers?.length || 0} / {totalQuestions} answered
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Score if submitted */}
-                        {student.status === "SUBMITTED" && student.total_score !== null && (
-                          <div className="flex items-center justify-between text-[11px]">
-                            <span className="text-text-muted">Final Score:</span>
-                            <span className="font-bold text-sage font-mono text-sm">
-                              {student.total_score} / {student.max_score || totalQuestions}
-                              <span className="text-[10px] text-text-muted font-normal ml-1">
-                                ({student.max_score ? Math.round((student.total_score / student.max_score) * 100) : 0}%)
-                              </span>
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Violation Indicator */}
-                        {hasViolations && (
-                          <div className="flex items-center justify-between rounded-xl bg-burgundy-ghost/50 border border-burgundy-border px-2.5 py-1 text-[10px] font-bold text-burgundy-light">
-                            <span className="flex items-center gap-1">
-                              <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                              {student.tab_switches} alt-tab{student.tab_switches === 1 ? "" : "s"}
-                            </span>
-                            {student.fullscreen_exits > 0 && (
-                              <span>{student.fullscreen_exits} window exit{student.fullscreen_exits === 1 ? "" : "s"}</span>
+                        ) : (
+                          <>
+                            {/* Focus & Fullscreen status */}
+                            {(student.status === "IN_LOBBY" || student.status === "TAKING") && (
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="text-text-muted flex items-center gap-1">
+                                  <Maximize2 className="h-3.5 w-3.5 text-text-faint" />
+                                  Screen:
+                                </span>
+                                <span
+                                  className={`font-semibold ${
+                                    student.is_fullscreen ? "text-sage" : "text-burgundy-light font-bold"
+                                  }`}
+                                >
+                                  {student.is_fullscreen ? "Fullscreen Locked" : "Windowed"}
+                                </span>
+                              </div>
                             )}
-                          </div>
+
+                            {/* Live Answer progress if taking */}
+                            {student.status === "TAKING" && (
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="text-text-muted">Progress:</span>
+                                <span className="font-bold text-steel font-mono">
+                                  {student.answers?.length || 0} / {totalQuestions} answered
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Score if submitted */}
+                            {student.status === "SUBMITTED" && student.total_score !== null && (
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="text-text-muted">Final Score:</span>
+                                <span className="font-bold text-sage font-mono text-sm">
+                                  {student.total_score} / {student.max_score || totalQuestions}
+                                  <span className="text-[10px] text-text-muted font-normal ml-1">
+                                    ({student.max_score ? Math.round((student.total_score / student.max_score) * 100) : 0}%)
+                                  </span>
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Violation Indicator */}
+                            {hasViolations && (
+                              <div className="flex items-center justify-between rounded-xl bg-burgundy-ghost/50 border border-burgundy-border px-2.5 py-1 text-[10px] font-bold text-burgundy-light">
+                                <span className="flex items-center gap-1">
+                                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                                  {student.tab_switches} alt-tab{student.tab_switches === 1 ? "" : "s"}
+                                </span>
+                                {student.fullscreen_exits > 0 && (
+                                  <span>{student.fullscreen_exits} exit{student.fullscreen_exits === 1 ? "" : "s"}</span>
+                                )}
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
@@ -716,7 +1019,8 @@ export function LiveExamMonitorModal({
                 <thead className="bg-surface-base border-b border-border-default text-[11px] font-bold text-text-secondary uppercase tracking-wider">
                   <tr>
                     <th className="py-3 px-4">Student</th>
-                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4 text-center">Attendance</th>
+                    <th className="py-3 px-4">Live Status</th>
                     <th className="py-3 px-4">Screen / Focus Health</th>
                     <th className="py-3 px-4">Violations</th>
                     <th className="py-3 px-4">Score</th>
@@ -724,91 +1028,126 @@ export function LiveExamMonitorModal({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border-default/50 bg-surface-overlay">
-                  {filteredStudents.map((student) => (
-                    <tr key={student.student_id} className="hover:bg-surface-subtle/40 transition-colors">
-                      <td className="py-3 px-4">
-                        <div className="font-bold text-text-primary">{student.name}</div>
-                        <div className="font-mono text-[10px] text-text-muted">
-                          ID: {student.student_number}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        {student.status === "SUBMITTED" ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-sage-ghost px-2.5 py-0.5 text-[10px] font-bold text-sage border border-sage-border">
-                            <CheckCircle2 className="h-3 w-3" />
-                            Submitted
-                          </span>
-                        ) : student.status === "TAKING" ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-steel-ghost px-2.5 py-0.5 text-[10px] font-bold text-steel border border-steel-border animate-pulse">
-                            <Monitor className="h-3 w-3" />
-                            Taking Exam
-                          </span>
-                        ) : student.status === "IN_LOBBY" ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-tan-ghost px-2.5 py-0.5 text-[10px] font-bold text-tan border border-tan-border">
-                            <Clock className="h-3 w-3" />
-                            In Lobby
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-surface-base px-2 py-0.5 text-[10px] font-semibold text-text-faint border border-border-default">
-                            {student.status === "DISCONNECTED" ? "Disconnected" : "Not Joined"}
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4">
-                        {(student.status === "IN_LOBBY" || student.status === "TAKING") ? (
-                          <span className={student.is_fullscreen ? "text-sage font-semibold" : "text-burgundy-light font-bold"}>
-                            {student.is_fullscreen ? "Fullscreen" : "Windowed"} • {student.is_focused ? "Active" : "Unfocused"}
-                          </span>
-                        ) : (
-                          <span className="text-text-faint">—</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4">
-                        {student.tab_switches > 0 ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg border text-burgundy-light bg-burgundy-ghost border-burgundy-border">
-                            <AlertTriangle className="h-3.5 w-3.5" />
-                            {student.tab_switches} alt-tab{student.tab_switches === 1 ? "" : "s"}
-                          </span>
-                        ) : (
-                          <span className="text-text-muted text-[11px]">0 violations</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 font-mono">
-                        {student.status === "SUBMITTED" ? (
-                          <span className="font-bold text-sage">
-                            {student.total_score} / {student.max_score || totalQuestions}
-                          </span>
-                        ) : (
-                          <span className="text-text-faint">—</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        <div className="inline-flex items-center gap-1.5">
-                          {student.status === "SUBMITTED" && student.answers && student.answers.length > 0 && (
-                            <button
-                              type="button"
-                              onClick={() => setSelectedStudentForAnswers(student)}
-                              className="rounded-lg border border-steel-border bg-steel-ghost px-2 py-1 text-xs font-bold text-steel hover:bg-steel/20 cursor-pointer"
-                            >
-                              Answers
-                            </button>
+                  {filteredStudents.map((student) => {
+                    const isAbsent = student.status === "NOT_JOINED";
+                    return (
+                      <tr
+                        key={student.student_id}
+                        className={`hover:bg-surface-subtle/40 transition-colors ${
+                          isAbsent ? "bg-burgundy-ghost/10" : ""
+                        }`}
+                      >
+                        <td className="py-3 px-4">
+                          <div className="font-bold text-text-primary">{student.name}</div>
+                          <div className="font-mono text-[10px] text-text-muted">
+                            ID: 02000{String(student.student_number).padStart(6, "0")}
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-4 text-center">
+                          {isAbsent ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-burgundy-ghost px-2.5 py-0.5 text-[10px] font-bold text-burgundy-light border border-burgundy-border">
+                              <UserX className="h-3 w-3" />
+                              ABSENT
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-sage-ghost px-2.5 py-0.5 text-[10px] font-bold text-sage border border-sage-border">
+                              <UserCheck className="h-3 w-3" />
+                              PRESENT
+                            </span>
                           )}
-                          {(student.status === "SUBMITTED" || student.tab_switches > 0) && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setResetCounters(true);
-                                setRetakeTarget(student);
-                              }}
-                              className="rounded-lg border border-tan-border bg-tan-ghost px-2 py-1 text-xs font-bold text-tan hover:brightness-110 cursor-pointer"
-                            >
-                              Retake
-                            </button>
+                        </td>
+
+                        <td className="py-3 px-4">
+                          {isAbsent ? (
+                            <span className="text-text-faint text-[11px]">Did not attend</span>
+                          ) : student.status === "SUBMITTED" ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-sage-ghost px-2.5 py-0.5 text-[10px] font-bold text-sage border border-sage-border">
+                              <CheckCircle2 className="h-3 w-3" />
+                              Submitted
+                            </span>
+                          ) : student.status === "TAKING" ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-steel-ghost px-2.5 py-0.5 text-[10px] font-bold text-steel border border-steel-border animate-pulse">
+                              <Monitor className="h-3 w-3" />
+                              Taking Exam
+                            </span>
+                          ) : student.status === "IN_LOBBY" ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-tan-ghost px-2.5 py-0.5 text-[10px] font-bold text-tan border border-tan-border">
+                              <Clock className="h-3 w-3" />
+                              In Lobby
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-surface-base px-2 py-0.5 text-[10px] font-semibold text-text-faint border border-border-default">
+                              Disconnected
+                            </span>
                           )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+
+                        <td className="py-3 px-4">
+                          {isAbsent ? (
+                            <span className="text-text-faint">—</span>
+                          ) : (student.status === "IN_LOBBY" || student.status === "TAKING") ? (
+                            <span className={student.is_fullscreen ? "text-sage font-semibold" : "text-burgundy-light font-bold"}>
+                              {student.is_fullscreen ? "Fullscreen" : "Windowed"} • {student.is_focused ? "Active" : "Unfocused"}
+                            </span>
+                          ) : (
+                            <span className="text-text-faint">—</span>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-4">
+                          {isAbsent ? (
+                            <span className="text-text-faint">—</span>
+                          ) : student.tab_switches > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg border text-burgundy-light bg-burgundy-ghost border-burgundy-border">
+                              <AlertTriangle className="h-3.5 w-3.5" />
+                              {student.tab_switches} alt-tab{student.tab_switches === 1 ? "" : "s"}
+                            </span>
+                          ) : (
+                            <span className="text-text-muted text-[11px]">0 violations</span>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-4 font-mono">
+                          {isAbsent ? (
+                            <span className="font-bold text-burgundy-light">0 / {totalQuestions}</span>
+                          ) : student.status === "SUBMITTED" ? (
+                            <span className="font-bold text-sage">
+                              {student.total_score} / {student.max_score || totalQuestions}
+                            </span>
+                          ) : (
+                            <span className="text-text-muted text-[11px]">In progress</span>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-4 text-right">
+                          <div className="inline-flex items-center gap-1.5">
+                            {student.status === "SUBMITTED" && student.answers && student.answers.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedStudentForAnswers(student)}
+                                className="rounded-lg border border-steel-border bg-steel-ghost px-2 py-1 text-xs font-bold text-steel hover:bg-steel/20 cursor-pointer"
+                              >
+                                Answers
+                              </button>
+                            )}
+                            {(student.status === "SUBMITTED" || student.tab_switches > 0) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setResetCounters(true);
+                                  setRetakeTarget(student);
+                                }}
+                                className="rounded-lg border border-tan-border bg-tan-ghost px-2 py-1 text-xs font-bold text-tan hover:brightness-110 cursor-pointer"
+                              >
+                                Retake
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -820,19 +1159,42 @@ export function LiveExamMonitorModal({
           <div className="flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-tan shrink-0" />
             <span>
-              <strong>Lobby Workflow:</strong> Direct students to log in and enter the lobby. When students show <strong>Ready in Lobby</strong>, click <strong>Start Exam for Class</strong> to start simultaneously.
+              <strong>Lobby Workflow:</strong> Direct students to log in and join the lobby. Lock the lobby when class starts to block latecomers.
             </span>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-xl border border-border-default bg-surface-subtle px-4 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-muted transition-colors cursor-pointer self-end sm:self-auto"
-          >
-            Close Monitor
-          </button>
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            <button
+              type="button"
+              onClick={handleExportExcel}
+              disabled={exportingExcel}
+              className="rounded-xl border border-sage-border bg-sage-ghost px-3 py-1.5 text-xs font-bold text-sage hover:bg-sage/20 transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5" />
+              <span>Export Roster to Excel</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl border border-border-default bg-surface-subtle px-4 py-1.5 text-xs font-semibold text-text-secondary hover:bg-surface-muted transition-colors cursor-pointer"
+            >
+              Close Monitor
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Sub-modal: End Exam Confirmation */}
+      <ConfirmModal
+        isOpen={endExamConfirmOpen}
+        title="End Exam Session Confirmation"
+        message={`Are you sure you want to end "${examTitle}" for section "${sectionName}"? This will auto-disable the online quiz for this class, lock the lobby, and finalize student records.`}
+        confirmText="Yes, End Exam"
+        cancelText="Cancel"
+        variant="danger"
+        onConfirm={handleConfirmEndExam}
+        onCancel={() => setEndExamConfirmOpen(false)}
+      />
 
       {/* Sub-modal: Student Detailed Answers Viewer */}
       {selectedStudentForAnswers && (
@@ -862,54 +1224,36 @@ export function LiveExamMonitorModal({
                     : 0}
                   %)
                 </p>
-                <p className="text-[11px] text-text-muted mt-1">
-                  <span className={selectedStudentForAnswers.tab_switches > 0 ? "text-burgundy-light font-bold" : ""}>
-                    {selectedStudentForAnswers.tab_switches} alt-tab{selectedStudentForAnswers.tab_switches === 1 ? "" : "s"}
-                  </span>
-                  {" • "}
-                  {selectedStudentForAnswers.fullscreen_exits} fullscreen exit{selectedStudentForAnswers.fullscreen_exits === 1 ? "" : "s"}
-                  {" • "}Attempt #{selectedStudentForAnswers.attempt_number}
-                  {selectedStudentForAnswers.auto_submitted && (
-                    <span className="text-burgundy-light font-bold"> • Auto-submitted (3 strikes)</span>
-                  )}
-                </p>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedStudentForAnswers(null)}
-                className="rounded-xl bg-surface-subtle p-2 text-text-secondary hover:text-text-primary cursor-pointer"
+                className="rounded-xl bg-surface-subtle p-2 text-text-muted hover:text-text-primary hover:bg-surface-muted transition-colors cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-              <div className="text-xs font-semibold text-text-secondary mb-2 flex items-center gap-1.5">
-                <FileCheck2 className="h-4 w-4 text-steel" />
-                Submitted Answer Sheet:
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="flex-1 overflow-y-auto space-y-2 p-1 font-mono text-xs">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {selectedStudentForAnswers.answers.map((ans) => (
                   <div
                     key={ans.question_number}
-                    className={`rounded-xl border p-2.5 flex items-center justify-between text-xs ${
+                    className={`flex items-center justify-between rounded-xl p-2.5 border ${
                       ans.is_correct
-                        ? "border-sage-border bg-sage-ghost/50 text-sage"
-                        : "border-burgundy-border bg-burgundy-ghost/50 text-burgundy-light"
+                        ? "bg-sage-ghost border-sage-border text-sage"
+                        : ans.shaded_option === null
+                        ? "bg-surface-subtle border-border-default text-text-muted"
+                        : "bg-burgundy-ghost border-burgundy-border text-burgundy-light"
                     }`}
                   >
-                    <span className="font-mono font-bold text-text-secondary">
-                      Q{ans.question_number}
-                    </span>
-                    <div className="flex items-center gap-1.5">
-                      <span className="h-6 w-6 rounded-md bg-surface-base font-bold flex items-center justify-center border border-border-default font-mono">
-                        {ans.shaded_option || "—"}
-                      </span>
+                    <span className="font-bold text-text-muted">Q{ans.question_number}</span>
+                    <div className="flex items-center gap-1.5 font-bold">
+                      <span>{ans.shaded_option || "BLANK"}</span>
                       {ans.is_correct ? (
-                        <CheckCircle2 className="h-4 w-4 text-sage" />
+                        <CheckCircle2 className="h-3.5 w-3.5 text-sage" />
                       ) : (
-                        <X className="h-4 w-4 text-burgundy-light" />
+                        <AlertTriangle className="h-3.5 w-3.5 text-burgundy-light" />
                       )}
                     </div>
                   </div>
@@ -917,22 +1261,11 @@ export function LiveExamMonitorModal({
               </div>
             </div>
 
-            <div className="pt-3 border-t border-border-default flex justify-between gap-2 shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  setResetCounters(true);
-                  setRetakeTarget(selectedStudentForAnswers);
-                }}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-tan-border bg-tan-ghost px-4 py-2 text-xs font-bold text-tan cursor-pointer hover:brightness-110"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                Allow Retake
-              </button>
+            <div className="pt-3 border-t border-border-default flex justify-end shrink-0">
               <button
                 type="button"
                 onClick={() => setSelectedStudentForAnswers(null)}
-                className="rounded-xl gradient-bg-primary px-5 py-2 text-xs font-bold text-text-primary cursor-pointer hover:opacity-95"
+                className="rounded-xl bg-surface-subtle px-4 py-2 text-xs font-semibold text-text-primary hover:bg-surface-muted transition-colors cursor-pointer"
               >
                 Done
               </button>
@@ -941,79 +1274,87 @@ export function LiveExamMonitorModal({
         </div>
       )}
 
-      {/* Sub-modal: Allow Retake confirmation */}
+      {/* Sub-modal: Retake Confirmation Dialog */}
       {retakeTarget && (
-        <div className="fixed inset-0 z-70 flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
-          <div className="w-full max-w-md rounded-2xl border border-tan-border bg-surface-overlay p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
-            <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-tan-ghost text-tan border border-tan-border">
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+          <div className="w-full max-w-md rounded-2xl border border-border-default bg-surface-overlay p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-start justify-between border-b border-border-default pb-3">
+              <div className="flex items-center gap-2 text-tan">
                 <RotateCcw className="h-5 w-5" />
+                <h3 className="text-base font-bold text-text-primary">Grant Student Retake</h3>
               </div>
-              <div>
-                <h3 className="text-base font-bold text-text-primary">Give {retakeTarget.name} another chance?</h3>
-                <p className="text-xs text-text-muted mt-1 leading-relaxed">
-                  Their current submission
-                  {retakeTarget.total_score !== null && (
-                    <> (<strong className="text-text-secondary">{retakeTarget.total_score} / {retakeTarget.max_score || totalQuestions}</strong>)</>
-                  )}{" "}
-                  will be removed and they can re-enter the lobby to take the exam again as attempt #{retakeTarget.attempt_number + 1}.
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              <div className="rounded-xl border border-border-default bg-surface-base p-2.5">
-                <span className="block text-[10px] text-text-muted">Alt-tabs</span>
-                <strong className={retakeTarget.tab_switches > 0 ? "text-burgundy-light" : "text-text-primary"}>
-                  {retakeTarget.tab_switches}
-                </strong>
-              </div>
-              <div className="rounded-xl border border-border-default bg-surface-base p-2.5">
-                <span className="block text-[10px] text-text-muted">Fullscreen exits</span>
-                <strong className="text-text-primary">{retakeTarget.fullscreen_exits}</strong>
-              </div>
-            </div>
-
-            <label className="flex items-start gap-2.5 rounded-xl border border-border-default bg-surface-base p-3 cursor-pointer">
-              <input
-                id="retake-reset-counters"
-                type="checkbox"
-                checked={resetCounters}
-                onChange={(e) => setResetCounters(e.target.checked)}
-                className="mt-0.5 h-4 w-4 accent-(--color-tan,#c8a46e) cursor-pointer"
-              />
-              <span className="text-xs text-text-secondary">
-                <strong className="text-text-primary block">Reset alt-tab &amp; fullscreen counters</strong>
-                Uncheck to carry the current counts into the new attempt.
-              </span>
-            </label>
-
-            <p className="text-[11px] text-text-muted">
-              {data?.is_online_active
-                ? data.is_started
-                  ? "The exam is live — the student will go straight into the exam when they rejoin."
-                  : "The lobby is open — the student can rejoin and wait for you to start."
-                : "Open the lobby (enable the online quiz) so the student can rejoin."}
-            </p>
-
-            <div className="flex justify-end gap-2 pt-1">
               <button
                 type="button"
                 onClick={() => setRetakeTarget(null)}
-                disabled={grantingRetake}
-                className="rounded-xl border border-border-emphasis bg-surface-subtle px-4 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-muted cursor-pointer"
+                className="rounded-xl bg-surface-subtle p-1.5 text-text-muted hover:text-text-primary hover:bg-surface-muted transition-colors cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs text-text-secondary leading-relaxed">
+              <p>
+                You are about to allow <strong className="text-text-primary">{retakeTarget.name}</strong> to retake this exam.
+              </p>
+              <div className="rounded-xl bg-surface-base border border-border-default p-3 space-y-1.5 font-mono text-[11px]">
+                <div className="flex justify-between">
+                  <span className="text-text-muted">Current status:</span>
+                  <span className="font-bold text-text-primary">{retakeTarget.status}</span>
+                </div>
+                {retakeTarget.total_score !== null && (
+                  <div className="flex justify-between">
+                    <span className="text-text-muted">Previous score:</span>
+                    <span className="font-bold text-sage">
+                      {retakeTarget.total_score} / {retakeTarget.max_score || totalQuestions}
+                    </span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-text-muted">Violations recorded:</span>
+                  <span className="font-bold text-burgundy-light">
+                    {retakeTarget.tab_switches} alt-tabs • {retakeTarget.fullscreen_exits} exits
+                  </span>
+                </div>
+              </div>
+
+              <label className="flex items-center gap-2 pt-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={resetCounters}
+                  onChange={(e) => setResetCounters(e.target.checked)}
+                  className="rounded border-border-emphasis bg-surface-base text-steel focus:ring-steel h-4 w-4"
+                />
+                <span className="text-xs text-text-primary font-medium">
+                  Reset alt-tab and fullscreen violation counters for the new attempt
+                </span>
+              </label>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-border-default">
+              <button
+                type="button"
+                onClick={() => setRetakeTarget(null)}
+                className="rounded-xl border border-border-default bg-surface-subtle px-4 py-2 text-xs font-semibold text-text-secondary hover:bg-surface-muted transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                id="confirm-allow-retake"
                 onClick={handleAllowRetake}
                 disabled={grantingRetake}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-tan px-4 py-2 text-xs font-bold text-white hover:brightness-110 cursor-pointer disabled:opacity-60"
+                className="rounded-xl bg-tan text-white hover:brightness-110 px-4 py-2 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
               >
-                {grantingRetake ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
-                Allow Retake
+                {grantingRetake ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span>Granting...</span>
+                  </>
+                ) : (
+                  <>
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    <span>Confirm &amp; Allow Retake</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

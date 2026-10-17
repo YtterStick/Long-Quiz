@@ -31,6 +31,10 @@ class StartToggle(BaseModel):
     is_started: bool
 
 
+class LockLobbyToggle(BaseModel):
+    is_lobby_locked: Optional[bool] = None
+
+
 class LobbyPing(BaseModel):
     is_fullscreen: bool = False
     is_focused: bool = True
@@ -75,13 +79,56 @@ async def start_or_stop_exam(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(Role.TEACHER)),
 ):
-    """Release the exam to everyone waiting in the lobby (or pull it back)."""
+    """Release the exam to everyone waiting in the lobby (or pause/pull it back)."""
     se = await _owned_section_exam(db, current_user, section_id, exam_id)
     if body.is_started and not se.is_online_active:
         raise HTTPException(status_code=400, detail="Open the lobby (enable the online quiz) first.")
     se.is_started = body.is_started
     await db.commit()
     return {"is_started": se.is_started, "is_online_active": se.is_online_active}
+
+
+@teacher_router.put("/sections/{section_id}/exams/{exam_id}/lock-lobby")
+async def toggle_lock_lobby(
+    section_id: str,
+    exam_id: str,
+    body: Optional[LockLobbyToggle] = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Lock or unlock the lobby to prevent late students from joining."""
+    se = await _owned_section_exam(db, current_user, section_id, exam_id)
+    if body and body.is_lobby_locked is not None:
+        se.is_lobby_locked = body.is_lobby_locked
+    else:
+        se.is_lobby_locked = not getattr(se, "is_lobby_locked", False)
+    await db.commit()
+    return {
+        "is_lobby_locked": se.is_lobby_locked,
+        "is_started": se.is_started,
+        "is_online_active": se.is_online_active,
+    }
+
+
+@teacher_router.post("/sections/{section_id}/exams/{exam_id}/end")
+async def end_exam(
+    section_id: str,
+    exam_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """End the exam session for this class: sets is_started=False, auto-disables online quiz (is_online_active=False), and finalizes in-progress attempts."""
+    se = await _owned_section_exam(db, current_user, section_id, exam_id)
+    se.is_started = False
+    se.is_online_active = False
+    se.is_lobby_locked = True
+    await db.commit()
+    return {
+        "message": "Exam session ended and online quiz access disabled.",
+        "is_started": False,
+        "is_online_active": False,
+        "is_lobby_locked": True,
+    }
 
 
 @teacher_router.get("/sections/{section_id}/exams/{exam_id}/monitor")
@@ -195,6 +242,7 @@ async def monitor_exam(
     return {
         "is_online_active": se.is_online_active,
         "is_started": se.is_started,
+        "is_lobby_locked": bool(getattr(se, "is_lobby_locked", False)),
         "total_students": len(students),
         "counts": counts,
         "students": roster,
@@ -324,6 +372,11 @@ async def lobby_ping(
         )
     )
     entry = entry_res.scalar_one_or_none()
+    if getattr(se, "is_lobby_locked", False) and entry is None:
+        raise HTTPException(
+            status_code=403,
+            detail="The exam lobby has been locked by your teacher. Late entry is not permitted."
+        )
     now = datetime.now(timezone.utc)
     if entry is None:
         entry = ExamLobbyEntry(section_exam_id=se.id, student_id=student.id, joined_at=now)

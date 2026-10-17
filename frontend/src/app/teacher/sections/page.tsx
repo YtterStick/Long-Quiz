@@ -1194,8 +1194,30 @@ export default function TeacherSectionsPage() {
                                 : "View Submissions & Lobby"}
                             </button>
 
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const cleanSec = selectedSection.name.replace(/[^a-zA-Z0-9_-]/g, "_");
+                                  const cleanExam = (se.exam?.title || "Exam").replace(/[^a-zA-Z0-9_-]/g, "_");
+                                  await teacherApi.downloadSectionExamExcel(
+                                    selectedSection.id,
+                                    se.exam_id,
+                                    `Gradebook_${cleanSec}_${cleanExam}.xlsx`
+                                  );
+                                } catch {
+                                  alert("Failed to export Excel gradebook");
+                                }
+                              }}
+                              className="flex items-center gap-1.5 rounded-xl border border-sage-border bg-sage-ghost px-3 py-1.5 text-xs font-bold text-sage hover:bg-sage/20 transition-all cursor-pointer shadow-sm"
+                              title="Export full section gradebook (.xlsx) including absent students"
+                            >
+                              <FileSpreadsheet className="h-3.5 w-3.5" />
+                              Export to Excel (.xlsx)
+                            </button>
+
                             <Link
-                              href={`/teacher/scan?exam_id=${se.exam_id}`}
+                              href={`/teacher/scan?section_id=${selectedSection.id}&exam_id=${se.exam_id}`}
                               className="flex items-center gap-1.5 rounded-xl border border-border-emphasis bg-surface-subtle px-3 py-1.5 text-xs font-semibold text-tan hover:bg-surface-muted transition-colors"
                             >
                               <Upload className="h-3.5 w-3.5" />

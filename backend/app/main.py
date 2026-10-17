@@ -35,6 +35,7 @@ async def lifespan(app: FastAPI):
         if "postgresql" in settings.DATABASE_URL:
             for stmt in (
                 "ALTER TABLE section_exams ADD COLUMN IF NOT EXISTS is_started BOOLEAN NOT NULL DEFAULT FALSE",
+                "ALTER TABLE section_exams ADD COLUMN IF NOT EXISTS is_lobby_locked BOOLEAN NOT NULL DEFAULT FALSE",
                 "ALTER TABLE section_exams ADD COLUMN IF NOT EXISTS release_mode VARCHAR NOT NULL DEFAULT 'FULL'",
                 "ALTER TABLE exam_lobby_entries ADD COLUMN IF NOT EXISTS tab_switches INTEGER NOT NULL DEFAULT 0",
                 "ALTER TABLE exam_lobby_entries ADD COLUMN IF NOT EXISTS fullscreen_exits INTEGER NOT NULL DEFAULT 0",
