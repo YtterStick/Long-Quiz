@@ -240,22 +240,22 @@ export function ShareDeckModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
-      <div className="relative w-full max-w-lg max-h-[92vh] sm:max-h-[88vh] max-sm:rounded-t-3xl max-sm:pb-6 sm:rounded-3xl bg-surface-raised dark:bg-slate-900 border border-border-default dark:border-slate-800 shadow-2xl p-5 sm:p-7 flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
+      <div className="relative w-full max-w-lg max-h-[92vh] sm:max-h-[88vh] max-sm:rounded-t-3xl max-sm:pb-6 sm:rounded-3xl bg-[#ffffff] dark:bg-[#141d26] border border-border-default shadow-2xl p-5 sm:p-7 flex flex-col overflow-hidden">
         {/* Mobile Drag Indicator */}
-        <div className="w-10 h-1 rounded-full bg-slate-300 dark:bg-slate-700 mx-auto -mt-1 mb-3 sm:hidden" />
+        <div className="w-10 h-1 rounded-full bg-border-default mx-auto -mt-1 mb-3 sm:hidden" />
 
         {/* Header */}
-        <div className="flex items-center justify-between pb-3.5 border-b border-border-default dark:border-slate-800 shrink-0">
+        <div className="flex items-center justify-between pb-3.5 border-b border-border-default shrink-0">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900/60 shadow-sm shrink-0">
-              <Share2 className="h-5 w-5" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-surface-subtle text-text-secondary border border-border-default shadow-xs shrink-0">
+              <Share2 className="h-5 w-5 text-steel" />
             </div>
             <div className="min-w-0">
-              <h3 className="text-base sm:text-lg font-bold text-text-primary dark:text-slate-100 truncate">
+              <h3 className="text-base sm:text-lg font-bold text-text-primary truncate">
                 Share Reviewer Deck
               </h3>
-              <p className="text-xs text-text-muted dark:text-slate-400 line-clamp-1">
+              <p className="text-xs text-text-muted line-clamp-1">
                 &quot;{deck.title}&quot;
               </p>
             </div>
@@ -269,26 +269,26 @@ export function ShareDeckModal({
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex items-center gap-1.5 p-1 bg-surface-base dark:bg-slate-800/80 rounded-2xl border border-border-default dark:border-slate-800 mt-4 shrink-0">
+        <div className="flex items-center gap-1.5 p-1 bg-surface-base rounded-2xl border border-border-default mt-4 shrink-0">
           <button
             type="button"
             onClick={() => setMode("links")}
             className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
               mode === "links"
-                ? "bg-blue-600 text-white shadow-sm shadow-blue-600/25"
-                : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
+                ? "bg-surface-raised dark:bg-[#1b2632] text-text-primary shadow-xs border border-border-default"
+                : "text-text-muted hover:text-text-primary hover:bg-surface-subtle/50"
             }`}
           >
             <Link2 className="h-3.5 w-3.5" />
-            <span>Copy Link & Apps</span>
+            <span>Copy Link &amp; Apps</span>
           </button>
           <button
             type="button"
             onClick={() => setMode("friends")}
             className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
               mode === "friends"
-                ? "bg-blue-600 text-white shadow-sm shadow-blue-600/25"
-                : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
+                ? "bg-surface-raised dark:bg-[#1b2632] text-text-primary shadow-xs border border-border-default"
+                : "text-text-muted hover:text-text-primary hover:bg-surface-subtle/50"
             }`}
           >
             <Users className="h-3.5 w-3.5" />
@@ -301,14 +301,14 @@ export function ShareDeckModal({
           <div
             className={`mt-3 p-3 rounded-xl text-xs flex items-center gap-2 shrink-0 ${
               statusMessage.type === "success"
-                ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
-                : "bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800"
+                ? "bg-sage-ghost text-sage border border-sage-border"
+                : "bg-burgundy-ghost text-burgundy-light border border-burgundy-border"
             }`}
           >
             {statusMessage.type === "success" ? (
-              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-sage" />
             ) : (
-              <AlertCircle className="h-4 w-4 shrink-0" />
+              <AlertCircle className="h-4 w-4 shrink-0 text-burgundy-light" />
             )}
             <span>{statusMessage.text}</span>
           </div>
@@ -320,7 +320,7 @@ export function ShareDeckModal({
             <div className="space-y-4">
               {/* Direct Link Section */}
               <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-text-secondary dark:text-slate-300">
+                <label className="block text-xs font-bold text-text-secondary">
                   Direct Shareable Link
                 </label>
                 <div className="flex items-center gap-2">
@@ -330,13 +330,13 @@ export function ShareDeckModal({
                       readOnly
                       value={shareUrl}
                       onClick={(e) => (e.target as HTMLInputElement).select()}
-                      className="w-full pl-3 pr-8 py-2.5 bg-surface-base dark:bg-slate-800/80 border border-border-default dark:border-slate-700 rounded-xl text-xs font-mono text-text-primary dark:text-slate-100 select-all focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                      className="w-full pl-3 pr-3 py-2.5 bg-surface-base border border-border-default rounded-xl text-xs font-mono text-text-primary select-all focus:outline-none focus:border-steel"
                     />
                   </div>
                   <button
                     type="button"
                     onClick={handleCopyLink}
-                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-sm shadow-blue-600/25 transition shrink-0 cursor-pointer"
+                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-bold bg-steel hover:bg-steel-light text-white shadow-xs transition shrink-0 cursor-pointer"
                   >
                     {copiedLink ? (
                       <>
@@ -351,31 +351,31 @@ export function ShareDeckModal({
                     )}
                   </button>
                 </div>
-                <p className="text-[11px] text-text-muted dark:text-slate-400">
+                <p className="text-[11px] text-text-muted">
                   Anyone with this link can view this reviewer on Evalo.
                 </p>
               </div>
 
               {/* Fast Social & Messenger Apps Grid */}
               <div className="space-y-2">
-                <label className="block text-xs font-bold text-text-secondary dark:text-slate-300">
-                  Send to Messaging Apps & Email
+                <label className="block text-xs font-bold text-text-secondary">
+                  Send to Messaging Apps &amp; Email
                 </label>
                 <div className="grid grid-cols-2 gap-2.5">
                   {/* Facebook Messenger */}
                   <button
                     type="button"
                     onClick={handleShareMessenger}
-                    className="flex items-center gap-3 p-3 rounded-2xl border border-blue-200 dark:border-blue-900/60 bg-blue-50/60 dark:bg-blue-950/30 hover:bg-blue-100/70 dark:hover:bg-blue-950/60 text-left transition group cursor-pointer"
+                    className="flex items-center gap-3 p-3 rounded-2xl border border-border-default bg-surface-base hover:bg-surface-subtle hover:border-border-emphasis text-left transition group cursor-pointer"
                   >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white shadow-sm group-hover:scale-105 transition-transform">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface-subtle border border-border-default text-text-secondary group-hover:text-steel transition">
                       <MessageCircle className="h-4 w-4" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs font-bold text-blue-900 dark:text-blue-200">
+                      <p className="text-xs font-bold text-text-primary">
                         Messenger
                       </p>
-                      <p className="text-[10px] text-blue-700/70 dark:text-blue-300/70 truncate">
+                      <p className="text-[10px] text-text-muted truncate">
                         Send to chat or group
                       </p>
                     </div>
@@ -385,16 +385,16 @@ export function ShareDeckModal({
                   <button
                     type="button"
                     onClick={handleShareEmail}
-                    className="flex items-center gap-3 p-3 rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-950/30 hover:bg-rose-100/70 dark:hover:bg-rose-950/60 text-left transition group cursor-pointer"
+                    className="flex items-center gap-3 p-3 rounded-2xl border border-border-default bg-surface-base hover:bg-surface-subtle hover:border-border-emphasis text-left transition group cursor-pointer"
                   >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-rose-500 to-pink-500 text-white shadow-sm group-hover:scale-105 transition-transform">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface-subtle border border-border-default text-text-secondary group-hover:text-steel transition">
                       <Mail className="h-4 w-4" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs font-bold text-rose-900 dark:text-rose-200">
+                      <p className="text-xs font-bold text-text-primary">
                         Email
                       </p>
-                      <p className="text-[10px] text-rose-700/70 dark:text-rose-300/70 truncate">
+                      <p className="text-[10px] text-text-muted truncate">
                         Prefilled summary
                       </p>
                     </div>
@@ -404,16 +404,16 @@ export function ShareDeckModal({
                   <button
                     type="button"
                     onClick={handleShareWhatsApp}
-                    className="flex items-center gap-3 p-3 rounded-2xl border border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/60 dark:bg-emerald-950/30 hover:bg-emerald-100/70 dark:hover:bg-emerald-950/60 text-left transition group cursor-pointer"
+                    className="flex items-center gap-3 p-3 rounded-2xl border border-border-default bg-surface-base hover:bg-surface-subtle hover:border-border-emphasis text-left transition group cursor-pointer"
                   >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white shadow-sm group-hover:scale-105 transition-transform">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface-subtle border border-border-default text-text-secondary group-hover:text-steel transition">
                       <Send className="h-4 w-4" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs font-bold text-emerald-900 dark:text-emerald-200">
+                      <p className="text-xs font-bold text-text-primary">
                         WhatsApp
                       </p>
-                      <p className="text-[10px] text-emerald-700/70 dark:text-emerald-300/70 truncate">
+                      <p className="text-[10px] text-text-muted truncate">
                         Send to contacts
                       </p>
                     </div>
@@ -423,16 +423,16 @@ export function ShareDeckModal({
                   <button
                     type="button"
                     onClick={handleShareTelegram}
-                    className="flex items-center gap-3 p-3 rounded-2xl border border-sky-200 dark:border-sky-900/60 bg-sky-50/60 dark:bg-sky-950/30 hover:bg-sky-100/70 dark:hover:bg-sky-950/60 text-left transition group cursor-pointer"
+                    className="flex items-center gap-3 p-3 rounded-2xl border border-border-default bg-surface-base hover:bg-surface-subtle hover:border-border-emphasis text-left transition group cursor-pointer"
                   >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-sky-500 to-cyan-500 text-white shadow-sm group-hover:scale-105 transition-transform">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-surface-subtle border border-border-default text-text-secondary group-hover:text-steel transition">
                       <ExternalLink className="h-4 w-4" />
                     </div>
                     <div className="min-w-0">
-                      <p className="text-xs font-bold text-sky-900 dark:text-sky-200">
+                      <p className="text-xs font-bold text-text-primary">
                         Telegram
                       </p>
-                      <p className="text-[10px] text-sky-700/70 dark:text-sky-300/70 truncate">
+                      <p className="text-[10px] text-text-muted truncate">
                         Post to channel or chat
                       </p>
                     </div>
@@ -444,19 +444,19 @@ export function ShareDeckModal({
               <button
                 type="button"
                 onClick={handleNativeShare}
-                className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-2xl border border-border-default dark:border-slate-700 bg-surface-base dark:bg-slate-800/80 hover:bg-surface-subtle text-xs font-bold text-text-primary dark:text-slate-100 transition shadow-sm cursor-pointer"
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border border-border-default bg-surface-base hover:bg-surface-subtle text-xs font-bold text-text-secondary hover:text-text-primary transition shadow-xs cursor-pointer"
               >
-                <Smartphone className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                <Smartphone className="h-4 w-4 text-steel" />
                 <span>Open Device Share Menu (Instagram, Viber, Discord &amp; more)</span>
               </button>
 
               {/* Deck Summary Preview */}
-              <div className="p-3.5 rounded-2xl border border-border-default/60 dark:border-slate-800 bg-surface-subtle/50 dark:bg-slate-800/30 space-y-1.5">
-                <div className="flex items-center gap-2 text-xs font-bold text-text-primary dark:text-slate-200">
+              <div className="p-3.5 rounded-2xl border border-border-default/60 bg-surface-subtle/40 space-y-1.5">
+                <div className="flex items-center gap-2 text-xs font-bold text-text-primary">
                   <BookOpen className="h-3.5 w-3.5 text-steel" />
                   <span>{deck.title}</span>
                 </div>
-                <div className="flex items-center gap-3 text-[11px] text-text-muted dark:text-slate-400">
+                <div className="flex items-center gap-3 text-[11px] text-text-muted">
                   <span className="flex items-center gap-1">
                     <Layers className="h-3 w-3" />
                     {deck.total_flashcards || deck.flashcards?.length || 0} Flashcards
@@ -467,7 +467,7 @@ export function ShareDeckModal({
                   </span>
                 </div>
                 {deck.topics?.[0] && (
-                  <p className="text-[11px] text-text-muted dark:text-slate-400 line-clamp-2 italic pt-1">
+                  <p className="text-[11px] text-text-muted line-clamp-2 italic pt-1">
                     &quot;{deck.topics[0].topic_name}
                     {deck.topics[0].description
                       ? `: ${deck.topics[0].description}`
@@ -481,16 +481,16 @@ export function ShareDeckModal({
             <div className="space-y-4">
               {loading ? (
                 <div className="py-12 flex flex-col items-center justify-center text-text-muted">
-                  <Loader2 className="h-6 w-6 animate-spin text-blue-600 mb-2" />
+                  <Loader2 className="h-6 w-6 animate-spin text-steel mb-2" />
                   <p className="text-xs">Loading study friends...</p>
                 </div>
               ) : friends.length === 0 ? (
-                <div className="py-10 text-center space-y-2 border border-dashed border-border-default dark:border-slate-800 rounded-2xl p-6">
-                  <Users className="h-10 w-10 text-slate-300 dark:text-slate-600 mx-auto" />
-                  <p className="text-sm font-semibold text-text-primary dark:text-slate-200">
+                <div className="py-10 text-center space-y-2 border border-dashed border-border-default rounded-2xl p-6">
+                  <Users className="h-10 w-10 text-text-muted/60 mx-auto" />
+                  <p className="text-sm font-semibold text-text-primary">
                     No friends in your study circle yet
                   </p>
-                  <p className="text-xs text-text-muted dark:text-slate-400 max-w-xs mx-auto">
+                  <p className="text-xs text-text-muted max-w-xs mx-auto">
                     You can switch to the &quot;Copy Link &amp; Apps&quot; tab to send this reviewer directly via Messenger, Email, or WhatsApp!
                   </p>
                 </div>
@@ -498,13 +498,13 @@ export function ShareDeckModal({
                 <>
                   {/* Search Friends */}
                   <div className="relative">
-                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
                     <input
                       type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       placeholder="Filter friends by name or ID..."
-                      className="w-full pl-9 pr-3 py-2 bg-surface-base dark:bg-slate-800/60 border border-border-default dark:border-slate-700 rounded-xl text-xs text-text-primary dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                      className="w-full pl-9 pr-3 py-2 bg-surface-base border border-border-default rounded-xl text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-steel"
                     />
                   </div>
 
@@ -518,8 +518,8 @@ export function ShareDeckModal({
                           onClick={() => setSelectedFriendId(friend.student_id)}
                           className={`flex items-center justify-between p-3 rounded-2xl border transition cursor-pointer ${
                             isSelected
-                              ? "bg-blue-50/80 dark:bg-blue-950/40 border-blue-500 dark:border-blue-500"
-                              : "bg-surface-base dark:bg-slate-800/40 border-border-default dark:border-slate-800 hover:border-blue-300"
+                              ? "bg-steel-ghost/30 border-steel"
+                              : "bg-surface-base border-border-default hover:border-border-emphasis"
                           }`}
                         >
                           <div className="flex items-center gap-3 min-w-0">
@@ -528,10 +528,10 @@ export function ShareDeckModal({
                               size={40}
                             />
                             <div className="min-w-0">
-                              <p className="text-xs font-bold text-text-primary dark:text-slate-100 truncate">
+                              <p className="text-xs font-bold text-text-primary truncate">
                                 {friend.full_name}
                               </p>
-                              <p className="text-[11px] text-text-muted dark:text-slate-400 truncate">
+                              <p className="text-[11px] text-text-muted truncate">
                                 {friend.full_student_id}{" "}
                                 {friend.section_name ? `• ${friend.section_name}` : ""}
                               </p>
@@ -540,8 +540,8 @@ export function ShareDeckModal({
                           <div
                             className={`flex h-5 w-5 items-center justify-center rounded-full border transition ${
                               isSelected
-                                ? "bg-blue-600 border-blue-600 text-white"
-                                : "border-slate-300 dark:border-slate-600"
+                                ? "bg-steel border-steel text-white"
+                                : "border-border-default"
                             }`}
                           >
                             {isSelected && <Check className="h-3 w-3" />}
@@ -553,7 +553,7 @@ export function ShareDeckModal({
 
                   {/* Optional Note */}
                   <div>
-                    <label className="block text-xs font-bold text-text-secondary dark:text-slate-300 mb-1.5">
+                    <label className="block text-xs font-bold text-text-secondary mb-1.5">
                       Optional Study Note for Friend
                     </label>
                     <textarea
@@ -561,7 +561,7 @@ export function ShareDeckModal({
                       value={note}
                       onChange={(e) => setNote(e.target.value)}
                       placeholder="e.g. Check out the pointers on polymorphism for our upcoming quiz!"
-                      className="w-full p-3 bg-surface-base dark:bg-slate-800/60 border border-border-default dark:border-slate-700 rounded-xl text-xs text-text-primary dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 resize-none"
+                      className="w-full p-3 bg-surface-base border border-border-default rounded-xl text-xs text-text-primary placeholder:text-text-muted focus:outline-none focus:border-steel resize-none"
                     />
                   </div>
                 </>
@@ -571,8 +571,8 @@ export function ShareDeckModal({
         </div>
 
         {/* Footer Actions */}
-        <div className="mt-5 pt-4 border-t border-border-default dark:border-slate-800 flex items-center justify-between">
-          <span className="text-[11px] text-text-muted dark:text-slate-400">
+        <div className="mt-5 pt-4 border-t border-border-default flex items-center justify-between">
+          <span className="text-[11px] text-text-muted">
             {mode === "links" ? "Instant link sharing active" : "Study circle direct delivery"}
           </span>
           <div className="flex items-center gap-2">
@@ -580,7 +580,7 @@ export function ShareDeckModal({
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="px-4 py-2 rounded-xl text-xs font-bold text-text-muted hover:text-text-primary hover:bg-surface-subtle transition cursor-pointer"
+              className="px-4 py-2 rounded-xl text-xs font-semibold text-text-muted hover:text-text-primary hover:bg-surface-subtle transition cursor-pointer"
             >
               Close
             </button>
@@ -589,7 +589,7 @@ export function ShareDeckModal({
                 type="button"
                 onClick={handleSendToFriend}
                 disabled={!selectedFriendId || submitting || friends.length === 0}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-600/25 transition disabled:opacity-50 cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-steel hover:bg-steel-light text-white shadow-xs transition disabled:opacity-50 cursor-pointer"
               >
                 {submitting ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -603,7 +603,7 @@ export function ShareDeckModal({
               <button
                 type="button"
                 onClick={handleCopyLink}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-600/25 transition cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-steel hover:bg-steel-light text-white shadow-xs transition cursor-pointer"
               >
                 {copiedLink ? (
                   <Check className="h-4 w-4" />
