@@ -27,6 +27,9 @@ import {
   Timer,
   Sparkles,
   Sliders,
+  Upload,
+  FileText,
+  Check,
 } from "lucide-react";
 import Link from "next/link";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
@@ -126,12 +129,94 @@ export default function TeacherExamsPage() {
   const [togglingOnlineId, setTogglingOnlineId] = useState<string | null>(null);
   const [togglingGradesId, setTogglingGradesId] = useState<string | null>(null);
 
+  // AI Handout Exam Generator States
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const [aiInputMode, setAiInputMode] = useState<"file" | "text">("file");
+  const [aiFile, setAiFile] = useState<File | null>(null);
+  const [aiRawText, setAiRawText] = useState("");
+  const [aiQuestionCount, setAiQuestionCount] = useState(10);
+  const [aiCustomTitle, setAiCustomTitle] = useState("");
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiSuccessMessage, setAiSuccessMessage] = useState<string | null>(null);
+
+  const handleGenerateExamAi = async () => {
+    setAiError(null);
+    setAiGenerating(true);
+
+    try {
+      let result;
+      if (aiInputMode === "file") {
+        if (!aiFile) {
+          throw new Error("Please select a PDF, TXT, or Markdown handout to upload.");
+        }
+        const formData = new FormData();
+        formData.append("file", aiFile);
+        formData.append("question_count", aiQuestionCount.toString());
+        if (aiCustomTitle.trim()) {
+          formData.append("title", aiCustomTitle.trim());
+        }
+        result = await teacherApi.generateExamFromHandoutFile(formData);
+      } else {
+        if (!aiRawText.trim() || aiRawText.trim().length < 30) {
+          throw new Error("Please enter at least a few sentences or lecture notes.");
+        }
+        result = await teacherApi.generateExamFromHandoutText({
+          raw_text: aiRawText.trim(),
+          question_count: aiQuestionCount,
+          title: aiCustomTitle.trim() || undefined,
+        });
+      }
+
+      // Populate builder state with generated exam
+      setEditingExam(null);
+      setTitle(result.title || "Exam from Handout");
+      setTotalQuestions(result.total_questions || aiQuestionCount);
+      setIsPublic(false);
+      setShuffleQuestions(false);
+      setShuffleOptions(false);
+      setHasTimeLimit(false);
+      setTimeLimitMinutes(60);
+
+      const generatedKeys: Record<number, string> = {};
+      result.answer_keys.forEach((ak) => {
+        generatedKeys[ak.question_number] = ak.correct_option;
+      });
+
+      const generatedQuestions: Record<number, Partial<QuestionItem>> = {};
+      result.questions.forEach((q) => {
+        generatedQuestions[q.question_number] = {
+          question_number: q.question_number,
+          question_text: q.question_text,
+          option_a: q.option_a,
+          option_b: q.option_b,
+          option_c: q.option_c,
+          option_d: q.option_d,
+          explanation: q.explanation || "",
+        };
+      });
+
+      setKeys(generatedKeys);
+      setQuestionsData(generatedQuestions);
+      setBuilderTab("questions");
+      setIsAiModalOpen(false);
+      setIsBuilderOpen(true);
+      setAiSuccessMessage(`Generated ${result.total_questions} questions with answer keys! Review and save below.`);
+      setTimeout(() => setAiSuccessMessage(null), 6000);
+    } catch (err: unknown) {
+      setAiError(err instanceof Error ? err.message : "Failed to generate exam from handout");
+    } finally {
+      setAiGenerating(false);
+    }
+  };
+
   const openPreview = async () => {
     setPreviewLoading(true);
     try {
       const token = localStorage.getItem("token");
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || "https://evalo-backend.onrender.com";
       const res = await fetch(
-        `http://localhost:8000/api/teacher/blank-bubble-sheet?questions=${blankQuestions}`,
+        `${apiBase}/api/teacher/blank-bubble-sheet?questions=${blankQuestions}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       if (!res.ok) throw new Error("Failed");
@@ -717,6 +802,19 @@ export default function TeacherExamsPage() {
                   2. Questionnaire & Reviewer
                 </button>
               </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setAiError(null);
+                  setIsAiModalOpen(true);
+                }}
+                className="flex items-center gap-1.5 rounded-xl border border-sage-border bg-sage-ghost px-3.5 py-1.5 text-xs font-bold text-sage hover:bg-sage/20 transition-all cursor-pointer shadow-sm"
+                title="Auto-generate or replenish questions and answer keys from handout PDF or notes using AI"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-sage animate-pulse" />
+                Fill from Handout (AI)
+              </button>
             </div>
 
             <form onSubmit={handleSaveExam} className="space-y-6">
@@ -1242,6 +1340,19 @@ export default function TeacherExamsPage() {
                 </button>
 
                 <button
+                  type="button"
+                  onClick={() => {
+                    setAiError(null);
+                    setIsAiModalOpen(true);
+                  }}
+                  className="flex items-center justify-center gap-2 rounded-xl border border-sage-border bg-sage-ghost px-4 py-2 text-sm font-bold text-sage hover:bg-sage/20 shadow-sm transition-all cursor-pointer"
+                  title="Upload a PDF or paste lecture notes to auto-generate exam questions and answer keys"
+                >
+                  <Sparkles className="h-4 w-4 text-sage animate-pulse" />
+                  Generate from Handout (AI)
+                </button>
+
+                <button
                   onClick={openNewBuilder}
                   className="flex items-center justify-center gap-2 rounded-xl gradient-bg-primary px-4 py-2 text-sm font-semibold text-text-primary shadow-lg shadow-steel/20 hover:opacity-95 transition-all"
                 >
@@ -1250,6 +1361,22 @@ export default function TeacherExamsPage() {
                 </button>
               </div>
             </div>
+
+            {aiSuccessMessage && (
+              <div className="mb-6 flex items-center justify-between gap-3 rounded-2xl bg-sage-ghost border border-sage-border p-4 text-xs font-semibold text-sage animate-fade-in shadow-sm">
+                <div className="flex items-center gap-2.5">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-sage" />
+                  <span>{aiSuccessMessage}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAiSuccessMessage(null)}
+                  className="text-text-muted hover:text-text-primary"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            )}
 
             {/* ── Blank Bubble Sheet Download Card ─────────────── */}
             <div className="mb-8 rounded-2xl border border-steel-border bg-steel-ghost p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -1880,6 +2007,243 @@ export default function TeacherExamsPage() {
               style={{ border: "none" }}
               title="Bubble Sheet Preview"
             />
+          </div>
+        </div>
+      )}
+
+      {/* ── AI Handout Exam Generator Modal ─────────────────── */}
+      {isAiModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+          <div className="glass-card rounded-2xl border border-border-default shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between p-5 border-b border-border-default shrink-0 bg-surface-overlay/40">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sage-ghost border border-sage-border text-sage">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-bold text-text-primary">
+                    AI Exam Generator from Handout
+                  </h2>
+                  <p className="text-xs text-text-muted">
+                    Upload lesson PDF or paste notes to automatically formulate questions, options, and answer keys
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!aiGenerating) setIsAiModalOpen(false);
+                }}
+                disabled={aiGenerating}
+                className="p-1.5 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-muted transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 sm:p-6 overflow-y-auto space-y-5">
+              {aiError && (
+                <div className="flex items-start gap-2.5 rounded-xl bg-burgundy-ghost border border-burgundy-border p-3.5 text-xs text-burgundy-light">
+                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <span>{aiError}</span>
+                </div>
+              )}
+
+              {/* Mode Switcher */}
+              <div className="flex items-center gap-2 p-1 rounded-xl bg-surface-subtle border border-border-default">
+                <button
+                  type="button"
+                  onClick={() => setAiInputMode("file")}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${
+                    aiInputMode === "file"
+                      ? "gradient-bg-primary text-text-primary shadow-sm"
+                      : "text-text-muted hover:text-text-primary"
+                  }`}
+                >
+                  <Upload className="h-3.5 w-3.5" />
+                  Upload PDF / Handout File
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAiInputMode("text")}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-bold transition-all ${
+                    aiInputMode === "text"
+                      ? "gradient-bg-primary text-text-primary shadow-sm"
+                      : "text-text-muted hover:text-text-primary"
+                  }`}
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  Paste Lesson Notes
+                </button>
+              </div>
+
+              {/* File Input */}
+              {aiInputMode === "file" ? (
+                <div>
+                  <label className="block text-xs font-semibold text-text-secondary mb-1.5">
+                    Select Course Handout / Module Document (.pdf, .txt, .md)
+                  </label>
+                  <label className="flex flex-col items-center justify-center border-2 border-dashed border-border-emphasis hover:border-sage rounded-2xl p-6 bg-surface-subtle/50 hover:bg-sage-ghost/20 cursor-pointer transition-all">
+                    <input
+                      type="file"
+                      accept=".pdf,.txt,.md,.docx"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        setAiFile(file);
+                        if (file && !aiCustomTitle) {
+                          setAiCustomTitle(file.name.replace(/\.[^/.]+$/, "").replace(/[-_]/g, " "));
+                        }
+                      }}
+                      className="hidden"
+                    />
+                    <Upload className="h-8 w-8 text-sage mb-2" />
+                    {aiFile ? (
+                      <div className="text-center">
+                        <span className="text-xs font-bold text-sage block">{aiFile.name}</span>
+                        <span className="text-[11px] text-text-muted">
+                          {(aiFile.size / 1024).toFixed(1)} KB • Click to choose a different file
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="text-center">
+                        <span className="text-xs font-semibold text-text-primary block">
+                          Click to browse or drag & drop handout PDF
+                        </span>
+                        <span className="text-[11px] text-text-muted">Supports PDF, TXT, Markdown documents</span>
+                      </div>
+                    )}
+                  </label>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-semibold text-text-secondary mb-1.5">
+                    Lecture Content / Course Notes
+                  </label>
+                  <textarea
+                    rows={6}
+                    value={aiRawText}
+                    onChange={(e) => setAiRawText(e.target.value)}
+                    placeholder="Paste definitions, lecture module text, chapter takeaways, or test objectives here..."
+                    className="w-full rounded-xl border border-border-emphasis bg-surface-base p-3.5 text-xs text-text-primary focus:border-steel focus:outline-none font-mono"
+                  />
+                  {/* Sample buttons for quick test */}
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <span className="text-[11px] text-text-muted">Quick sample:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAiCustomTitle("Advance Database - Normalization & Transactions");
+                        setAiRawText(`Database Management System (DBMS): Software managing digital databases.
+ACID Properties: Atomicity, Consistency, Isolation, and Durability guarantees of transactions.
+Atomicity: All operations in a transaction succeed completely, or the entire transaction is rolled back.
+Consistency: Transactions must preserve database rules, integrity constraints, and cascades.
+Isolation: Concurrent transactions execute independently without reading uncommitted intermediate states.
+Durability: Committed transaction changes survive system crashes and power failures.
+Normalization: Process of organizing relational tables to eliminate redundancy (1NF, 2NF, 3NF).
+Primary Key: Unique, non-null column identifying each table row.
+Foreign Key: Field linking to the Primary Key of another table, enforcing referential integrity.
+SQL Index: B-Tree structure accelerating table search queries.`);
+                      }}
+                      className="text-[11px] font-semibold text-tan hover:underline"
+                    >
+                      Database Sample
+                    </button>
+                    <span>•</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAiCustomTitle("Object-Oriented Programming (OOP)");
+                        setAiRawText(`Encapsulation: Bundling data and methods into a single unit and restricting direct access to object internals.
+Inheritance: Mechanism where a child class acquires fields and methods of a parent class.
+Polymorphism: Ability of different objects to respond to the same interface or method call differently.
+Abstraction: Hiding complex internal implementation details and displaying only the necessary interface to the user.
+Constructor: Special method called when an object is instantiated to initialize its state.`);
+                      }}
+                      className="text-[11px] font-semibold text-tan hover:underline"
+                    >
+                      OOP Sample
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Title & Question Count Settings */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-border-default/60">
+                <div>
+                  <label className="block text-xs font-semibold text-text-secondary mb-1">
+                    Exam Title (Optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={aiCustomTitle}
+                    onChange={(e) => setAiCustomTitle(e.target.value)}
+                    placeholder="e.g. Database Prelim Quiz"
+                    className="w-full rounded-xl border border-border-emphasis bg-surface-base px-3.5 py-2 text-xs text-text-primary focus:border-steel focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-text-secondary mb-1">
+                    Number of Questions to Generate
+                  </label>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {[5, 10, 15, 20, 25, 30, 50].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setAiQuestionCount(n)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
+                          aiQuestionCount === n
+                            ? "bg-steel text-text-primary font-bold shadow-sm"
+                            : "bg-surface-subtle text-text-secondary hover:bg-surface-muted"
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 sm:p-5 border-t border-border-default shrink-0 flex items-center justify-between gap-3 bg-surface-overlay/40">
+              <span className="text-[11px] text-text-muted flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-sage" />
+                Powered by Google Gemini AI (Free Tier)
+              </span>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAiModalOpen(false)}
+                  disabled={aiGenerating}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-text-secondary hover:bg-surface-muted transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGenerateExamAi}
+                  disabled={aiGenerating}
+                  className="flex items-center gap-2 px-5 py-2 rounded-xl gradient-bg-primary text-xs font-bold text-text-primary shadow-lg shadow-steel/20 hover:opacity-95 transition-all disabled:opacity-60 cursor-pointer"
+                >
+                  {aiGenerating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Formulating Questions & Choices...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      Generate {aiQuestionCount} Questions
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

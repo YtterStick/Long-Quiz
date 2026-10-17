@@ -92,6 +92,15 @@ def parse_and_generate_reviewer(raw_text: str, custom_title: Optional[str] = Non
     3. Interactive Flashcards (Front / Back / Category)
     4. Practice MCQ Quiz Cards (Question, A/B/C/D Options, Correct Key, Explanation)
     """
+    # 0. Attempt Google Gemini AI first for enriched academic study decks
+    try:
+        from app.services.gemini_service import generate_reviewer_deck_gemini
+        gemini_deck = generate_reviewer_deck_gemini(raw_text, custom_title=custom_title)
+        if gemini_deck and gemini_deck.get("flashcards"):
+            return gemini_deck
+    except Exception:
+        pass
+
     distilled_text = distill_handout_text(raw_text)
     lines = [l.strip() for l in distilled_text.splitlines() if l.strip()]
     if not lines:

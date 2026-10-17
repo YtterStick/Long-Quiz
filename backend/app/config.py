@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     SUPABASE_URL: str = ""
     SUPABASE_PUBLISHABLE_KEY: str = ""
 
+    # Google Gemini AI (Free Tier from environment variable GEMINI_API_KEY)
+    GEMINI_API_KEY: str = ""
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

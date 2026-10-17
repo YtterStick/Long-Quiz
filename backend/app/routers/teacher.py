@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Response, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, update, delete, String
 from sqlalchemy.orm import selectinload, joinedload
@@ -1129,6 +1129,81 @@ async def list_exams(
         item.is_owner = (exam.teacher_id == teacher.id)
         out.append(item)
     return out
+
+
+class GenerateExamFromTextRequest(BaseModel):
+    raw_text: str
+    question_count: int = 10
+    title: Optional[str] = None
+
+
+@router.post("/exams/generate-from-handout-text")
+async def generate_exam_from_handout_text(
+    body: GenerateExamFromTextRequest,
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """
+    Teacher AI Exam Generator:
+    Generates structured test questions, 4 options (A-D), answer keys, and explanations
+    directly from lecture notes or syllabus text using Google Gemini AI.
+    """
+    if not body.raw_text or len(body.raw_text.strip()) < 30:
+        raise HTTPException(
+            status_code=400,
+            detail="Please provide at least a few sentences or paragraphs of lesson notes."
+        )
+
+    count = max(3, min(50, body.question_count))
+    from app.services.gemini_service import generate_exam_from_handout
+    return generate_exam_from_handout(body.raw_text, question_count=count, custom_title=body.title)
+
+
+@router.post("/exams/generate-from-handout-file")
+async def generate_exam_from_handout_file(
+    file: UploadFile = File(...),
+    question_count: int = Form(10),
+    title: Optional[str] = Form(None),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """
+    Teacher AI Exam Generator:
+    Uploads a PDF, TXT, or Markdown handout and automatically formulates exam questions,
+    answer keys, and explanations using Google Gemini AI.
+    """
+    filename = (file.filename or "").lower()
+    if not (filename.endswith(".pdf") or filename.endswith(".txt") or filename.endswith(".docx") or filename.endswith(".md")):
+        raise HTTPException(
+            status_code=400,
+            detail="Please upload a PDF (.pdf), Text file (.txt), or Markdown (.md)."
+        )
+
+    content_bytes = await file.read()
+    if not content_bytes:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+    extracted_text = ""
+    if filename.endswith(".pdf"):
+        from app.reviewer_generator import extract_text_from_pdf
+        try:
+            extracted_text = extract_text_from_pdf(content_bytes)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Could not read PDF: {str(e)}")
+    else:
+        try:
+            extracted_text = content_bytes.decode("utf-8", errors="replace")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Could not decode file: {str(e)}")
+
+    if not extracted_text or len(extracted_text.strip()) < 30:
+        raise HTTPException(
+            status_code=400,
+            detail="The document does not contain enough readable text to formulate questions."
+        )
+
+    clean_file_title = title or (file.filename or "Handout Exam").rsplit(".", 1)[0].replace("_", " ").replace("-", " ").title()
+    count = max(3, min(50, question_count))
+    from app.services.gemini_service import generate_exam_from_handout
+    return generate_exam_from_handout(extracted_text, question_count=count, custom_title=clean_file_title)
 
 
 @router.post("/exams", response_model=ExamOut)

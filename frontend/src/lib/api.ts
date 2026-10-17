@@ -600,6 +600,47 @@ export const teacher = {
       body: { questions, answer_keys },
     }),
 
+  generateExamFromHandoutText: (data: { raw_text: string; question_count: number; title?: string }) =>
+    request<{
+      title: string;
+      total_questions: number;
+      answer_keys: Array<{ question_number: number; correct_option: string }>;
+      questions: Array<{
+        question_number: number;
+        question_text: string;
+        option_a: string;
+        option_b: string;
+        option_c: string;
+        option_d: string;
+        explanation?: string;
+      }>;
+      is_ai_generated?: boolean;
+    }>("/api/teacher/exams/generate-from-handout-text", {
+      method: "POST",
+      body: data,
+    }),
+
+  generateExamFromHandoutFile: (formData: FormData) =>
+    request<{
+      title: string;
+      total_questions: number;
+      answer_keys: Array<{ question_number: number; correct_option: string }>;
+      questions: Array<{
+        question_number: number;
+        question_text: string;
+        option_a: string;
+        option_b: string;
+        option_c: string;
+        option_d: string;
+        explanation?: string;
+      }>;
+      is_ai_generated?: boolean;
+    }>("/api/teacher/exams/generate-from-handout-file", {
+      method: "POST",
+      body: formData,
+      isFormData: true,
+    }),
+
   getQuestionnaire: (examId: string) => request<Array<{
     id: string;
     question_number: number;
