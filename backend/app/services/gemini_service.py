@@ -226,13 +226,41 @@ def fallback_generate_exam_from_text(
 ) -> Dict[str, Any]:
     """
     Local algorithmic generator if Gemini is offline or rate-limited.
-    Extracts complete sentences and definitions to build clean MCQ test items.
+    Extracts real academic concepts and definitions, strictly rejecting
+    header noise, syllabus boilerplate, or broken word fragments.
     """
     lines = [l.strip() for l in raw_text.splitlines() if l.strip()]
     title = custom_title or (lines[0] if lines and len(lines[0]) < 70 else "Handout Quiz")
     title = re.sub(r"^[#\*\-=\s]+", "", title).strip()
 
+    junk_words = {
+        "handout", "module", "chapter", "page", "example", "examples",
+        "figure", "table", "note", "sti", "course", "section", "lecture",
+        "unit", "exercise", "lesson", "objective", "objectives", "property of sti"
+    }
+    invalid_edges = {
+        "in", "of", "to", "for", "is", "are", "was", "were", "helps", "determine",
+        "at", "on", "by", "with", "from", "the", "a", "an", "and", "or", "as",
+        "such", "each", "which", "this", "that", "these", "those"
+    }
+
+    def is_valid_concept_term(t: str) -> bool:
+        if not t or len(t.strip()) < 3 or len(t.split()) > 5:
+            return False
+        clean = re.sub(r"^[^a-zA-Z0-9]+|[^a-zA-Z0-9]+$", "", t).strip()
+        lower = clean.lower()
+        words = lower.split()
+        if not words:
+            return False
+        if any(jw in lower for jw in junk_words):
+            return False
+        if words[-1] in invalid_edges or words[0] in invalid_edges:
+            return False
+        return True
+
     term_pattern = re.compile(r"^([A-Z0-9][A-Za-z0-9\s\-_/()]{2,45})\s*[:\-–—]\s*(.+)$")
+    verb_pattern = re.compile(r"^([A-Z][A-Za-z0-9\s\-_]{2,35})\s+(?:is defined as|refers to|is a process that|is a mechanism that|is used to|consists of)\s+(.+)$", re.IGNORECASE)
+
     defs: List[Dict[str, str]] = []
 
     for line in lines:
@@ -240,19 +268,34 @@ def fallback_generate_exam_from_text(
         if m:
             t = m.group(1).strip()
             d = m.group(2).strip()
-            if len(t.split()) <= 6 and len(d) > 10:
+            if is_valid_concept_term(t) and len(d) > 10:
+                defs.append({"term": t, "definition": d})
+                continue
+
+        m_verb = verb_pattern.match(line)
+        if m_verb:
+            t = m_verb.group(1).strip()
+            d = m_verb.group(2).strip()
+            if is_valid_concept_term(t) and len(d) > 10:
                 defs.append({"term": t, "definition": d})
 
-    if len(defs) < 4:
-        # Sentence splitting fallback
-        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", raw_text) if len(s.strip()) > 35]
-        for idx, s in enumerate(sentences[:question_count * 2]):
-            words = s.split()
-            if len(words) >= 6:
-                defs.append({
-                    "term": " ".join(words[:3]).strip(".,;:"),
-                    "definition": s
-                })
+    # High quality academic fallback distractors for computer science & IT
+    domain_distractors = [
+        "Identity and Access Management",
+        "Cloud Security Posture",
+        "Virtual Private Cloud",
+        "Role-Based Access Control",
+        "Data Encryption Standard",
+        "Database Normalization",
+        "Referential Integrity",
+        "Software Development Lifecycle",
+        "Multi-Factor Authentication",
+        "Object-Oriented Design Pattern",
+        "Fault Tolerance Architecture",
+        "Network Protocol Stack",
+        "Application Programming Interface",
+        "Distributed System Concurrency",
+    ]
 
     all_terms = [d["term"] for d in defs]
     questions = []
@@ -263,8 +306,11 @@ def fallback_generate_exam_from_text(
         definition = item["definition"]
 
         distractors = [t for t in all_terms if t.lower() != term.lower()]
-        if len(distractors) < 3:
-            distractors.extend(["System Process", "Data Structure", "Protocol Model", "Base Method"])
+        for dd in domain_distractors:
+            if len(distractors) >= 4:
+                break
+            if dd.lower() != term.lower() and dd not in distractors:
+                distractors.append(dd)
 
         chosen = random.sample(distractors, min(3, len(distractors)))
         opts = [term] + chosen[:3]
@@ -278,7 +324,6 @@ def fallback_generate_exam_from_text(
             if val == term:
                 correct_key = k
 
-        # Use full clean sentence without broken truncation
         clean_def = definition.strip().rstrip(".,;:")
         if len(clean_def) > 200:
             sub_sentences = re.split(r"(?<=[.!?])\s+", clean_def)
@@ -307,6 +352,7 @@ def fallback_generate_exam_from_text(
         "answer_keys": answer_keys,
         "questions": questions,
         "is_ai_generated": False,
+        "fallback_reason": "Gemini AI was not reachable or GEMINI_API_KEY is not configured on the backend.",
     }
 
 

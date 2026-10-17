@@ -34,7 +34,8 @@ def distill_handout_text(raw_text: str) -> str:
         re.compile(r"^\s*(?:course|subject)\s+code\s*:\s*.*$", re.IGNORECASE),
         re.compile(r"^\s*(?:term|academic\s+year|semester)\s*:\s*.*$", re.IGNORECASE),
         re.compile(r"^\s*(?:prepared\s+by|instructor|faculty)\s*:\s*.*$", re.IGNORECASE),
-        re.compile(r"^\s*handout\s+\d+\s*$", re.IGNORECASE),
+        re.compile(r"\b(?:[A-Z0-9]{2,}\s*)?handout\s*\d*\b", re.IGNORECASE),
+        re.compile(r"^\s*(?:module|lecture|unit|chapter)\s+\d+\b", re.IGNORECASE),
         re.compile(r"^\s*table\s+of\s+contents\b", re.IGNORECASE),
         re.compile(r"\.{4,}\s*\d+\s*$"),  # TOC dot leader lines
         re.compile(r"^[-=_*~]{4,}\s*$"),   # Long separator lines

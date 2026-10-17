@@ -15,6 +15,7 @@ import {
   AlertCircle,
   Loader2,
   ChevronLeft,
+  ChevronRight,
   Printer,
   FileDown,
   BookOpen,
@@ -139,6 +140,7 @@ export default function TeacherExamsPage() {
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiSuccessMessage, setAiSuccessMessage] = useState<string | null>(null);
+  const [showPromptInspector, setShowPromptInspector] = useState(false);
 
   const handleGenerateExamAi = async () => {
     setAiError(null);
@@ -201,8 +203,16 @@ export default function TeacherExamsPage() {
       setBuilderTab("questions");
       setIsAiModalOpen(false);
       setIsBuilderOpen(true);
-      setAiSuccessMessage(`Generated ${result.total_questions} questions with answer keys! Review and save below.`);
-      setTimeout(() => setAiSuccessMessage(null), 6000);
+      if (result.is_ai_generated === false) {
+        setAiSuccessMessage(
+          `⚠️ Notice: Generated ${result.total_questions} questions via offline parser. Gemini AI was not reachable (please verify GEMINI_API_KEY in Render environment variables).`
+        );
+      } else {
+        setAiSuccessMessage(
+          `✨ Gemini AI successfully generated ${result.total_questions} STI-style questions with answer keys! Review and save below.`
+        );
+      }
+      setTimeout(() => setAiSuccessMessage(null), 8000);
     } catch (err: unknown) {
       setAiError(err instanceof Error ? err.message : "Failed to generate exam from handout");
     } finally {
@@ -2229,6 +2239,38 @@ Constructor: Special method called when an object is instantiated to initialize 
                     ))}
                   </div>
                 </div>
+              </div>
+
+              {/* Prompt & Examination Standards Inspector */}
+              <div className="pt-3 border-t border-border-default/60">
+                <button
+                  type="button"
+                  onClick={() => setShowPromptInspector(!showPromptInspector)}
+                  className="flex items-center justify-between w-full text-left text-xs font-bold text-steel hover:text-steel-light transition-colors py-1 cursor-pointer"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <BookOpen className="h-3.5 w-3.5 text-steel" />
+                    <span>View AI Prompt & Examination Standards (STI College Standard)</span>
+                  </span>
+                  <ChevronRight className={`h-3.5 w-3.5 transition-transform ${showPromptInspector ? "rotate-90" : ""}`} />
+                </button>
+
+                {showPromptInspector && (
+                  <div className="mt-2.5 rounded-xl bg-surface-base border border-border-default p-3.5 space-y-2.5 text-[11px] text-text-secondary animate-fade-in">
+                    <p className="font-semibold text-text-primary">
+                      Official STI College Exam Prompt Architecture:
+                    </p>
+                    <ul className="list-disc list-inside space-y-1 text-text-muted leading-relaxed">
+                      <li><strong className="text-text-primary">50% Conceptual & Definitions:</strong> Questions paraphrase core concepts into clear, grammatically complete college test questions (e.g., <em>&quot;Which of the following describes the primary purpose of...&quot;</em>). No broken quotation fragments.</li>
+                      <li><strong className="text-text-primary">50% Situational Scenarios:</strong> Practical computing, programming, and real-world system problem scenarios (e.g. <em>&quot;Scenario: In a banking database, suppose a power outage occurs... Which ACID property guarantees recovery?&quot;</em>).</li>
+                      <li><strong className="text-text-primary">4 Complete Choices (A, B, C, D):</strong> Every single choice is a full, realistic term from the subject domain with plausible distractors (no incomplete words or ellipses).</li>
+                      <li><strong className="text-text-primary">Randomized Keys & Explanations:</strong> Answer keys are randomly balanced across A, B, C, and D with educational explanations.</li>
+                    </ul>
+                    <div className="p-2.5 rounded-lg bg-surface-overlay text-[10px] font-mono text-text-faint overflow-x-auto border border-border-subtle">
+                      <code>System Instruction: You are an expert college test creator and curriculum assessor at a Philippine higher education institution (such as STI College)... Formulate official multiple-choice questionnaires based on lesson handouts...</code>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
