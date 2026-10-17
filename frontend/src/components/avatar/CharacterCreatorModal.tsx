@@ -503,16 +503,16 @@ const OUTFIT_OPTIONS: { id: OutfitId; label: string; desc: string; forRoles: ("S
 ];
 
 const HAIR_OPTIONS: { id: HairStyleId; label: string; genderCategory: "female" | "male" | "both" }[] = [
-  // Feminine
+  // Feminine (Girls)
   { id: "bun", label: "Top Bun / Knot", genderCategory: "female" },
   { id: "twintails", label: "Twin Pigtails", genderCategory: "female" },
   { id: "ponytail", label: "High Ponytail", genderCategory: "female" },
   { id: "bob", label: "Chic Bob Cut", genderCategory: "female" },
   { id: "bangs", label: "Curtain Bangs", genderCategory: "female" },
   { id: "long_straight", label: "Long Sleek Straight", genderCategory: "female" },
-  { id: "wavy", label: "Flowing Waves", genderCategory: "both" },
-  { id: "curls", label: "Fluffy Curls", genderCategory: "both" },
-  // Masculine
+  { id: "wavy", label: "Flowing Waves", genderCategory: "female" },
+  { id: "curls", label: "Fluffy Curls", genderCategory: "female" },
+  // Masculine (Boys)
   { id: "crop", label: "Side-Part Crop", genderCategory: "male" },
   { id: "fade", label: "Sharp Clean Fade", genderCategory: "male" },
   { id: "pompadour", label: "Modern Pompadour", genderCategory: "male" },
@@ -641,12 +641,18 @@ export function CharacterCreatorModal({
       setMaleDraft(config);
     }
 
-    // 2. Switch gender and restore the target gender's draft
+    // 2. Switch gender and restore the target gender's draft with strictly gendered hair
     setSelectedGender(nextGender);
     if (nextGender === "female") {
-      setConfig(femaleDraft);
+      const validHair = FEMALE_HAIRSTYLES.includes(femaleDraft.hairStyle) ? femaleDraft.hairStyle : "bangs";
+      const validDraft = { ...femaleDraft, hairStyle: validHair, gender: "female" as GenderId };
+      setFemaleDraft(validDraft);
+      setConfig(validDraft);
     } else {
-      setConfig(maleDraft);
+      const validHair = MALE_HAIRSTYLES.includes(maleDraft.hairStyle) ? maleDraft.hairStyle : "crop";
+      const validDraft = { ...maleDraft, hairStyle: validHair, gender: "male" as GenderId };
+      setMaleDraft(validDraft);
+      setConfig(validDraft);
     }
   };
 
@@ -1267,7 +1273,7 @@ export function CharacterCreatorModal({
                   <div>
                     <div className="flex items-center justify-between mb-2.5">
                       <h4 className="text-xs font-bold uppercase tracking-wider text-text-muted">
-                        Hairstyle ({selectedGender === "female" ? "Feminine & Unisex" : "Masculine & Unisex"})
+                        Hairstyle ({selectedGender === "female" ? "Female" : "Male"})
                       </h4>
                       <span className="text-[10px] text-text-muted font-medium">
                         {visibleHairOptions.length} styles available

@@ -352,7 +352,7 @@ export const AVATAR_PRESETS: AvatarPreset[] = [
     config: {
       gender: "male",
       skinTone: "honey",
-      hairStyle: "curls",
+      hairStyle: "textured",
       hairColor: "midnight",
       expression: "confident",
       glasses: "square",
@@ -533,10 +533,8 @@ export const MALE_HAIRSTYLES: HairStyleId[] = [
   "fade",
   "pompadour",
   "textured",
-  "curls",
-  "dreads",
   "buzz",
-  "wavy",
+  "dreads",
   "beanie",
   "grad_cap",
 ];
@@ -620,10 +618,16 @@ export function parseAvatarConfig(raw?: string | null): StudentAvatarConfig {
   try {
     const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
     const gender: GenderId = parsed.gender === "male" ? "male" : "female";
+    const hairPool = gender === "male" ? MALE_HAIRSTYLES : FEMALE_HAIRSTYLES;
+    const defaultHair: HairStyleId = gender === "male" ? "crop" : "bangs";
+    const validHairStyle: HairStyleId = (parsed.hairStyle && hairPool.includes(parsed.hairStyle as HairStyleId))
+      ? (parsed.hairStyle as HairStyleId)
+      : defaultHair;
+
     return {
       gender,
       skinTone: parsed.skinTone && SKIN_TONES[parsed.skinTone as SkinToneId] ? parsed.skinTone : DEFAULT_AVATAR_CONFIG.skinTone,
-      hairStyle: parsed.hairStyle || (gender === "male" ? "crop" : "bangs"),
+      hairStyle: validHairStyle,
       hairColor: parsed.hairColor && HAIR_COLORS[parsed.hairColor as HairColorId] ? parsed.hairColor : DEFAULT_AVATAR_CONFIG.hairColor,
       expression: parsed.expression && EXPRESSION_KEYS.includes(parsed.expression) ? parsed.expression : DEFAULT_AVATAR_CONFIG.expression,
       glasses: parsed.glasses && GLASSES_KEYS.includes(parsed.glasses) ? parsed.glasses : DEFAULT_AVATAR_CONFIG.glasses,

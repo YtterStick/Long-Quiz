@@ -1392,34 +1392,18 @@ export default function TeacherExamsPage() {
                   Exams, Answer Keys & Reviewers
                 </h1>
                 <p className="text-sm text-text-muted mt-1">
-                  Manage answer keys for OMR grading, add questionnaire content for student reviewers, and toggle Public/Private visibility.
+                  Manage answer keys for OMR grading and add questionnaire content for student reviewers.
                 </p>
               </div>
 
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => {
-                    setLoading(true);
-                    setError(null);
-                    setIncludePublic(!includePublic);
-                  }}
-                  className={`flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs font-semibold transition-colors ${
-                    includePublic
-                      ? "bg-tan-ghost text-tan border-steel-border"
-                      : "bg-surface-subtle text-text-secondary border-border-emphasis hover:bg-surface-muted"
-                  }`}
-                >
-                  <Globe className="h-4 w-4" />
-                  {includePublic ? "Showing Public Exams" : "Show Public Exams"}
-                </button>
-
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 w-full sm:w-auto shrink-0">
                 <button
                   type="button"
                   onClick={() => {
                     setAiError(null);
                     setIsAiModalOpen(true);
                   }}
-                  className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold shadow-sm transition-all cursor-pointer ${
+                  className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-xs sm:text-sm font-bold shadow-sm transition-all cursor-pointer whitespace-nowrap ${
                     aiQuota && aiQuota.remaining <= 0
                       ? "border-tan-border bg-tan-ghost text-tan hover:bg-tan/20"
                       : "border-sage-border bg-sage-ghost text-sage hover:bg-sage/20"
@@ -1445,7 +1429,7 @@ export default function TeacherExamsPage() {
 
                 <button
                   onClick={openNewBuilder}
-                  className="flex items-center justify-center gap-2 rounded-xl gradient-bg-primary px-4 py-2 text-sm font-semibold text-text-primary shadow-lg shadow-steel/20 hover:opacity-95 transition-all"
+                  className="flex items-center justify-center gap-2 rounded-xl gradient-bg-primary px-5 py-2.5 text-xs sm:text-sm font-bold text-text-primary shadow-lg shadow-steel/20 hover:opacity-95 transition-all cursor-pointer whitespace-nowrap"
                 >
                   <Plus className="h-4 w-4" />
                   Create Exam
