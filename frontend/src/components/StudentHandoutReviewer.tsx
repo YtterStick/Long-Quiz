@@ -35,6 +35,7 @@ import {
   MoreVertical,
   ChevronDown,
   ChevronLeft,
+  Timer,
 } from "lucide-react";
 import { SkeletonDeckGenerating } from "@/components/ui/Skeleton";
 import {
@@ -1243,15 +1244,26 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
               <div
                 title="Shared and saved decks don't use your monthly quota."
                 className={`mt-4 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                  quotaLow
+                  quotaInfo && quotaInfo.remaining === 0
+                    ? "border-tan-border bg-tan-ghost text-tan"
+                    : quotaLow
                     ? "border-tan-border bg-tan-ghost text-tan"
                     : "border-sage-border bg-sage-ghost text-sage"
                 }`}
               >
-                <Sparkles className="h-3.5 w-3.5" />
-                {quotaInfo
-                  ? `${quotaInfo.remaining} of ${quotaInfo.limit} generations left this month`
-                  : "10 generations per month"}
+                {quotaInfo && quotaInfo.remaining === 0 ? (
+                  <>
+                    <Timer className="h-3.5 w-3.5" />
+                    Generator currently resting • Unlimited saved & shared decks
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-3.5 w-3.5" />
+                    {quotaInfo
+                      ? `${quotaInfo.remaining} of ${quotaInfo.limit} generations left this month`
+                      : "10 generations per month"}
+                  </>
+                )}
               </div>
 
               <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
@@ -1432,17 +1444,36 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
                 </div>
               )}
 
+              {quotaInfo && quotaInfo.remaining <= 0 && (
+                <div className="flex items-start gap-2.5 rounded-2xl bg-tan-ghost border border-tan-border p-3.5 text-xs text-tan mb-3">
+                  <Timer className="h-4 w-4 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="block font-bold text-text-primary text-xs">
+                      AI Generator is Currently Resting
+                    </strong>
+                    <span className="text-[11px] text-text-secondary block mt-0.5">
+                      This automated feature is currently unavailable and taking a rest for this monthly cycle. You can still study all your saved decks, practice shared flashcards, and take quizzes freely with zero limits!
+                    </span>
+                  </div>
+                </div>
+              )}
+
               <button
                 id="reviewer-generate"
                 type="button"
                 onClick={handleGenerate}
-                disabled={loading || (inputMode === "file" && !selectedFile) || (inputMode === "text" && !rawText.trim())}
-                className="rv-btn-primary flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl px-6 text-[15px] font-semibold shadow-md active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100 cursor-pointer"
+                disabled={loading || (quotaInfo !== null && quotaInfo.remaining <= 0) || (inputMode === "file" && !selectedFile) || (inputMode === "text" && !rawText.trim())}
+                className="rv-btn-primary flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl px-6 text-[15px] font-semibold shadow-md active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100 cursor-pointer disabled:cursor-not-allowed"
               >
                 {loading ? (
                   <>
                     <Loader2 className="h-5 w-5 animate-spin" />
                     Generating your reviewer…
+                  </>
+                ) : quotaInfo && quotaInfo.remaining <= 0 ? (
+                  <>
+                    <Timer className="h-5 w-5" />
+                    Currently Unavailable (Resting this cycle)
                   </>
                 ) : (
                   <>

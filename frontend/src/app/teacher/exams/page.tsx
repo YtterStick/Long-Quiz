@@ -163,6 +163,10 @@ export default function TeacherExamsPage() {
   };
 
   useEffect(() => {
+    fetchAiQuota();
+  }, []);
+
+  useEffect(() => {
     if (isAiModalOpen) {
       fetchAiQuota();
     }
@@ -862,11 +866,28 @@ export default function TeacherExamsPage() {
                   setAiError(null);
                   setIsAiModalOpen(true);
                 }}
-                className="flex items-center gap-1.5 rounded-xl border border-sage-border bg-sage-ghost px-3.5 py-1.5 text-xs font-bold text-sage hover:bg-sage/20 transition-all cursor-pointer shadow-sm"
-                title="Auto-generate or replenish questions and answer keys from handout PDF or notes using AI"
+                className={`flex items-center gap-1.5 rounded-xl border px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer shadow-sm ${
+                  aiQuota && aiQuota.remaining <= 0
+                    ? "border-tan-border bg-tan-ghost text-tan hover:bg-tan/20"
+                    : "border-sage-border bg-sage-ghost text-sage hover:bg-sage/20"
+                }`}
+                title={
+                  aiQuota && aiQuota.remaining <= 0
+                    ? `AI Assistant currently resting (unlocks in ${aiQuota.resets_in_days}d)`
+                    : "Auto-generate or replenish questions and answer keys from handout PDF or notes using AI"
+                }
               >
-                <Sparkles className="h-3.5 w-3.5 text-sage animate-pulse" />
-                Fill from Handout (AI)
+                {aiQuota && aiQuota.remaining <= 0 ? (
+                  <>
+                    <Timer className="h-3.5 w-3.5 text-tan" />
+                    Fill from Handout (Resting)
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-3.5 w-3.5 text-sage animate-pulse" />
+                    Fill from Handout (AI)
+                  </>
+                )}
               </button>
             </div>
 
@@ -1398,11 +1419,28 @@ export default function TeacherExamsPage() {
                     setAiError(null);
                     setIsAiModalOpen(true);
                   }}
-                  className="flex items-center justify-center gap-2 rounded-xl border border-sage-border bg-sage-ghost px-4 py-2 text-sm font-bold text-sage hover:bg-sage/20 shadow-sm transition-all cursor-pointer"
-                  title="Upload a PDF or paste lecture notes to auto-generate exam questions and answer keys"
+                  className={`flex items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-bold shadow-sm transition-all cursor-pointer ${
+                    aiQuota && aiQuota.remaining <= 0
+                      ? "border-tan-border bg-tan-ghost text-tan hover:bg-tan/20"
+                      : "border-sage-border bg-sage-ghost text-sage hover:bg-sage/20"
+                  }`}
+                  title={
+                    aiQuota && aiQuota.remaining <= 0
+                      ? `AI Assistant currently resting (unlocks in ${aiQuota.resets_in_days}d)`
+                      : "Upload a PDF or paste lecture notes to auto-generate exam questions and answer keys"
+                  }
                 >
-                  <Sparkles className="h-4 w-4 text-sage animate-pulse" />
-                  Generate from Handout (AI)
+                  {aiQuota && aiQuota.remaining <= 0 ? (
+                    <>
+                      <Timer className="h-4 w-4 text-tan" />
+                      Generate from Handout (Resting)
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 text-sage animate-pulse" />
+                      Generate from Handout (AI)
+                    </>
+                  )}
                 </button>
 
                 <button
@@ -1508,10 +1546,23 @@ export default function TeacherExamsPage() {
                       setAiError(null);
                       setIsAiModalOpen(true);
                     }}
-                    className="flex items-center gap-2 rounded-xl border border-sage-border bg-sage-ghost px-5 py-2.5 text-xs font-bold text-sage hover:bg-sage/20 shadow-sm transition-all cursor-pointer"
+                    className={`flex items-center gap-2 rounded-xl border px-5 py-2.5 text-xs font-bold shadow-sm transition-all cursor-pointer ${
+                      aiQuota && aiQuota.remaining <= 0
+                        ? "border-tan-border bg-tan-ghost text-tan hover:bg-tan/20"
+                        : "border-sage-border bg-sage-ghost text-sage hover:bg-sage/20"
+                    }`}
                   >
-                    <Sparkles className="h-4 w-4 text-sage animate-pulse" />
-                    Generate from Handout (AI)
+                    {aiQuota && aiQuota.remaining <= 0 ? (
+                      <>
+                        <Timer className="h-4 w-4 text-tan" />
+                        Generate from Handout (Resting)
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-4 w-4 text-sage animate-pulse" />
+                        Generate from Handout (AI)
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
@@ -2097,17 +2148,26 @@ export default function TeacherExamsPage() {
                       <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold border ${
                         aiQuota.remaining > 0
                           ? "bg-sage-ghost text-sage border-sage-border"
-                          : "bg-burgundy-ghost text-burgundy-light border-burgundy-border"
+                          : "bg-tan-ghost text-tan border-tan-border"
                       }`}>
-                        Quota: {aiQuota.remaining} / {aiQuota.limit} left
+                        {aiQuota.remaining > 0 ? (
+                          <>
+                            <Sparkles className="h-3 w-3 text-sage" />
+                            {aiQuota.remaining} of {aiQuota.limit} available
+                          </>
+                        ) : (
+                          <>
+                            <Timer className="h-3 w-3 text-tan" />
+                            Available again in {aiQuota.resets_in_days ?? 21}d
+                          </>
+                        )}
                       </span>
                     )}
                   </div>
                   <p className="text-xs text-text-muted">
-                    Teachers are allowed 5 AI exam generations every 3 weeks
-                    {aiQuota && aiQuota.resets_in_days !== null && aiQuota.remaining < aiQuota.limit
-                      ? ` • Next slot unlocks in ${aiQuota.resets_in_days} day${aiQuota.resets_in_days === 1 ? "" : "s"}`
-                      : ""}
+                    {aiQuota && aiQuota.remaining <= 0
+                      ? `This feature is currently resting and will unlock again in ${aiQuota.resets_in_days} day${aiQuota.resets_in_days === 1 ? "" : "s"}.`
+                      : "Upload lesson PDF or paste notes to automatically formulate questions, options, and answer keys"}
                   </p>
                 </div>
               </div>
@@ -2126,13 +2186,24 @@ export default function TeacherExamsPage() {
             {/* Body */}
             <div className="p-5 sm:p-6 overflow-y-auto space-y-5">
               {aiQuota && aiQuota.remaining <= 0 && (
-                <div className="flex items-start gap-2.5 rounded-xl bg-burgundy-ghost border border-burgundy-border p-3.5 text-xs text-burgundy-light">
-                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
-                  <div>
-                    <strong className="block font-bold">Quota Limit Reached (5/5 every 3 weeks)</strong>
-                    <span className="text-[11px] opacity-90 block mt-0.5">
-                      You have used all 5 AI generations allowed for this 3-week window. Your quota unlocks again in {aiQuota.resets_in_days} day{aiQuota.resets_in_days === 1 ? "" : "s"}. You can still create exams manually or edit existing answer keys anytime without restriction.
-                    </span>
+                <div className="flex items-start gap-3 rounded-2xl bg-tan-ghost border border-tan-border p-4 text-xs">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-tan/20 text-tan">
+                    <Timer className="h-4 w-4" />
+                  </div>
+                  <div className="space-y-1">
+                    <strong className="block font-bold text-text-primary text-xs">
+                      AI Exam Generator is Currently Resting
+                    </strong>
+                    <p className="text-[11px] text-text-secondary leading-relaxed">
+                      This automated feature is currently unavailable and taking a rest to keep shared AI resources balanced. It will be ready for you again in{" "}
+                      <span className="font-bold text-tan">
+                        {aiQuota.resets_in_days} day{aiQuota.resets_in_days === 1 ? "" : "s"}
+                      </span>
+                      .
+                    </p>
+                    <p className="text-[11px] text-text-muted leading-relaxed pt-0.5">
+                      💡 <strong>Friendly reminder:</strong> You can continue creating exams manually, customizing answer keys, and printing bubble sheets anytime with zero limits!
+                    </p>
                   </div>
                 </div>
               )}
@@ -2434,6 +2505,18 @@ Constructor: Special method called when an object is instantiated to initialize 
                 >
                   Cancel
                 </button>
+                {aiQuota && aiQuota.remaining <= 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAiModalOpen(false);
+                      openNewBuilder();
+                    }}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-text-primary bg-surface-muted hover:bg-surface-elevated border border-border-default transition-all cursor-pointer"
+                  >
+                    Build Manually
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={handleGenerateExamAi}
@@ -2446,7 +2529,10 @@ Constructor: Special method called when an object is instantiated to initialize 
                       Formulating Questions & Choices...
                     </>
                   ) : aiQuota && aiQuota.remaining <= 0 ? (
-                    "Quota Limit Reached (5/5)"
+                    <>
+                      <Timer className="h-4 w-4" />
+                      Currently Unavailable (Ready in {aiQuota.resets_in_days ?? 21}d)
+                    </>
                   ) : (
                     <>
                       <Sparkles className="h-4 w-4" />

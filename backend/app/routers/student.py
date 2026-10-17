@@ -939,7 +939,7 @@ async def generate_reviewer_from_text(
     if used >= MAX_MONTHLY_HANDOUT_GENERATIONS:
         raise HTTPException(
             status_code=429,
-            detail=f"Monthly handout generation limit reached ({MAX_MONTHLY_HANDOUT_GENERATIONS}/{MAX_MONTHLY_HANDOUT_GENERATIONS} handouts). Your quota resets as past generations exceed 30 days. You can still access all saved decks and section-shared reviewers without limit."
+            detail="The AI Reviewer generator is currently unavailable and taking a rest for this monthly cycle. You can still access all saved decks and section-shared reviewers without any limit!"
         )
 
     # 3. Generate New Deck with Smart Distillation
@@ -1036,7 +1036,7 @@ async def generate_reviewer_from_file(
     if used >= MAX_MONTHLY_HANDOUT_GENERATIONS:
         raise HTTPException(
             status_code=429,
-            detail=f"Monthly handout generation limit reached ({MAX_MONTHLY_HANDOUT_GENERATIONS}/{MAX_MONTHLY_HANDOUT_GENERATIONS} handouts). Your quota resets as past generations exceed 30 days. You can still access all saved decks and section-shared reviewers without limit."
+            detail="The AI Reviewer generator is currently unavailable and taking a rest for this monthly cycle. You can still access all saved decks and section-shared reviewers without any limit!"
         )
 
     raw_fname = file.filename or "Handout Reviewer"

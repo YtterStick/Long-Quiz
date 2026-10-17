@@ -1203,9 +1203,10 @@ async def generate_exam_from_handout_text(
     teacher = await _get_teacher(current_user, db)
     quota = await _get_teacher_quota_status(teacher.id, db)
     if quota["remaining"] <= 0:
+        days_str = f"{quota['resets_in_days']} day" if quota.get("resets_in_days") == 1 else f"{quota.get('resets_in_days', 21)} days"
         raise HTTPException(
             status_code=429,
-            detail=f"AI Exam Generation quota reached ({MAX_TEACHER_EXAM_GENERATIONS}/{MAX_TEACHER_EXAM_GENERATIONS} generations used). Teachers are allowed {MAX_TEACHER_EXAM_GENERATIONS} AI exam generations every 3 weeks. Your quota will reset in {quota['resets_in_days']} days."
+            detail=f"The AI Exam Generator is currently unavailable and taking a rest for this cycle. It will be ready for you again in {days_str}. In the meantime, you can freely create exams manually or edit existing questions anytime without any limits!"
         )
 
     if not body.raw_text or len(body.raw_text.strip()) < 30:
@@ -1261,9 +1262,10 @@ async def generate_exam_from_handout_file(
     teacher = await _get_teacher(current_user, db)
     quota = await _get_teacher_quota_status(teacher.id, db)
     if quota["remaining"] <= 0:
+        days_str = f"{quota['resets_in_days']} day" if quota.get("resets_in_days") == 1 else f"{quota.get('resets_in_days', 21)} days"
         raise HTTPException(
             status_code=429,
-            detail=f"AI Exam Generation quota reached ({MAX_TEACHER_EXAM_GENERATIONS}/{MAX_TEACHER_EXAM_GENERATIONS} generations used). Teachers are allowed {MAX_TEACHER_EXAM_GENERATIONS} AI exam generations every 3 weeks. Your quota will reset in {quota['resets_in_days']} days."
+            detail=f"The AI Exam Generator is currently unavailable and taking a rest for this cycle. It will be ready for you again in {days_str}. In the meantime, you can freely create exams manually or edit existing questions anytime without any limits!"
         )
 
     filename = (file.filename or "").lower()
