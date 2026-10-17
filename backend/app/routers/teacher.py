@@ -1,4 +1,5 @@
-from datetime import datetime, timezone
+import math
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Response, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, update, delete, String
@@ -8,7 +9,7 @@ from app.database import get_db
 from app.models import (
     User, Teacher, Student, Section, Exam, ExamAnswerKey, ExamQuestion,
     ExamSubmission, SubmissionAnswer, Role, PasswordResetRequest, ResetRequestStatus,
-    SectionExam, ExamLobbyEntry
+    SectionExam, ExamLobbyEntry, TeacherExamGenerationLog
 )
 from app.schemas import (
     SectionCreate, SectionUpdate, SectionOut,
@@ -1131,6 +1132,54 @@ async def list_exams(
     return out
 
 
+MAX_TEACHER_EXAM_GENERATIONS = 5
+TEACHER_QUOTA_PERIOD_DAYS = 21  # 3 weeks (21 days)
+
+
+async def _get_teacher_quota_status(teacher_id: str, db: AsyncSession) -> dict:
+    now = datetime.now(timezone.utc)
+    cutoff = now - timedelta(days=TEACHER_QUOTA_PERIOD_DAYS)
+    stmt = (
+        select(TeacherExamGenerationLog)
+        .where(
+            TeacherExamGenerationLog.teacher_id == teacher_id,
+            TeacherExamGenerationLog.created_at >= cutoff,
+        )
+        .order_by(TeacherExamGenerationLog.created_at.asc())
+    )
+    res = await db.execute(stmt)
+    logs = res.scalars().all()
+    used = len(logs)
+    remaining = max(0, MAX_TEACHER_EXAM_GENERATIONS - used)
+
+    resets_in_days = None
+    if used > 0:
+        oldest = logs[0]
+        oldest_dt = oldest.created_at if oldest.created_at.tzinfo else oldest.created_at.replace(tzinfo=timezone.utc)
+        reset_time = oldest_dt + timedelta(days=TEACHER_QUOTA_PERIOD_DAYS)
+        diff_sec = max(0, (reset_time - now).total_seconds())
+        resets_in_days = max(1, math.ceil(diff_sec / 86400))
+
+    return {
+        "limit": MAX_TEACHER_EXAM_GENERATIONS,
+        "used": used,
+        "remaining": remaining,
+        "period_days": TEACHER_QUOTA_PERIOD_DAYS,
+        "period_description": "every 3 weeks",
+        "resets_in_days": resets_in_days,
+    }
+
+
+@router.get("/exams/ai-quota")
+async def get_teacher_ai_exam_quota(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Returns teacher's 3-week AI exam generation quota status (5 generations every 3 weeks)."""
+    teacher = await _get_teacher(current_user, db)
+    return await _get_teacher_quota_status(teacher.id, db)
+
+
 class GenerateExamFromTextRequest(BaseModel):
     raw_text: str
     question_count: int = 10
@@ -1142,13 +1191,23 @@ class GenerateExamFromTextRequest(BaseModel):
 @router.post("/exams/generate-from-handout-text")
 async def generate_exam_from_handout_text(
     body: GenerateExamFromTextRequest,
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(Role.TEACHER)),
 ):
     """
     Teacher AI Exam Generator:
     Generates structured test questions, 4 options (A-D), answer keys, and explanations
     directly from lecture notes or syllabus text using Google Gemini AI.
+    Enforces quota of 5 generations every 3 weeks.
     """
+    teacher = await _get_teacher(current_user, db)
+    quota = await _get_teacher_quota_status(teacher.id, db)
+    if quota["remaining"] <= 0:
+        raise HTTPException(
+            status_code=429,
+            detail=f"AI Exam Generation quota reached ({MAX_TEACHER_EXAM_GENERATIONS}/{MAX_TEACHER_EXAM_GENERATIONS} generations used). Teachers are allowed {MAX_TEACHER_EXAM_GENERATIONS} AI exam generations every 3 weeks. Your quota will reset in {quota['resets_in_days']} days."
+        )
+
     if not body.raw_text or len(body.raw_text.strip()) < 30:
         raise HTTPException(
             status_code=400,
@@ -1157,13 +1216,30 @@ async def generate_exam_from_handout_text(
 
     count = max(3, min(50, body.question_count))
     from app.services.gemini_service import generate_exam_from_handout
-    return generate_exam_from_handout(
+    result = generate_exam_from_handout(
         body.raw_text,
         question_count=count,
         custom_title=body.title,
         include_scenarios=body.include_scenarios,
         custom_instructions=body.custom_instructions,
     )
+
+    if result and result.get("questions"):
+        log_entry = TeacherExamGenerationLog(
+            teacher_id=teacher.id,
+            title=result.get("title") or "AI Exam",
+            question_count=len(result["questions"]),
+        )
+        db.add(log_entry)
+        await db.commit()
+
+        updated_quota = await _get_teacher_quota_status(teacher.id, db)
+        result["quota_used"] = updated_quota["used"]
+        result["quota_remaining"] = updated_quota["remaining"]
+        result["quota_limit"] = MAX_TEACHER_EXAM_GENERATIONS
+        result["quota_resets_in_days"] = updated_quota["resets_in_days"]
+
+    return result
 
 
 @router.post("/exams/generate-from-handout-file")
@@ -1173,13 +1249,23 @@ async def generate_exam_from_handout_file(
     title: Optional[str] = Form(None),
     include_scenarios: bool = Form(True),
     custom_instructions: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(Role.TEACHER)),
 ):
     """
     Teacher AI Exam Generator:
     Uploads a PDF, TXT, or Markdown handout and automatically formulates exam questions,
     answer keys, and explanations using Google Gemini AI.
+    Enforces quota of 5 generations every 3 weeks.
     """
+    teacher = await _get_teacher(current_user, db)
+    quota = await _get_teacher_quota_status(teacher.id, db)
+    if quota["remaining"] <= 0:
+        raise HTTPException(
+            status_code=429,
+            detail=f"AI Exam Generation quota reached ({MAX_TEACHER_EXAM_GENERATIONS}/{MAX_TEACHER_EXAM_GENERATIONS} generations used). Teachers are allowed {MAX_TEACHER_EXAM_GENERATIONS} AI exam generations every 3 weeks. Your quota will reset in {quota['resets_in_days']} days."
+        )
+
     filename = (file.filename or "").lower()
     if not (filename.endswith(".pdf") or filename.endswith(".txt") or filename.endswith(".docx") or filename.endswith(".md")):
         raise HTTPException(
@@ -1213,13 +1299,30 @@ async def generate_exam_from_handout_file(
     clean_file_title = title or (file.filename or "Handout Exam").rsplit(".", 1)[0].replace("_", " ").replace("-", " ").title()
     count = max(3, min(50, question_count))
     from app.services.gemini_service import generate_exam_from_handout
-    return generate_exam_from_handout(
+    result = generate_exam_from_handout(
         extracted_text,
         question_count=count,
         custom_title=clean_file_title,
         include_scenarios=include_scenarios,
         custom_instructions=custom_instructions,
     )
+
+    if result and result.get("questions"):
+        log_entry = TeacherExamGenerationLog(
+            teacher_id=teacher.id,
+            title=result.get("title") or clean_file_title,
+            question_count=len(result["questions"]),
+        )
+        db.add(log_entry)
+        await db.commit()
+
+        updated_quota = await _get_teacher_quota_status(teacher.id, db)
+        result["quota_used"] = updated_quota["used"]
+        result["quota_remaining"] = updated_quota["remaining"]
+        result["quota_limit"] = MAX_TEACHER_EXAM_GENERATIONS
+        result["quota_resets_in_days"] = updated_quota["resets_in_days"]
+
+    return result
 
 
 @router.post("/exams", response_model=ExamOut)

@@ -271,6 +271,19 @@ class StudentGenerationLog(Base):
     student: Mapped[Optional["Student"]] = relationship("Student")
 
 
+class TeacherExamGenerationLog(Base):
+    """Tracks teacher AI exam generations to enforce a quota limit of 5 generations every 3 weeks (21 days)."""
+    __tablename__ = "teacher_exam_generation_logs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    teacher_id: Mapped[str] = mapped_column(String, ForeignKey("teachers.id", ondelete="CASCADE"), nullable=False, index=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    question_count: Mapped[int] = mapped_column(Integer, default=10)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    teacher: Mapped[Optional["Teacher"]] = relationship("Teacher")
+
+
 class FriendshipStatus(str, enum.Enum):
     PENDING = "PENDING"
     ACCEPTED = "ACCEPTED"

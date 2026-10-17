@@ -647,6 +647,16 @@ export const teacher = {
       isFormData: true,
     }),
 
+  getAiExamQuota: () =>
+    request<{
+      limit: number;
+      used: number;
+      remaining: number;
+      period_days: number;
+      period_description: string;
+      resets_in_days: number | null;
+    }>("/api/teacher/exams/ai-quota"),
+
   getQuestionnaire: (examId: string) => request<Array<{
     id: string;
     question_number: number;

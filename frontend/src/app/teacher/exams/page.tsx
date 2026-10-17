@@ -144,6 +144,29 @@ export default function TeacherExamsPage() {
   const [aiIncludeScenarios, setAiIncludeScenarios] = useState(true);
   const [aiCustomInstructions, setAiCustomInstructions] = useState("");
   const [showCustomPromptBox, setShowCustomPromptBox] = useState(false);
+  const [aiQuota, setAiQuota] = useState<{
+    limit: number;
+    used: number;
+    remaining: number;
+    period_days: number;
+    period_description: string;
+    resets_in_days: number | null;
+  } | null>(null);
+
+  const fetchAiQuota = async () => {
+    try {
+      const data = await teacherApi.getAiExamQuota();
+      setAiQuota(data);
+    } catch {
+      // Non-blocking
+    }
+  };
+
+  useEffect(() => {
+    if (isAiModalOpen) {
+      fetchAiQuota();
+    }
+  }, [isAiModalOpen]);
 
   const handleGenerateExamAi = async () => {
     setAiError(null);
@@ -212,6 +235,7 @@ export default function TeacherExamsPage() {
       setBuilderTab("questions");
       setIsAiModalOpen(false);
       setIsBuilderOpen(true);
+      fetchAiQuota();
       if (result.is_ai_generated === false) {
         setAiSuccessMessage(
           `⚠️ Notice: Generated ${result.total_questions} questions via offline parser. Gemini AI was not reachable (please verify GEMINI_API_KEY in Render environment variables).`
@@ -2065,11 +2089,25 @@ export default function TeacherExamsPage() {
                   <Sparkles className="h-5 w-5" />
                 </div>
                 <div>
-                  <h2 className="text-base sm:text-lg font-bold text-text-primary">
-                    AI Exam Generator from Handout
-                  </h2>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h2 className="text-base sm:text-lg font-bold text-text-primary">
+                      AI Exam Generator from Handout
+                    </h2>
+                    {aiQuota && (
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold border ${
+                        aiQuota.remaining > 0
+                          ? "bg-sage-ghost text-sage border-sage-border"
+                          : "bg-burgundy-ghost text-burgundy-light border-burgundy-border"
+                      }`}>
+                        Quota: {aiQuota.remaining} / {aiQuota.limit} left
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-text-muted">
-                    Upload lesson PDF or paste notes to automatically formulate questions, options, and answer keys
+                    Teachers are allowed 5 AI exam generations every 3 weeks
+                    {aiQuota && aiQuota.resets_in_days !== null && aiQuota.remaining < aiQuota.limit
+                      ? ` • Next slot unlocks in ${aiQuota.resets_in_days} day${aiQuota.resets_in_days === 1 ? "" : "s"}`
+                      : ""}
                   </p>
                 </div>
               </div>
@@ -2087,6 +2125,18 @@ export default function TeacherExamsPage() {
 
             {/* Body */}
             <div className="p-5 sm:p-6 overflow-y-auto space-y-5">
+              {aiQuota && aiQuota.remaining <= 0 && (
+                <div className="flex items-start gap-2.5 rounded-xl bg-burgundy-ghost border border-burgundy-border p-3.5 text-xs text-burgundy-light">
+                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="block font-bold">Quota Limit Reached (5/5 every 3 weeks)</strong>
+                    <span className="text-[11px] opacity-90 block mt-0.5">
+                      You have used all 5 AI generations allowed for this 3-week window. Your quota unlocks again in {aiQuota.resets_in_days} day{aiQuota.resets_in_days === 1 ? "" : "s"}. You can still create exams manually or edit existing answer keys anytime without restriction.
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {aiError && (
                 <div className="flex items-start gap-2.5 rounded-xl bg-burgundy-ghost border border-burgundy-border p-3.5 text-xs text-burgundy-light">
                   <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
@@ -2387,14 +2437,16 @@ Constructor: Special method called when an object is instantiated to initialize 
                 <button
                   type="button"
                   onClick={handleGenerateExamAi}
-                  disabled={aiGenerating}
-                  className="flex items-center gap-2 px-5 py-2 rounded-xl gradient-bg-primary text-xs font-bold text-text-primary shadow-lg shadow-steel/20 hover:opacity-95 transition-all disabled:opacity-60 cursor-pointer"
+                  disabled={aiGenerating || (aiQuota !== null && aiQuota.remaining <= 0)}
+                  className="flex items-center gap-2 px-5 py-2 rounded-xl gradient-bg-primary text-xs font-bold text-text-primary shadow-lg shadow-steel/20 hover:opacity-95 transition-all disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
                 >
                   {aiGenerating ? (
                     <>
                       <Loader2 className="h-4 w-4 animate-spin" />
                       Formulating Questions & Choices...
                     </>
+                  ) : aiQuota && aiQuota.remaining <= 0 ? (
+                    "Quota Limit Reached (5/5)"
                   ) : (
                     <>
                       <Sparkles className="h-4 w-4" />

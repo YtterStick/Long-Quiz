@@ -339,7 +339,7 @@ export default function TeacherDashboard() {
             </div>
 
             <div className="pt-2 flex items-center justify-between gap-3 border-t border-border-subtle">
-              <span className="text-[11px] text-text-faint font-medium">Auto-generated questions & keys</span>
+              <span className="text-[11px] text-text-faint font-medium">5 AI generations / 3 weeks</span>
               <Link
                 href="/teacher/exams?ai=true"
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-tan hover:bg-tan-light text-white text-xs font-bold shadow-sm transition-all active:scale-95"
