@@ -47,6 +47,7 @@ import {
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { CustomSelect } from "@/components/ui/CustomSelect";
 import { LiveExamMonitorModal } from "@/components/LiveExamMonitorModal";
+import { SectionGradebookModal } from "@/components/SectionGradebookModal";
 
 interface SectionItem {
   id: string;
@@ -147,6 +148,7 @@ export default function TeacherSectionsPage() {
   const [togglingSectionOnlineId, setTogglingSectionOnlineId] = useState<string | null>(null);
   const [togglingSectionGradesId, setTogglingSectionGradesId] = useState<string | null>(null);
   const [monitoringSectionExam, setMonitoringSectionExam] = useState<SectionExamItem | null>(null);
+  const [viewingGradebookExam, setViewingGradebookExam] = useState<SectionExamItem | null>(null);
 
   // All students across application
   const [allStudents, setAllStudents] = useState<StudentItem[]>([]);
@@ -1196,24 +1198,12 @@ export default function TeacherSectionsPage() {
 
                             <button
                               type="button"
-                              onClick={async () => {
-                                try {
-                                  const cleanSec = selectedSection.name.replace(/[^a-zA-Z0-9_-]/g, "_");
-                                  const cleanExam = (se.exam?.title || "Exam").replace(/[^a-zA-Z0-9_-]/g, "_");
-                                  await teacherApi.downloadSectionExamExcel(
-                                    selectedSection.id,
-                                    se.exam_id,
-                                    `Gradebook_${cleanSec}_${cleanExam}.xlsx`
-                                  );
-                                } catch {
-                                  alert("Failed to export Excel gradebook");
-                                }
-                              }}
-                              className="flex items-center gap-1.5 rounded-xl border border-sage-border bg-sage-ghost px-3 py-1.5 text-xs font-bold text-sage hover:bg-sage/20 transition-all cursor-pointer shadow-sm"
-                              title="Export full section gradebook (.xlsx) including absent students"
+                              onClick={() => setViewingGradebookExam(se)}
+                              className="flex items-center gap-1.5 rounded-xl border border-tan-border/60 bg-tan-ghost px-3 py-1.5 text-xs font-bold text-tan hover:bg-tan/20 transition-all cursor-pointer shadow-sm"
+                              title="Open complete section gradebook and attendance records"
                             >
                               <FileSpreadsheet className="h-3.5 w-3.5" />
-                              Export to Excel (.xlsx)
+                              Gradebook
                             </button>
 
                             <Link
@@ -2460,6 +2450,18 @@ export default function TeacherSectionsPage() {
               )
             );
           }}
+        />
+      )}
+
+      {/* Section Gradebook & Attendance Records Modal */}
+      {viewingGradebookExam && selectedSection && (
+        <SectionGradebookModal
+          isOpen={!!viewingGradebookExam}
+          onClose={() => setViewingGradebookExam(null)}
+          sectionId={selectedSection.id}
+          sectionName={selectedSection.name}
+          examId={viewingGradebookExam.exam_id}
+          examTitle={viewingGradebookExam.exam?.title || "Class Exam"}
         />
       )}
 

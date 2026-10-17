@@ -909,12 +909,36 @@ export default function TeacherScanPage() {
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                onClick={async () => {
+                  if (!selectedSectionId || !selectedExamId) return;
+                  try {
+                    const cleanSec = (selectedSection?.name || "Section").replace(/[^a-zA-Z0-9_-]/g, "_");
+                    const cleanExam = (selectedExam?.title || "Exam").replace(/[^a-zA-Z0-9_-]/g, "_");
+                    await teacherApi.downloadSectionExamExcel(
+                      selectedSectionId,
+                      selectedExamId,
+                      `Gradebook_${cleanSec}_${cleanExam}.xlsx`
+                    );
+                  } catch {
+                    alert("Failed to export Excel gradebook");
+                  }
+                }}
+                disabled={!selectedSectionId || !selectedExamId || loadingGradebook}
+                className="flex items-center gap-1.5 rounded-xl border border-sage-border bg-sage-ghost px-3 py-2 text-xs font-bold text-sage hover:bg-sage/20 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                title="Download official gradebook spreadsheet (.xlsx)"
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5 text-sage" />
+                <span>Export to Excel (.xlsx)</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => {
                   if (selectedSectionId && selectedExamId) {
                     loadGradebook(selectedSectionId, selectedExamId);
                   }
                 }}
-                className="flex items-center gap-1.5 rounded-xl border border-border-default bg-surface-subtle px-3 py-2 text-xs font-semibold text-text-muted hover:text-text-primary transition-colors"
+                className="flex items-center gap-1.5 rounded-xl border border-border-default bg-surface-subtle px-3 py-2 text-xs font-semibold text-text-muted hover:text-text-primary transition-colors cursor-pointer"
                 title="Refresh gradebook"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${loadingGradebook ? "animate-spin text-tan" : ""}`} />
