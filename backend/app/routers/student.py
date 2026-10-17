@@ -837,16 +837,16 @@ from app.reviewer_generator import (
     extract_text_from_pdf, parse_and_generate_reviewer, distill_handout_text, compute_content_hash
 )
 
-MAX_WEEKLY_HANDOUT_GENERATIONS = 10
+MAX_MONTHLY_HANDOUT_GENERATIONS = 10
 
 
-async def _get_weekly_usage(student_id: str, db: AsyncSession) -> int:
-    one_week_ago = datetime.now(timezone.utc) - timedelta(days=7)
+async def _get_monthly_usage(student_id: str, db: AsyncSession) -> int:
+    one_month_ago = datetime.now(timezone.utc) - timedelta(days=30)
     res = await db.execute(
         select(StudentGenerationLog)
         .where(
             StudentGenerationLog.student_id == student_id,
-            StudentGenerationLog.created_at >= one_week_ago,
+            StudentGenerationLog.created_at >= one_month_ago,
         )
     )
     return len(res.scalars().all())
@@ -857,15 +857,15 @@ async def get_reviewer_quota(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(Role.STUDENT)),
 ):
-    """Returns student's weekly AI handout generation quota status (max 10 per week)."""
+    """Returns student's monthly AI handout generation quota status (max 10 per month)."""
     student = await _get_student(current_user, db)
-    used = await _get_weekly_usage(student.id, db)
+    used = await _get_monthly_usage(student.id, db)
     return {
-        "limit": MAX_WEEKLY_HANDOUT_GENERATIONS,
+        "limit": MAX_MONTHLY_HANDOUT_GENERATIONS,
         "used": used,
-        "remaining": max(0, MAX_WEEKLY_HANDOUT_GENERATIONS - used),
-        "period": "weekly",
-        "description": "Each student is allocated 10 new handout generations per week. Cached section decks and saved decks do not consume quota."
+        "remaining": max(0, MAX_MONTHLY_HANDOUT_GENERATIONS - used),
+        "period": "monthly",
+        "description": "Each student is allocated 10 new handout generations per month. Cached section decks and saved decks do not consume quota."
     }
 
 
@@ -924,7 +924,7 @@ async def generate_reviewer_from_text(
         select(SharedReviewerDeck).where(SharedReviewerDeck.content_hash == content_hash)
     )
     cached_deck = cached_res.scalar_one_or_none()
-    used = await _get_weekly_usage(student.id, db)
+    used = await _get_monthly_usage(student.id, db)
 
     if cached_deck:
         cached_deck.usage_count += 1
@@ -932,14 +932,14 @@ async def generate_reviewer_from_text(
         deck_data = json.loads(cached_deck.deck_data)
         deck_data["cached"] = True
         deck_data["quota_used"] = used
-        deck_data["quota_remaining"] = max(0, MAX_WEEKLY_HANDOUT_GENERATIONS - used)
+        deck_data["quota_remaining"] = max(0, MAX_MONTHLY_HANDOUT_GENERATIONS - used)
         return deck_data
 
-    # 2. Check 10 handouts per week limit
-    if used >= MAX_WEEKLY_HANDOUT_GENERATIONS:
+    # 2. Check 10 handouts per month limit
+    if used >= MAX_MONTHLY_HANDOUT_GENERATIONS:
         raise HTTPException(
             status_code=429,
-            detail=f"Weekly handout generation limit reached ({MAX_WEEKLY_HANDOUT_GENERATIONS}/{MAX_WEEKLY_HANDOUT_GENERATIONS} handouts). Your quota resets as past generations exceed 7 days. You can still access all saved decks and section-shared reviewers without limit."
+            detail=f"Monthly handout generation limit reached ({MAX_MONTHLY_HANDOUT_GENERATIONS}/{MAX_MONTHLY_HANDOUT_GENERATIONS} handouts). Your quota resets as past generations exceed 30 days. You can still access all saved decks and section-shared reviewers without limit."
         )
 
     # 3. Generate New Deck with Smart Distillation
@@ -968,7 +968,7 @@ async def generate_reviewer_from_text(
 
     result["cached"] = False
     result["quota_used"] = used + 1
-    result["quota_remaining"] = max(0, MAX_WEEKLY_HANDOUT_GENERATIONS - (used + 1))
+    result["quota_remaining"] = max(0, MAX_MONTHLY_HANDOUT_GENERATIONS - (used + 1))
     return result
 
 
@@ -1021,7 +1021,7 @@ async def generate_reviewer_from_file(
         select(SharedReviewerDeck).where(SharedReviewerDeck.content_hash == content_hash)
     )
     cached_deck = cached_res.scalar_one_or_none()
-    used = await _get_weekly_usage(student.id, db)
+    used = await _get_monthly_usage(student.id, db)
 
     if cached_deck:
         cached_deck.usage_count += 1
@@ -1029,14 +1029,14 @@ async def generate_reviewer_from_file(
         deck_data = json.loads(cached_deck.deck_data)
         deck_data["cached"] = True
         deck_data["quota_used"] = used
-        deck_data["quota_remaining"] = max(0, MAX_WEEKLY_HANDOUT_GENERATIONS - used)
+        deck_data["quota_remaining"] = max(0, MAX_MONTHLY_HANDOUT_GENERATIONS - used)
         return deck_data
 
-    # 2. Check 10 handouts per week limit
-    if used >= MAX_WEEKLY_HANDOUT_GENERATIONS:
+    # 2. Check 10 handouts per month limit
+    if used >= MAX_MONTHLY_HANDOUT_GENERATIONS:
         raise HTTPException(
             status_code=429,
-            detail=f"Weekly handout generation limit reached ({MAX_WEEKLY_HANDOUT_GENERATIONS}/{MAX_WEEKLY_HANDOUT_GENERATIONS} handouts). Your quota resets as past generations exceed 7 days. You can still access all saved decks and section-shared reviewers without limit."
+            detail=f"Monthly handout generation limit reached ({MAX_MONTHLY_HANDOUT_GENERATIONS}/{MAX_MONTHLY_HANDOUT_GENERATIONS} handouts). Your quota resets as past generations exceed 30 days. You can still access all saved decks and section-shared reviewers without limit."
         )
 
     raw_fname = file.filename or "Handout Reviewer"
@@ -1069,7 +1069,7 @@ async def generate_reviewer_from_file(
 
     result["cached"] = False
     result["quota_used"] = used + 1
-    result["quota_remaining"] = max(0, MAX_WEEKLY_HANDOUT_GENERATIONS - (used + 1))
+    result["quota_remaining"] = max(0, MAX_MONTHLY_HANDOUT_GENERATIONS - (used + 1))
     return result
 
 

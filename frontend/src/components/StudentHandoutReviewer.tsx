@@ -1241,7 +1241,7 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
               </p>
 
               <div
-                title="Shared and saved decks don't use your weekly quota."
+                title="Shared and saved decks don't use your monthly quota."
                 className={`mt-4 inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold ${
                   quotaLow
                     ? "border-tan-border bg-tan-ghost text-tan"
@@ -1250,8 +1250,8 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
               >
                 <Sparkles className="h-3.5 w-3.5" />
                 {quotaInfo
-                  ? `${quotaInfo.remaining} of ${quotaInfo.limit} generations left this week`
-                  : "10 generations per week"}
+                  ? `${quotaInfo.remaining} of ${quotaInfo.limit} generations left this month`
+                  : "10 generations per month"}
               </div>
 
               <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
