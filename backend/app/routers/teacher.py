@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, update, delete, String
 from sqlalchemy.orm import selectinload, joinedload
@@ -1612,6 +1612,7 @@ async def scan_answer_key(
 async def scan_sheet(
     exam_id: str,
     file: UploadFile = File(...),
+    section_id: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(Role.TEACHER)),
 ):
@@ -1633,6 +1634,16 @@ async def scan_sheet(
 
     if not exam.answer_keys:
         raise HTTPException(status_code=400, detail="Exam has no answer keys defined")
+
+    # If section_id is provided, verify section ownership
+    target_section = None
+    if section_id:
+        sec_res = await db.execute(
+            select(Section).where(Section.id == section_id, Section.teacher_id == teacher.id)
+        )
+        target_section = sec_res.scalar_one_or_none()
+        if not target_section:
+            raise HTTPException(status_code=404, detail="Selected section not found")
 
     # Read image
     image_bytes = await file.read()
@@ -1659,6 +1670,15 @@ async def scan_sheet(
             detail=f"No student found with student number {student_number}"
         )
 
+    # If a specific section was targeted, ensure student belongs to that section
+    if target_section and student.section_id != target_section.id:
+        current_sec_name = student.section.name if student.section else "No Section"
+        st_name = f"{student.user.first_name} {student.user.last_name}" if student.user else f"Student #{student.student_number}"
+        raise HTTPException(
+            status_code=400,
+            detail=f"Student {st_name} ({student.full_student_id}) belongs to section '{current_sec_name}', not '{target_section.name}'."
+        )
+
     # Upload image to Google Drive
     try:
         image_url = upload_to_gdrive(image_bytes, f"scan_{exam_id}_{student_number}.jpg")
@@ -1668,7 +1688,7 @@ async def scan_sheet(
     # Build answer key lookup
     key_map = {ak.question_number: ak.correct_option for ak in exam.answer_keys}
 
-    # Grade and create submission
+    # Grade and calculate score
     total_score = 0
     answers = []
     for q_num, detected in omr_result["answers"].items():
@@ -1683,16 +1703,37 @@ async def scan_sheet(
             "is_correct": is_correct,
         })
 
-    submission = ExamSubmission(
-        exam_id=exam.id,
-        student_id=student.id,
-        total_score=total_score,
-        max_score=exam.total_questions,
-        scanned_image_url=image_url,
-        is_published=exam.is_grades_released,
+    # Check for existing submission to upsert cleanly
+    existing_sub_res = await db.execute(
+        select(ExamSubmission).where(
+            ExamSubmission.exam_id == exam.id,
+            ExamSubmission.student_id == student.id
+        )
     )
-    db.add(submission)
-    await db.flush()
+    existing_sub = existing_sub_res.scalar_one_or_none()
+
+    if existing_sub:
+        submission = existing_sub
+        submission.total_score = total_score
+        submission.max_score = exam.total_questions
+        if image_url:
+            submission.scanned_image_url = image_url
+        submission.scanned_at = datetime.now(timezone.utc)
+        # Clear previous answers
+        await db.execute(
+            delete(SubmissionAnswer).where(SubmissionAnswer.submission_id == submission.id)
+        )
+    else:
+        submission = ExamSubmission(
+            exam_id=exam.id,
+            student_id=student.id,
+            total_score=total_score,
+            max_score=exam.total_questions,
+            scanned_image_url=image_url,
+            is_published=exam.is_grades_released,
+        )
+        db.add(submission)
+        await db.flush()
 
     for ans in answers:
         db.add(SubmissionAnswer(
@@ -1715,6 +1756,338 @@ async def scan_sheet(
         .where(ExamSubmission.id == submission.id)
     )
     return result.scalar_one()
+
+
+# ─── Section Exam Gradebook & Excel Export ───────────────────
+
+@router.get("/sections/{section_id}/exams/{exam_id}/gradebook")
+async def get_section_exam_gradebook(
+    section_id: str,
+    exam_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Retrieve full section roster with grades or ABSENT status for a given exam."""
+    teacher = await _get_teacher(current_user, db)
+
+    # Verify section
+    sec_res = await db.execute(
+        select(Section).where(Section.id == section_id, Section.teacher_id == teacher.id)
+    )
+    section = sec_res.scalar_one_or_none()
+    if not section:
+        raise HTTPException(status_code=404, detail="Section not found")
+
+    # Verify exam
+    exam_res = await db.execute(
+        select(Exam).where(Exam.id == exam_id, Exam.teacher_id == teacher.id)
+    )
+    exam = exam_res.scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+
+    # Fetch all students in this section
+    students_res = await db.execute(
+        select(Student)
+        .options(selectinload(Student.user))
+        .where(Student.section_id == section_id)
+        .order_by(Student.student_number.asc())
+    )
+    students = students_res.scalars().all()
+
+    # Fetch all submissions for this exam from students in this section
+    student_ids = [s.id for s in students]
+    submissions_map = {}
+    if student_ids:
+        subs_res = await db.execute(
+            select(ExamSubmission)
+            .options(selectinload(ExamSubmission.answers))
+            .where(
+                ExamSubmission.exam_id == exam_id,
+                ExamSubmission.student_id.in_(student_ids)
+            )
+        )
+        for sub in subs_res.scalars().all():
+            submissions_map[sub.student_id] = sub
+
+    records = []
+    total_enrolled = len(students)
+    graded_count = 0
+    total_scores = 0
+
+    for st in students:
+        sub = submissions_map.get(st.id)
+        u = st.user
+        student_name = f"{u.last_name}, {u.first_name}" if u else f"Student #{st.student_number}"
+        full_student_id = st.full_student_id
+
+        if sub:
+            graded_count += 1
+            total_scores += sub.total_score
+            pct = round((sub.total_score / sub.max_score * 100), 1) if sub.max_score > 0 else 0.0
+            status = "GRADED"
+            score = sub.total_score
+            max_s = sub.max_score
+            scanned_at = sub.scanned_at.isoformat() if sub.scanned_at else None
+            submission_id = sub.id
+            scanned_image_url = sub.scanned_image_url
+            is_published = sub.is_published
+        else:
+            status = "ABSENT"
+            score = 0
+            max_s = exam.total_questions
+            pct = 0.0
+            scanned_at = None
+            submission_id = None
+            scanned_image_url = None
+            is_published = False
+
+        records.append({
+            "student_id": st.id,
+            "student_number": st.student_number,
+            "full_student_id": full_student_id,
+            "student_name": student_name,
+            "status": status,
+            "score": score,
+            "max_score": max_s,
+            "percentage": pct,
+            "scanned_at": scanned_at,
+            "submission_id": submission_id,
+            "scanned_image_url": scanned_image_url,
+            "is_published": is_published,
+        })
+
+    absent_count = total_enrolled - graded_count
+    class_average = round(total_scores / graded_count, 1) if graded_count > 0 else 0.0
+    average_percentage = round((class_average / exam.total_questions * 100), 1) if exam.total_questions > 0 else 0.0
+
+    return {
+        "section_id": section.id,
+        "section_name": section.name,
+        "subject": section.subject,
+        "exam_id": exam.id,
+        "exam_title": exam.title,
+        "total_questions": exam.total_questions,
+        "total_enrolled": total_enrolled,
+        "graded_count": graded_count,
+        "absent_count": absent_count,
+        "class_average": class_average,
+        "average_percentage": average_percentage,
+        "records": records,
+    }
+
+
+@router.get("/sections/{section_id}/exams/{exam_id}/export-excel")
+async def export_section_exam_excel(
+    section_id: str,
+    exam_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Download styled Excel (.xlsx) file containing complete section roster, scores, and absent records."""
+    import io
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    teacher = await _get_teacher(current_user, db)
+
+    # Verify section
+    sec_res = await db.execute(
+        select(Section).where(Section.id == section_id, Section.teacher_id == teacher.id)
+    )
+    section = sec_res.scalar_one_or_none()
+    if not section:
+        raise HTTPException(status_code=404, detail="Section not found")
+
+    # Verify exam
+    exam_res = await db.execute(
+        select(Exam).where(Exam.id == exam_id, Exam.teacher_id == teacher.id)
+    )
+    exam = exam_res.scalar_one_or_none()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+
+    # Fetch students & submissions
+    students_res = await db.execute(
+        select(Student)
+        .options(selectinload(Student.user))
+        .where(Student.section_id == section_id)
+        .order_by(Student.student_number.asc())
+    )
+    students = students_res.scalars().all()
+
+    student_ids = [s.id for s in students]
+    submissions_map = {}
+    if student_ids:
+        subs_res = await db.execute(
+            select(ExamSubmission)
+            .where(
+                ExamSubmission.exam_id == exam_id,
+                ExamSubmission.student_id.in_(student_ids)
+            )
+        )
+        for sub in subs_res.scalars().all():
+            submissions_map[sub.student_id] = sub
+
+    from typing import Any
+    wb = openpyxl.Workbook()
+    ws: Any = wb.active
+    ws.title = f"Gradebook - {section.name}"[:31]
+
+    # Colors & Styles
+    header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid")
+    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+    title_font = Font(name="Calibri", size=16, bold=True, color="0F172A")
+    subtitle_font = Font(name="Calibri", size=11, bold=False, color="475569")
+    meta_label_font = Font(name="Calibri", size=10, bold=True, color="334155")
+    meta_val_font = Font(name="Calibri", size=10, color="0F172A")
+
+    absent_fill = PatternFill(start_color="FEF2F2", end_color="FEF2F2", fill_type="solid")
+    absent_font = Font(name="Calibri", size=10, bold=True, color="DC2626")
+    graded_font = Font(name="Calibri", size=10, bold=True, color="16A34A")
+
+    thin_border = Border(
+        left=Side(style='thin', color='CBD5E1'),
+        right=Side(style='thin', color='CBD5E1'),
+        top=Side(style='thin', color='CBD5E1'),
+        bottom=Side(style='thin', color='CBD5E1')
+    )
+
+    # Title & Metadata
+    ws["A1"] = "EVALO - EXAM GRADEBOOK & ATTENDANCE RECORD"
+    ws["A1"].font = title_font
+    ws["A2"] = f"Subject: {section.subject} | Section: {section.name} | Exam: {exam.title}"
+    ws["A2"].font = subtitle_font
+
+    ws["A4"] = "Section:"
+    ws["A4"].font = meta_label_font
+    ws["B4"] = section.name
+    ws["B4"].font = meta_val_font
+
+    ws["C4"] = "Exam Title:"
+    ws["C4"].font = meta_label_font
+    ws["D4"] = exam.title
+    ws["D4"].font = meta_val_font
+
+    ws["E4"] = "Total Questions:"
+    ws["E4"].font = meta_label_font
+    ws["F4"] = exam.total_questions
+    ws["F4"].font = meta_val_font
+
+    ws["A5"] = "Total Enrolled:"
+    ws["A5"].font = meta_label_font
+    ws["B5"] = len(students)
+    ws["B5"].font = meta_val_font
+
+    graded_count = sum(1 for s in students if s.id in submissions_map)
+    absent_count = len(students) - graded_count
+
+    ws["C5"] = "Graded / Present:"
+    ws["C5"].font = meta_label_font
+    ws["D5"] = graded_count
+    ws["D5"].font = meta_val_font
+
+    ws["E5"] = "Absent:"
+    ws["E5"].font = meta_label_font
+    ws["F5"] = absent_count
+    ws["F5"].font = meta_val_font
+
+    # Table Headers
+    headers = [
+        "No.", "Student ID", "Full Name", "Status",
+        "Score", "Max Score", "Percentage", "Remarks", "Scanned / Submitted At"
+    ]
+    start_row = 7
+    for col_idx, h in enumerate(headers, 1):
+        cell = ws.cell(row=start_row, column=col_idx, value=h)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = thin_border
+
+    # Data Rows
+    current_row = start_row + 1
+    for idx, st in enumerate(students, 1):
+        sub = submissions_map.get(st.id)
+        u = st.user
+        full_name = f"{u.last_name}, {u.first_name}" if u else f"Student #{st.student_number}"
+
+        if sub:
+            status = "GRADED"
+            score = sub.total_score
+            max_s = sub.max_score
+            pct = round((score / max_s * 100), 1) if max_s > 0 else 0.0
+            pct_str = f"{pct}%"
+            remarks = "PASSED" if pct >= 50 else "NEEDS IMPROVEMENT"
+            sub_date = sub.scanned_at.strftime("%Y-%m-%d %H:%M") if sub.scanned_at else "Scanned"
+        else:
+            status = "ABSENT"
+            score = 0
+            max_s = exam.total_questions
+            pct_str = "0.0%"
+            remarks = "ABSENT"
+            sub_date = "-"
+
+        row_vals = [
+            idx,
+            st.full_student_id,
+            full_name,
+            status,
+            score,
+            max_s,
+            pct_str,
+            remarks,
+            sub_date
+        ]
+
+        for col_idx, val in enumerate(row_vals, 1):
+            cell = ws.cell(row=current_row, column=col_idx, value=val)
+            cell.border = thin_border
+            if col_idx in [1, 2, 4, 5, 6, 7, 8, 9]:
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+            else:
+                cell.alignment = Alignment(horizontal="left", vertical="center")
+
+            if status == "ABSENT":
+                cell.fill = absent_fill
+                if col_idx == 4 or col_idx == 8:
+                    cell.font = absent_font
+            else:
+                if col_idx == 4:
+                    cell.font = graded_font
+
+        current_row += 1
+
+    # Auto-adjust column widths
+    for col in ws.columns:
+        max_len = 0
+        col_letter = get_column_letter(col[0].column)
+        for cell in col:
+            val = str(cell.value or "")
+            if cell.row < 7:
+                continue
+            if len(val) > max_len:
+                max_len = len(val)
+        ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
+    ws.column_dimensions["A"].width = 8
+    ws.column_dimensions["B"].width = 18
+    ws.column_dimensions["C"].width = 28
+    ws.column_dimensions["I"].width = 22
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    clean_sec = "".join(c for c in section.name if c.isalnum() or c in (' ', '_', '-')).strip()
+    clean_exam = "".join(c for c in exam.title if c.isalnum() or c in (' ', '_', '-')).strip()
+    filename = f"Gradebook_{clean_sec}_{clean_exam}.xlsx"
+
+    return Response(
+        content=output.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
 
 
 # ─── Submissions ──────────────────────────────────────────────

@@ -654,14 +654,72 @@ export const teacher = {
     });
   },
 
-  scanSheet: (examId: string, file: File) => {
+  scanSheet: (examId: string, file: File, sectionId?: string) => {
     const formData = new FormData();
     formData.append("file", file);
-    return request(`/api/teacher/exams/${examId}/scan`, {
+    const url = sectionId
+      ? `/api/teacher/exams/${examId}/scan?section_id=${encodeURIComponent(sectionId)}`
+      : `/api/teacher/exams/${examId}/scan`;
+    return request<any>(url, {
       method: "POST",
       body: formData,
       isFormData: true,
     });
+  },
+
+  getSectionExamGradebook: (sectionId: string, examId: string) =>
+    request<{
+      section_id: string;
+      section_name: string;
+      subject: string;
+      exam_id: string;
+      exam_title: string;
+      total_questions: number;
+      total_enrolled: number;
+      graded_count: number;
+      absent_count: number;
+      class_average: number;
+      average_percentage: number;
+      records: Array<{
+        student_id: string;
+        student_number: number;
+        full_student_id: string;
+        student_name: string;
+        status: "GRADED" | "ABSENT";
+        score: number;
+        max_score: number;
+        percentage: number;
+        scanned_at: string | null;
+        submission_id: string | null;
+        scanned_image_url: string | null;
+        is_published: boolean;
+      }>;
+    }>(`/api/teacher/sections/${sectionId}/exams/${examId}/gradebook`),
+
+  getSectionExamExcelUrl: (sectionId: string, examId: string) =>
+    `${API_BASE}/api/teacher/sections/${sectionId}/exams/${examId}/export-excel`,
+
+  downloadSectionExamExcel: async (sectionId: string, examId: string, defaultFilename?: string) => {
+    const token = getToken();
+    const res = await fetch(`${API_BASE}/api/teacher/sections/${sectionId}/exams/${examId}/export-excel`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error("Failed to export Excel file");
+    const blob = await res.blob();
+    const disposition = res.headers.get("content-disposition");
+    let filename = defaultFilename || `gradebook_${sectionId}_${examId}.xlsx`;
+    if (disposition && disposition.includes("filename=")) {
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      if (match && match[1]) filename = match[1];
+    }
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
   },
 
   // Submissions
