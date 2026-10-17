@@ -160,6 +160,15 @@ export default function TeacherDashboard() {
               </Link>
 
               <Link
+                href="/teacher/exams?ai=true"
+                className="inline-flex items-center gap-1.5 rounded-2xl bg-sage-ghost border border-sage-border hover:bg-sage/20 px-3.5 py-2.5 text-xs font-bold text-sage shadow-xs transition-all active:scale-95"
+                title="Generate exam questions and answer keys from handout notes using AI"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-sage animate-pulse" />
+                <span>Generate Exam (AI)</span>
+              </Link>
+
+              <Link
                 href="/teacher/exams"
                 className="inline-flex items-center gap-1.5 rounded-2xl bg-surface-raised border border-border-default hover:border-steel px-4 py-2.5 text-xs font-bold text-text-primary hover:bg-surface-subtle shadow-xs transition-all active:scale-95"
               >
@@ -250,7 +259,7 @@ export default function TeacherDashboard() {
         </section>
 
         {/* ── Quick Workflows Hub ─────────────────────────────────── */}
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Card 1: Scanner Launcher */}
           <div className="glass-card rounded-3xl p-5 sm:p-6 border border-border-default flex flex-col justify-between space-y-4 hover:border-steel/40 transition-all shadow-xs">
             <div className="space-y-3">
@@ -306,6 +315,36 @@ export default function TeacherDashboard() {
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sage hover:bg-sage-light text-white text-xs font-bold shadow-sm transition-all active:scale-95"
               >
                 <span>Manage Exams</span>
+                <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
+          </div>
+
+          {/* Card 3: AI Handout Exam Generator */}
+          <div className="glass-card rounded-3xl p-5 sm:p-6 border border-border-default flex flex-col justify-between space-y-4 hover:border-tan/40 transition-all shadow-xs">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-tan-ghost text-tan border border-tan-border shadow-inner">
+                  <Sparkles className="h-5 w-5 animate-pulse" />
+                </div>
+              </div>
+              <div>
+                <h3 className="text-base sm:text-lg font-black text-text-primary">
+                  AI Exam Generator from Handout
+                </h3>
+                <p className="text-xs text-text-muted mt-1 leading-relaxed">
+                  Upload PDF course handouts or lecture notes to automatically formulate questions, choices (A–D), and answer keys with AI.
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center justify-between gap-3 border-t border-border-subtle">
+              <span className="text-[11px] text-text-faint font-medium">Auto-generated questions & keys</span>
+              <Link
+                href="/teacher/exams?ai=true"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-tan hover:bg-tan-light text-white text-xs font-bold shadow-sm transition-all active:scale-95"
+              >
+                <span>Generate Exam (AI)</span>
                 <ArrowRight className="h-3 w-3" />
               </Link>
             </div>
@@ -407,13 +446,22 @@ export default function TeacherDashboard() {
               </h2>
               <p className="text-[11px] text-text-muted">Answer keys, bubble sheets, and grade releases</p>
             </div>
-            <Link
-              href="/teacher/exams"
-              className="inline-flex items-center gap-1 text-xs font-bold text-steel hover:text-steel-light transition-colors"
-            >
-              <span>View All Exams</span>
-              <ChevronRight className="h-3.5 w-3.5" />
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link
+                href="/teacher/exams?ai=true"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-sage-border bg-sage-ghost text-xs font-bold text-sage hover:bg-sage/20 transition-all shadow-xs"
+              >
+                <Sparkles className="h-3.5 w-3.5 text-sage animate-pulse" />
+                <span>Generate with AI</span>
+              </Link>
+              <Link
+                href="/teacher/exams"
+                className="inline-flex items-center gap-1 text-xs font-bold text-steel hover:text-steel-light transition-colors"
+              >
+                <span>View All Exams</span>
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
           </div>
 
           {loading ? (
@@ -436,15 +484,24 @@ export default function TeacherDashboard() {
               </div>
               <h3 className="text-sm font-bold text-text-primary">No Exams Created Yet</h3>
               <p className="text-xs text-text-muted max-w-sm mx-auto">
-                Create your first multiple-choice exam, configure answer keys, and print printable OMR sheets.
+                Create an exam manually, or use AI to generate questions and answer keys directly from course lecture notes.
               </p>
-              <Link
-                href="/teacher/exams"
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-steel hover:bg-steel-light text-white text-xs font-bold shadow-sm transition-all"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                <span>Create Exam</span>
-              </Link>
+              <div className="flex flex-wrap items-center justify-center gap-2.5">
+                <Link
+                  href="/teacher/exams"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-steel hover:bg-steel-light text-white text-xs font-bold shadow-sm transition-all"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>Create Exam</span>
+                </Link>
+                <Link
+                  href="/teacher/exams?ai=true"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-sage-border bg-sage-ghost hover:bg-sage/20 text-sage text-xs font-bold shadow-sm transition-all"
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-sage" />
+                  <span>Generate with AI</span>
+                </Link>
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">

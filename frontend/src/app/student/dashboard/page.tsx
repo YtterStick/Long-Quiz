@@ -1080,10 +1080,7 @@ export default function StudentDashboard() {
                       className="rounded-2xl border border-border-default bg-surface-base p-4 sm:p-5 flex flex-col justify-between space-y-3.5 shadow-xs"
                     >
                       <div>
-                        <div className="flex items-center justify-between gap-2 mb-2">
-                          <span className="rounded-full bg-steel/15 px-2.5 py-0.5 text-[10px] font-bold text-steel-light border border-steel/30">
-                            {exam.teacher_name}
-                          </span>
+                        <div className="flex items-center justify-end gap-2 mb-2">
                           <span className="text-[11px] font-mono font-bold text-text-muted">
                             {exam.total_questions} Questions
                           </span>
@@ -1315,11 +1312,7 @@ export default function StudentDashboard() {
                     className="glass-card glass-card-hover rounded-2xl p-4 sm:p-5 border border-border-default flex flex-col justify-between space-y-4 hover:border-steel/40 transition-all shadow-sm"
                   >
                     <div>
-                      <div className="flex items-center justify-between gap-2 mb-2.5">
-                        <span className="rounded-full bg-steel/15 px-2.5 py-0.5 text-[10px] font-bold text-steel-light border border-steel/30">
-                          {exam.teacher_name}
-                        </span>
-
+                      <div className="flex items-center justify-end gap-2 mb-2.5">
                         {exam.has_submitted ? (
                           exam.is_grades_released && exam.percentage !== null ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-sage-ghost px-2.5 py-0.5 text-[10px] font-bold text-sage border border-sage-border">
@@ -1341,6 +1334,9 @@ export default function StudentDashboard() {
                       </div>
 
                       <h3 className="text-base font-bold text-text-primary">{exam.title}</h3>
+                      <p className="text-xs text-text-muted mt-0.5">
+                        Teacher: <span className="font-semibold text-text-secondary">{exam.teacher_name || "Instructor"}</span>
+                      </p>
 
                       <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs text-text-muted">
                         <span className="font-semibold text-text-secondary">{exam.total_questions} Questions</span>
@@ -1486,16 +1482,7 @@ export default function StudentDashboard() {
                     >
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                          <div className="flex items-center gap-2">
-                            <span className="rounded-full bg-sage-ghost px-2.5 py-0.5 text-[10px] font-bold text-sage border border-sage-border flex items-center gap-1">
-                              <Globe className="h-3 w-3" />
-                              Public Exam
-                            </span>
-                            <span className="text-[10px] font-medium text-text-muted">
-                              Private to you
-                            </span>
-                          </div>
-                          <h3 className="text-base sm:text-lg font-bold text-text-primary mt-1.5">
+                          <h3 className="text-base sm:text-lg font-bold text-text-primary">
                             {grade.exam_title}
                           </h3>
                           <p className="text-xs text-text-muted mt-0.5">

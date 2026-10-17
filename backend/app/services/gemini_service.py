@@ -25,6 +25,14 @@ def get_gemini_api_key() -> str:
     env_key = os.environ.get("GEMINI_API_KEY", "").strip()
     if env_key:
         return env_key
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+        env_key = os.environ.get("GEMINI_API_KEY", "").strip()
+        if env_key:
+            return env_key
+    except Exception:
+        pass
     settings = get_settings()
     return getattr(settings, "GEMINI_API_KEY", "").strip()
 
@@ -123,9 +131,10 @@ def generate_exam_from_handout(
         source_text = source_text[:40000]
 
     system_prompt = (
-        "You are an expert college professor and exam creator. "
-        "Your task is to create high-quality, academically rigorous multiple-choice test questions "
-        "based strictly on the provided lesson or handout notes."
+        "You are an expert college test creator and curriculum assessor at a Philippine higher education institution (such as STI College). "
+        "Your role is to formulate official, high-standard midterm/final multiple-choice examination questionnaires based on lesson handouts and syllabi. "
+        "You create balanced, academically sound exams matching Philippine college standards (prelim, midterm, finals): "
+        "clear, natural English questions, realistic situational application scenarios, and 4 well-structured options (A, B, C, D)."
     )
 
     user_prompt = f"""
@@ -134,28 +143,36 @@ Analyze the following course handout / lesson notes:
 {source_text}
 ---
 
-Generate exactly {question_count} distinct, high-quality multiple choice exam questions.
-Requirements:
-1. Cover the key concepts, definitions, principles, acronyms, and practical examples found in the text.
-2. Each question MUST have exactly 4 choices: Option A, Option B, Option C, and Option D.
-3. Distractors (wrong options) must be realistic, plausible, and academic (no silly or obviously fake options).
-4. Distribute correct answer keys randomly across A, B, C, and D.
-5. Provide a clear, educational explanation for why the correct option is right.
-6. Determine an accurate and descriptive exam title (e.g. subject or lesson topic).
+Generate an official college examination consisting of exactly {question_count} high-quality multiple choice questions.
 
-Return ONLY a valid JSON object with this exact schema:
+Follow these strict STI College Examination standards:
+1. QUESTION STYLE & BALANCE:
+   - Provide a natural mix of:
+     * 50% Conceptual & Definition understanding: Paraphrase concepts clearly into natural, grammatically complete test questions (e.g. "Which of the following describes the primary purpose of...", "What distinguishes...", "Which protocol is responsible for..."). DO NOT copy-paste raw definitions with quotation marks or broken sentence fragments.
+     * 50% Situational & Scenario-Based Questions: Present a practical computing, programming, or workplace scenario where the student must apply a concept from the handout (e.g. "Scenario: An IT specialist is designing a company network across three remote branches...", "A developer notices that...", "In a banking database, suppose a power outage occurs while transferring funds...").
+2. FOUR COMPLETE & BALANCED CHOICES (Option A, Option B, Option C, Option D):
+   - Every single option MUST be a full, grammatically parallel, realistic term or phrase from the same domain.
+   - NEVER output incomplete words, missing characters, ellipses ("..."), or random unrelated text.
+   - The 3 distractors (wrong choices) must be real, plausible alternatives that a student studying this subject would consider (e.g. other related protocols, ACID properties, OOP pillars, or architectural models).
+   - Randomly distribute correct answer keys across A, B, C, and D.
+3. EXPLANATIONS:
+   - Provide a clear, educational explanation for why the correct option is right and how it applies to the concept or scenario.
+4. EXAM TITLE:
+   - Generate a concise, professional title based on the handout's topic (e.g. "Advance Database Systems - Transactions & Normalization", "Object-Oriented Programming Prelim Exam").
+
+Return ONLY a valid JSON object matching this schema:
 {{
-  "title": "Exam Title Here",
+  "title": "Clean Subject & Topic Title",
   "questions": [
     {{
       "question_number": 1,
-      "question_text": "Clear question text?",
-      "option_a": "Choice A",
-      "option_b": "Choice B",
-      "option_c": "Choice C",
-      "option_d": "Choice D",
+      "question_text": "Complete, grammatically fluent question or situational scenario?",
+      "option_a": "First plausible choice",
+      "option_b": "Second plausible choice",
+      "option_c": "Third plausible choice",
+      "option_d": "Fourth plausible choice",
       "correct_option": "A",
-      "explanation": "Why choice A is correct based on the handout."
+      "explanation": "Clear explanation of why this answer is correct."
     }}
   ]
 }}
@@ -208,8 +225,8 @@ def fallback_generate_exam_from_text(
     custom_title: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Fast local algorithmic generator if Gemini is offline or rate-limited.
-    Extracts definition terms and builds MCQ test items.
+    Local algorithmic generator if Gemini is offline or rate-limited.
+    Extracts complete sentences and definitions to build clean MCQ test items.
     """
     lines = [l.strip() for l in raw_text.splitlines() if l.strip()]
     title = custom_title or (lines[0] if lines and len(lines[0]) < 70 else "Handout Quiz")
@@ -261,8 +278,13 @@ def fallback_generate_exam_from_text(
             if val == term:
                 correct_key = k
 
-        clean_def = definition[:180] + "..." if len(definition) > 180 else definition
-        q_text = f"Which concept or term refers to: \"{clean_def}\"?"
+        # Use full clean sentence without broken truncation
+        clean_def = definition.strip().rstrip(".,;:")
+        if len(clean_def) > 200:
+            sub_sentences = re.split(r"(?<=[.!?])\s+", clean_def)
+            clean_def = sub_sentences[0] if sub_sentences else clean_def[:200]
+
+        q_text = f"Which concept or term is described as: \"{clean_def}\"?"
 
         questions.append({
             "question_number": idx,
@@ -271,7 +293,7 @@ def fallback_generate_exam_from_text(
             "option_b": opts_dict.get("option_b", "Option B"),
             "option_c": opts_dict.get("option_c", "Option C"),
             "option_d": opts_dict.get("option_d", "Option D"),
-            "explanation": f"'{term}' is defined as: {definition}",
+            "explanation": f"'{term}' is defined as: {clean_def}",
         })
 
         answer_keys.append({
