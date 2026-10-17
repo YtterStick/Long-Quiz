@@ -141,6 +141,9 @@ export default function TeacherExamsPage() {
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiSuccessMessage, setAiSuccessMessage] = useState<string | null>(null);
   const [showPromptInspector, setShowPromptInspector] = useState(false);
+  const [aiIncludeScenarios, setAiIncludeScenarios] = useState(true);
+  const [aiCustomInstructions, setAiCustomInstructions] = useState("");
+  const [showCustomPromptBox, setShowCustomPromptBox] = useState(false);
 
   const handleGenerateExamAi = async () => {
     setAiError(null);
@@ -158,6 +161,10 @@ export default function TeacherExamsPage() {
         if (aiCustomTitle.trim()) {
           formData.append("title", aiCustomTitle.trim());
         }
+        formData.append("include_scenarios", aiIncludeScenarios.toString());
+        if (aiCustomInstructions.trim()) {
+          formData.append("custom_instructions", aiCustomInstructions.trim());
+        }
         result = await teacherApi.generateExamFromHandoutFile(formData);
       } else {
         if (!aiRawText.trim() || aiRawText.trim().length < 30) {
@@ -167,6 +174,8 @@ export default function TeacherExamsPage() {
           raw_text: aiRawText.trim(),
           question_count: aiQuestionCount,
           title: aiCustomTitle.trim() || undefined,
+          include_scenarios: aiIncludeScenarios,
+          custom_instructions: aiCustomInstructions.trim() || undefined,
         });
       }
 
@@ -2241,6 +2250,91 @@ Constructor: Special method called when an object is instantiated to initialize 
                 </div>
               </div>
 
+              {/* Question Style / Situational Scenarios Toggle */}
+              <div className="pt-3 border-t border-border-default/60 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-semibold text-text-secondary">
+                    Question Formulation Style
+                  </label>
+                  <span className="text-[10px] text-text-muted">
+                    {aiIncludeScenarios ? "Situational Scenarios Enabled" : "Direct Conceptual Only"}
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setAiIncludeScenarios(true)}
+                    className={`flex flex-col text-left p-3 rounded-xl border transition-all cursor-pointer ${
+                      aiIncludeScenarios
+                        ? "border-steel bg-steel-ghost/40 shadow-xs ring-1 ring-steel/30"
+                        : "border-border-default bg-surface-base hover:border-border-emphasis opacity-75"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-text-primary">
+                        With Situational Scenarios
+                      </span>
+                      {aiIncludeScenarios && <CheckCircle2 className="h-4 w-4 text-steel" />}
+                    </div>
+                    <span className="text-[11px] text-text-muted mt-0.5 leading-snug">
+                      50% practical workplace/computing application + 50% conceptual questions (no &quot;Scenario:&quot; label prefix).
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setAiIncludeScenarios(false)}
+                    className={`flex flex-col text-left p-3 rounded-xl border transition-all cursor-pointer ${
+                      !aiIncludeScenarios
+                        ? "border-steel bg-steel-ghost/40 shadow-xs ring-1 ring-steel/30"
+                        : "border-border-default bg-surface-base hover:border-border-emphasis opacity-75"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-text-primary">
+                        Direct Conceptual & Definitions
+                      </span>
+                      {!aiIncludeScenarios && <CheckCircle2 className="h-4 w-4 text-steel" />}
+                    </div>
+                    <span className="text-[11px] text-text-muted mt-0.5 leading-snug">
+                      100% direct definitions, functions, and key principles. No lengthy story or company scenarios.
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Custom Prompt / Teacher's Instructions */}
+              <div className="pt-3 border-t border-border-default/60">
+                <button
+                  type="button"
+                  onClick={() => setShowCustomPromptBox(!showCustomPromptBox)}
+                  className="flex items-center justify-between w-full text-left text-xs font-semibold text-text-secondary hover:text-text-primary py-1 cursor-pointer"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <Sliders className="h-3.5 w-3.5 text-tan" />
+                    <span>Customize AI Prompt / Teacher Specific Instructions (Optional)</span>
+                  </span>
+                  <span className="text-[11px] text-tan font-bold">
+                    {showCustomPromptBox ? "Hide" : "+ Add Instructions"}
+                  </span>
+                </button>
+
+                {showCustomPromptBox && (
+                  <div className="mt-2 space-y-1.5 animate-fade-in">
+                    <textarea
+                      rows={3}
+                      value={aiCustomInstructions}
+                      onChange={(e) => setAiCustomInstructions(e.target.value)}
+                      placeholder="e.g. Focus on AWS IAM and Security Groups; create challenging questions for graduating seniors; emphasize programming syntax and architectural models..."
+                      className="w-full rounded-xl border border-border-emphasis bg-surface-base p-3 text-xs text-text-primary focus:border-steel focus:outline-none"
+                    />
+                    <p className="text-[10px] text-text-muted">
+                      Your custom prompt will be directly embedded into Gemini&apos;s instructions to shape question topics and difficulty.
+                    </p>
+                  </div>
+                )}
+              </div>
+
               {/* Prompt & Examination Standards Inspector */}
               <div className="pt-3 border-t border-border-default/60">
                 <button
@@ -2262,7 +2356,7 @@ Constructor: Special method called when an object is instantiated to initialize 
                     </p>
                     <ul className="list-disc list-inside space-y-1 text-text-muted leading-relaxed">
                       <li><strong className="text-text-primary">50% Conceptual & Definitions:</strong> Questions paraphrase core concepts into clear, grammatically complete college test questions (e.g., <em>&quot;Which of the following describes the primary purpose of...&quot;</em>). No broken quotation fragments.</li>
-                      <li><strong className="text-text-primary">50% Situational Scenarios:</strong> Practical computing, programming, and real-world system problem scenarios (e.g. <em>&quot;Scenario: In a banking database, suppose a power outage occurs... Which ACID property guarantees recovery?&quot;</em>).</li>
+                      <li><strong className="text-text-primary">50% Situational Scenarios:</strong> Practical computing, programming, and real-world system problem scenarios (e.g. <em>&quot;In a banking database, suppose a power outage occurs... Which ACID property guarantees recovery?&quot;</em> — written naturally without any &quot;Scenario:&quot; prefix).</li>
                       <li><strong className="text-text-primary">4 Complete Choices (A, B, C, D):</strong> Every single choice is a full, realistic term from the subject domain with plausible distractors (no incomplete words or ellipses).</li>
                       <li><strong className="text-text-primary">Randomized Keys & Explanations:</strong> Answer keys are randomly balanced across A, B, C, and D with educational explanations.</li>
                     </ul>

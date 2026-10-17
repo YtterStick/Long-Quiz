@@ -600,7 +600,13 @@ export const teacher = {
       body: { questions, answer_keys },
     }),
 
-  generateExamFromHandoutText: (data: { raw_text: string; question_count: number; title?: string }) =>
+  generateExamFromHandoutText: (data: {
+    raw_text: string;
+    question_count: number;
+    title?: string;
+    include_scenarios?: boolean;
+    custom_instructions?: string;
+  }) =>
     request<{
       title: string;
       total_questions: number;

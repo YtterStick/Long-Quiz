@@ -113,7 +113,9 @@ def call_gemini_json(prompt: str, system_instruction: Optional[str] = None) -> O
 def generate_exam_from_handout(
     raw_text: str,
     question_count: int = 10,
-    custom_title: Optional[str] = None
+    custom_title: Optional[str] = None,
+    include_scenarios: bool = True,
+    custom_instructions: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Generates a teacher exam questionnaire directly from handout text.
@@ -134,8 +136,33 @@ def generate_exam_from_handout(
         "You are an expert college test creator and curriculum assessor at a Philippine higher education institution (such as STI College). "
         "Your role is to formulate official, high-standard midterm/final multiple-choice examination questionnaires based on lesson handouts and syllabi. "
         "You create balanced, academically sound exams matching Philippine college standards (prelim, midterm, finals): "
-        "clear, natural English questions, realistic situational application scenarios, and 4 well-structured options (A, B, C, D)."
+        "clear, natural English questions without gimmicky prefixes, and 4 well-structured options (A, B, C, D)."
     )
+
+    if include_scenarios:
+        style_instruction = (
+            "1. QUESTION STYLE & BALANCE:\n"
+            "   - Provide a balanced mix of:\n"
+            "     * 50% Conceptual & Definition understanding: Paraphrase concepts clearly into natural, grammatically complete test questions (e.g. \"Which of the following describes the primary purpose of...\", \"What distinguishes...\", \"Which protocol is responsible for...\"). DO NOT copy-paste raw definitions with quotation marks or broken fragments.\n"
+            "     * 50% Situational & Application Questions: Present a practical computing, workplace, or system problem scenario where the student must apply a concept from the handout (e.g. \"An IT specialist is designing a company network across three remote branches...\", \"A developer notices that an API request fails with code 403...\", \"In a banking database, suppose a power outage occurs while transferring funds...\").\n"
+            "   - CRITICAL RULE ON SCENARIOS: NEVER prefix any question with \"Scenario:\", \"Case Study:\", or \"Situation:\". State the context or problem directly and naturally as the question stem."
+        )
+    else:
+        style_instruction = (
+            "1. QUESTION STYLE (100% DIRECT CONCEPTUAL & DEFINITIONS):\n"
+            "   - Formulate 100% direct conceptual, definition, function, and principle-based questions based strictly on the handout.\n"
+            "   - DO NOT include lengthy situational scenarios, hypothetical company case studies, or story setups.\n"
+            "   - Ask clear, direct academic questions (e.g. \"Which of the following best defines...\", \"What is the primary function of...\", \"Which protocol operates at...\", \"Which property guarantees...\").\n"
+            "   - DO NOT prefix any question with \"Scenario:\" or \"Case Study:\"."
+        )
+
+    teacher_custom_block = ""
+    if custom_instructions and custom_instructions.strip():
+        teacher_custom_block = f"""
+TEACHER'S CUSTOM PROMPT & INSTRUCTIONS:
+\"\"\"{custom_instructions.strip()}\"\"\"
+You MUST strictly incorporate and prioritize the teacher's custom instructions above (e.g., specific topics to emphasize, difficulty level, focus areas) while maintaining valid JSON structure.
+"""
 
     user_prompt = f"""
 Analyze the following course handout / lesson notes:
@@ -146,27 +173,24 @@ Analyze the following course handout / lesson notes:
 Generate an official college examination consisting of exactly {question_count} high-quality multiple choice questions.
 
 Follow these strict STI College Examination standards:
-1. QUESTION STYLE & BALANCE:
-   - Provide a natural mix of:
-     * 50% Conceptual & Definition understanding: Paraphrase concepts clearly into natural, grammatically complete test questions (e.g. "Which of the following describes the primary purpose of...", "What distinguishes...", "Which protocol is responsible for..."). DO NOT copy-paste raw definitions with quotation marks or broken sentence fragments.
-     * 50% Situational & Scenario-Based Questions: Present a practical computing, programming, or workplace scenario where the student must apply a concept from the handout (e.g. "Scenario: An IT specialist is designing a company network across three remote branches...", "A developer notices that...", "In a banking database, suppose a power outage occurs while transferring funds...").
+{style_instruction}
 2. FOUR COMPLETE & BALANCED CHOICES (Option A, Option B, Option C, Option D):
    - Every single option MUST be a full, grammatically parallel, realistic term or phrase from the same domain.
    - NEVER output incomplete words, missing characters, ellipses ("..."), or random unrelated text.
    - The 3 distractors (wrong choices) must be real, plausible alternatives that a student studying this subject would consider (e.g. other related protocols, ACID properties, OOP pillars, or architectural models).
    - Randomly distribute correct answer keys across A, B, C, and D.
 3. EXPLANATIONS:
-   - Provide a clear, educational explanation for why the correct option is right and how it applies to the concept or scenario.
+   - Provide a clear, educational explanation for why the correct option is right and how it applies to the concept.
 4. EXAM TITLE:
    - Generate a concise, professional title based on the handout's topic (e.g. "Advance Database Systems - Transactions & Normalization", "Object-Oriented Programming Prelim Exam").
-
+{teacher_custom_block}
 Return ONLY a valid JSON object matching this schema:
 {{
   "title": "Clean Subject & Topic Title",
   "questions": [
     {{
       "question_number": 1,
-      "question_text": "Complete, grammatically fluent question or situational scenario?",
+      "question_text": "Complete, grammatically fluent question?",
       "option_a": "First plausible choice",
       "option_b": "Second plausible choice",
       "option_c": "Third plausible choice",

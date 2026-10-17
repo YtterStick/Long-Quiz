@@ -1135,6 +1135,8 @@ class GenerateExamFromTextRequest(BaseModel):
     raw_text: str
     question_count: int = 10
     title: Optional[str] = None
+    include_scenarios: bool = True
+    custom_instructions: Optional[str] = None
 
 
 @router.post("/exams/generate-from-handout-text")
@@ -1155,7 +1157,13 @@ async def generate_exam_from_handout_text(
 
     count = max(3, min(50, body.question_count))
     from app.services.gemini_service import generate_exam_from_handout
-    return generate_exam_from_handout(body.raw_text, question_count=count, custom_title=body.title)
+    return generate_exam_from_handout(
+        body.raw_text,
+        question_count=count,
+        custom_title=body.title,
+        include_scenarios=body.include_scenarios,
+        custom_instructions=body.custom_instructions,
+    )
 
 
 @router.post("/exams/generate-from-handout-file")
@@ -1163,6 +1171,8 @@ async def generate_exam_from_handout_file(
     file: UploadFile = File(...),
     question_count: int = Form(10),
     title: Optional[str] = Form(None),
+    include_scenarios: bool = Form(True),
+    custom_instructions: Optional[str] = Form(None),
     current_user: User = Depends(require_role(Role.TEACHER)),
 ):
     """
@@ -1203,7 +1213,13 @@ async def generate_exam_from_handout_file(
     clean_file_title = title or (file.filename or "Handout Exam").rsplit(".", 1)[0].replace("_", " ").replace("-", " ").title()
     count = max(3, min(50, question_count))
     from app.services.gemini_service import generate_exam_from_handout
-    return generate_exam_from_handout(extracted_text, question_count=count, custom_title=clean_file_title)
+    return generate_exam_from_handout(
+        extracted_text,
+        question_count=count,
+        custom_title=clean_file_title,
+        include_scenarios=include_scenarios,
+        custom_instructions=custom_instructions,
+    )
 
 
 @router.post("/exams", response_model=ExamOut)
