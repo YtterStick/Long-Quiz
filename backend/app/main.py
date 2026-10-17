@@ -21,7 +21,15 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Create tables on startup, dispose engine on shutdown."""
-    logger.info("Starting up — creating database tables...")
+    target_host = settings.DATABASE_URL.split("@")[-1] if "@" in settings.DATABASE_URL else settings.DATABASE_URL
+    logger.info(f"Starting up — connecting to database target: {target_host}")
+    if "localhost" in settings.DATABASE_URL:
+        logger.error(
+            "CRITICAL CONFIG ERROR: DATABASE_URL is pointing to localhost! "
+            "Ensure the DATABASE_URL environment variable is saved in Render's Environment tab."
+        )
+
+    logger.info("Creating database tables and applying migrations...")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         if "postgresql" in settings.DATABASE_URL:
