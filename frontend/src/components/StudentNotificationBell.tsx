@@ -288,9 +288,17 @@ export function StudentNotificationBell() {
         )}
       </button>
 
+      {/* Mobile Backdrop */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-xs sm:hidden"
+          onClick={() => setIsOpen(false)}
+        />
+      )}
+
       {/* Dropdown Menu */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] max-w-sm sm:w-96 rounded-2xl border border-border-default bg-surface-overlay/95 p-3.5 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 z-50">
+        <div className="fixed inset-x-3 top-16 sm:absolute sm:inset-auto sm:right-0 sm:top-full sm:mt-2 w-auto sm:w-96 max-w-md mx-auto sm:mx-0 rounded-2xl border border-border-default bg-surface-overlay/95 p-3.5 shadow-2xl backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 z-50">
           {/* Header */}
           <div className="flex items-center justify-between border-b border-border-default pb-2.5 mb-2.5 px-1">
             <div className="flex items-center gap-2">
@@ -333,6 +341,14 @@ export function StudentNotificationBell() {
                 title="Refresh notifications"
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin text-steel" : ""}`} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsOpen(false)}
+                className="sm:hidden text-text-muted hover:text-text-primary p-1 rounded-lg hover:bg-surface-subtle transition-colors cursor-pointer"
+                title="Close"
+              >
+                <X className="h-4 w-4" />
               </button>
             </div>
           </div>
