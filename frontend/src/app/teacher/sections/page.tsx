@@ -47,7 +47,6 @@ import {
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { CustomSelect } from "@/components/ui/CustomSelect";
 import { LiveExamMonitorModal } from "@/components/LiveExamMonitorModal";
-import { SectionGradebookModal } from "@/components/SectionGradebookModal";
 
 interface SectionItem {
   id: string;
@@ -148,7 +147,6 @@ export default function TeacherSectionsPage() {
   const [togglingSectionOnlineId, setTogglingSectionOnlineId] = useState<string | null>(null);
   const [togglingSectionGradesId, setTogglingSectionGradesId] = useState<string | null>(null);
   const [monitoringSectionExam, setMonitoringSectionExam] = useState<SectionExamItem | null>(null);
-  const [viewingGradebookExam, setViewingGradebookExam] = useState<SectionExamItem | null>(null);
 
   // All students across application
   const [allStudents, setAllStudents] = useState<StudentItem[]>([]);
@@ -1185,25 +1183,26 @@ export default function TeacherSectionsPage() {
                                   ? "bg-sage-ghost text-sage border-sage-border animate-pulse hover:bg-sage/20"
                                   : se.is_online_active
                                   ? "bg-steel/15 text-steel-light border-steel/40 hover:bg-steel/25"
-                                  : "border-border-emphasis bg-surface-subtle text-text-primary hover:bg-surface-muted"
+                                  : "border-tan-border/60 bg-tan-ghost text-tan hover:bg-tan/20"
                               }`}
+                              title="Open section gradebook, student submissions, and live monitoring"
                             >
-                              <Monitor className="h-3.5 w-3.5" />
-                              {se.is_started
-                                ? "Exam Live In Progress"
-                                : se.is_online_active
-                                ? "Live Lobby & Submissions"
-                                : "View Submissions & Lobby"}
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => setViewingGradebookExam(se)}
-                              className="flex items-center gap-1.5 rounded-xl border border-tan-border/60 bg-tan-ghost px-3 py-1.5 text-xs font-bold text-tan hover:bg-tan/20 transition-all cursor-pointer shadow-sm"
-                              title="Open complete section gradebook and attendance records"
-                            >
-                              <FileSpreadsheet className="h-3.5 w-3.5" />
-                              Gradebook
+                              {se.is_started ? (
+                                <>
+                                  <Activity className="h-3.5 w-3.5 text-sage" />
+                                  <span>Live Exam Active</span>
+                                </>
+                              ) : se.is_online_active ? (
+                                <>
+                                  <Monitor className="h-3.5 w-3.5 text-steel-light" />
+                                  <span>Live Lobby &amp; Gradebook</span>
+                                </>
+                              ) : (
+                                <>
+                                  <FileSpreadsheet className="h-3.5 w-3.5 text-tan" />
+                                  <span>Gradebook &amp; Submissions</span>
+                                </>
+                              )}
                             </button>
 
                             <Link
@@ -2453,17 +2452,6 @@ export default function TeacherSectionsPage() {
         />
       )}
 
-      {/* Section Gradebook & Attendance Records Modal */}
-      {viewingGradebookExam && selectedSection && (
-        <SectionGradebookModal
-          isOpen={!!viewingGradebookExam}
-          onClose={() => setViewingGradebookExam(null)}
-          sectionId={selectedSection.id}
-          sectionName={selectedSection.name}
-          examId={viewingGradebookExam.exam_id}
-          examTitle={viewingGradebookExam.exam?.title || "Class Exam"}
-        />
-      )}
 
       <PasswordChangeModal
         isOpen={passwordModalOpen}

@@ -208,12 +208,17 @@ async def monitor_exam(
             ln = (s.user.last_name or "").strip()
             student_name = f"{fn} {ln}".strip() or s.user.username or "Unknown"
         else:
+            fn = ""
+            ln = ""
             student_name = "Unknown"
 
         roster.append({
             "student_id": s.id,
             "student_number": s.student_number,
+            "full_student_id": s.full_student_id,
             "name": student_name,
+            "first_name": fn,
+            "last_name": ln,
             "status": status,
             "is_fullscreen": entry.is_fullscreen if (entry and online) else False,
             "is_focused": entry.is_focused if (entry and online) else False,
@@ -228,6 +233,7 @@ async def monitor_exam(
             "total_score": sub.total_score if sub else None,
             "max_score": sub.max_score if sub else None,
             "submitted_at": sub.scanned_at.isoformat() if (sub and sub.scanned_at) else None,
+            "scanned_image_url": sub.scanned_image_url if sub else None,
             "is_online_submission": bool(sub and not sub.scanned_image_url),
             "answers": [
                 {
@@ -239,11 +245,21 @@ async def monitor_exam(
             ] if sub and sub.answers else [],
         })
 
+    total_scores = 0.0
+    graded_count = 0
+    for r in roster:
+        if r["status"] == "SUBMITTED" and r["total_score"] is not None:
+            total_scores += float(str(r["total_score"]))
+            graded_count += 1
+    class_average = round(total_scores / graded_count, 1) if graded_count > 0 else 0.0
+
     return {
         "is_online_active": se.is_online_active,
         "is_started": se.is_started,
         "is_lobby_locked": bool(getattr(se, "is_lobby_locked", False)),
         "total_students": len(students),
+        "graded_count": graded_count,
+        "class_average": class_average,
         "counts": counts,
         "students": roster,
     }

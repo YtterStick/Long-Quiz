@@ -28,6 +28,10 @@ import {
   Check,
   UserCheck,
   UserX,
+  Search,
+  Award,
+  ChevronDown,
+  ExternalLink,
 } from "lucide-react";
 import { SkeletonLiveRoster } from "@/components/ui/Skeleton";
 import { ConfirmModal } from "@/components/ConfirmModal";
@@ -41,7 +45,10 @@ interface StudentAnswer {
 interface MonitorStudent {
   student_id: string;
   student_number: number;
+  full_student_id?: string;
   name: string;
+  first_name?: string;
+  last_name?: string;
   status: "NOT_JOINED" | "DISCONNECTED" | "IN_LOBBY" | "TAKING" | "SUBMITTED";
   is_fullscreen: boolean;
   is_focused: boolean;
@@ -57,6 +64,7 @@ interface MonitorStudent {
   total_score: number | null;
   max_score: number | null;
   submitted_at: string | null;
+  scanned_image_url?: string | null;
   answers: StudentAnswer[];
 }
 
@@ -65,6 +73,8 @@ interface MonitorData {
   is_started: boolean;
   is_lobby_locked?: boolean;
   total_students: number;
+  graded_count?: number;
+  class_average?: number;
   counts: {
     in_lobby: number;
     ready: number;
@@ -109,7 +119,8 @@ export function LiveExamMonitorModal({
 
   // Excel / Clipboard states
   const [exportingExcel, setExportingExcel] = useState(false);
-  const [copiedClipboard, setCopiedClipboard] = useState(false);
+  const [copiedType, setCopiedType] = useState<string | null>(null);
+  const [copyMenuOpen, setCopyMenuOpen] = useState(false);
 
   const [selectedStudentForAnswers, setSelectedStudentForAnswers] = useState<MonitorStudent | null>(null);
   const [retakeTarget, setRetakeTarget] = useState<MonitorStudent | null>(null);
@@ -250,43 +261,71 @@ export function LiveExamMonitorModal({
   };
 
   // Copy records formatted for Excel / Sheets
-  const handleCopyForExcel = async () => {
+  const handleCopyGrades = async (mode: "scores" | "table" | "id_score") => {
     if (!data || !data.students) return;
-    const headers = [
-      "No.",
-      "Student ID",
-      "Student Name",
-      "Attendance",
-      "Status",
-      "Score",
-      "Max Score",
-      "Violations",
-      "Submitted At"
-    ];
-    const rows = data.students.map((s, idx) => {
-      const isAbsent = s.status === "NOT_JOINED";
-      const attendance = isAbsent ? "ABSENT" : "PRESENT";
-      const score = s.status === "SUBMITTED" ? (s.total_score ?? 0) : 0;
-      const subAt = s.submitted_at ? new Date(s.submitted_at).toLocaleString() : "-";
-      return [
-        idx + 1,
-        `02000${String(s.student_number).padStart(6, "0")}`,
-        s.name,
-        attendance,
-        s.status,
-        score,
-        s.max_score || totalQuestions,
-        s.violations,
-        subAt
-      ].join("\t");
-    });
-    const tsv = [headers.join("\t"), ...rows].join("\n");
+    setCopyMenuOpen(false);
+
+    let textToCopy = "";
+    if (mode === "scores") {
+      // Single column of scores matching the roster order: perfect for pasting into Excel
+      textToCopy = data.students
+        .map((s) => (s.status === "SUBMITTED" ? String(s.total_score ?? 0) : "0"))
+        .join("\n");
+      setCopiedType("Scores Copied!");
+    } else if (mode === "id_score") {
+      // 2 columns: Student ID \t Score
+      const rows = data.students.map((s) => {
+        const id = s.full_student_id || `02000${String(s.student_number).padStart(6, "0")}`;
+        const score = s.status === "SUBMITTED" ? (s.total_score ?? 0) : 0;
+        return `${id}\t${score}`;
+      });
+      textToCopy = `Student ID\tScore\n${rows.join("\n")}`;
+      setCopiedType("ID & Score Copied!");
+    } else {
+      // Full gradebook table TSV
+      const headers = [
+        "No.",
+        "Student ID",
+        "Student Name",
+        "Attendance",
+        "Status",
+        "Score",
+        "Max Score",
+        "Percentage",
+        "Violations",
+        "Submitted At",
+      ];
+      const rows = data.students.map((s, idx) => {
+        const isAbsent = s.status === "NOT_JOINED";
+        const attendance = isAbsent ? "ABSENT" : "PRESENT";
+        const score = s.status === "SUBMITTED" ? (s.total_score ?? 0) : 0;
+        const maxScore = s.max_score || totalQuestions || 50;
+        const pct = maxScore > 0 ? `${((score / maxScore) * 100).toFixed(1)}%` : "0.0%";
+        const subAt = s.submitted_at ? new Date(s.submitted_at).toLocaleString() : "-";
+        const id = s.full_student_id || `02000${String(s.student_number).padStart(6, "0")}`;
+        return [
+          idx + 1,
+          id,
+          s.name,
+          attendance,
+          s.status,
+          score,
+          maxScore,
+          pct,
+          s.violations || 0,
+          subAt,
+        ].join("\t");
+      });
+      textToCopy = [headers.join("\t"), ...rows].join("\n");
+      setCopiedType("Table Copied!");
+    }
+
     try {
-      await navigator.clipboard.writeText(tsv);
-      setCopiedClipboard(true);
-      setTimeout(() => setCopiedClipboard(false), 2500);
+      await navigator.clipboard.writeText(textToCopy);
+      setTimeout(() => setCopiedType(null), 3000);
     } catch {
       alert("Unable to copy to clipboard automatically. Try exporting to Excel.");
+      setCopiedType(null);
     }
   };
 
@@ -318,6 +357,22 @@ export function LiveExamMonitorModal({
   const totalFullscreenExits = data?.students.reduce((sum, s) => sum + (s.fullscreen_exits || 0), 0) ?? 0;
   const violationStudents = data?.students.filter((s) => s.tab_switches > 0 || s.fullscreen_exits > 0) ?? [];
 
+  const gradedStudents = useMemo(() => {
+    return (data?.students ?? []).filter((s) => s.status === "SUBMITTED" && s.total_score !== null);
+  }, [data?.students]);
+
+  const classAverage = useMemo(() => {
+    if (data?.class_average !== undefined && data.class_average > 0) return data.class_average;
+    if (gradedStudents.length === 0) return 0;
+    const sum = gradedStudents.reduce((acc, s) => acc + (s.total_score || 0), 0);
+    return Number((sum / gradedStudents.length).toFixed(1));
+  }, [data?.class_average, gradedStudents]);
+
+  const classAveragePct = useMemo(() => {
+    const totalQ = totalQuestions > 0 ? totalQuestions : 50;
+    return Number(((classAverage / totalQ) * 100).toFixed(1));
+  }, [classAverage, totalQuestions]);
+
   const presentCount = (data?.students ?? []).filter((s) => s.status !== "NOT_JOINED").length;
   const absentCount = (data?.students ?? []).filter((s) => s.status === "NOT_JOINED").length;
 
@@ -326,7 +381,8 @@ export function LiveExamMonitorModal({
     return (data?.students ?? []).filter((s) => {
       const matchesSearch =
         s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        String(s.student_number).includes(searchQuery);
+        String(s.student_number).includes(searchQuery) ||
+        (s.full_student_id && s.full_student_id.toLowerCase().includes(searchQuery.toLowerCase()));
 
       if (!matchesSearch) return false;
 
@@ -387,7 +443,7 @@ export function LiveExamMonitorModal({
               {examTitle}
             </h2>
             <p className="text-xs text-text-muted mt-0.5">
-              Live attendance, proctored focus detection, and instant section records.
+              Live attendance, proctored focus detection, student answers, and instant gradebook records.
             </p>
           </div>
 
@@ -498,7 +554,7 @@ export function LiveExamMonitorModal({
               type="button"
               onClick={onClose}
               className="rounded-xl bg-surface-subtle p-2 text-text-muted hover:text-text-primary hover:bg-surface-muted transition-colors cursor-pointer"
-              title="Close Monitor"
+              title="Close"
             >
               <X className="h-5 w-5" />
             </button>
@@ -545,7 +601,7 @@ export function LiveExamMonitorModal({
             </div>
           </div>
 
-          {/* Metric Chips with Present vs Absent */}
+          {/* Metric Chips: Adapts to Active Exam vs Final Gradebook */}
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
             <div
               onClick={() => setStatusFilter("present")}
@@ -588,46 +644,83 @@ export function LiveExamMonitorModal({
               </div>
             </div>
 
-            <div
-              onClick={() => setStatusFilter("in_lobby")}
-              className={`rounded-2xl border p-3 flex items-center justify-between cursor-pointer transition-all ${
-                statusFilter === "in_lobby"
-                  ? "border-tan bg-tan-ghost shadow-sm"
-                  : "border-border-default bg-surface-base hover:border-tan-border"
-              }`}
-            >
-              <div>
-                <span className="text-[11px] text-text-muted block font-medium">In Lobby (Ready)</span>
-                <strong className="text-lg font-black text-tan">
-                  {data?.counts.in_lobby || 0}{" "}
-                  <span className="text-[10px] text-text-muted font-normal">
-                    ({data?.counts.ready || 0} ready)
-                  </span>
-                </strong>
-              </div>
-              <div className="h-8 w-8 rounded-xl bg-tan-ghost text-tan border border-tan-border flex items-center justify-center">
-                <Clock className="h-4 w-4" />
-              </div>
-            </div>
+            {data?.is_online_active ? (
+              <>
+                <div
+                  onClick={() => setStatusFilter("in_lobby")}
+                  className={`rounded-2xl border p-3 flex items-center justify-between cursor-pointer transition-all ${
+                    statusFilter === "in_lobby"
+                      ? "border-tan bg-tan-ghost shadow-sm"
+                      : "border-border-default bg-surface-base hover:border-tan-border"
+                  }`}
+                >
+                  <div>
+                    <span className="text-[11px] text-text-muted block font-medium">In Lobby (Ready)</span>
+                    <strong className="text-lg font-black text-tan">
+                      {data?.counts.in_lobby || 0}{" "}
+                      <span className="text-[10px] text-text-muted font-normal">
+                        ({data?.counts.ready || 0} ready)
+                      </span>
+                    </strong>
+                  </div>
+                  <div className="h-8 w-8 rounded-xl bg-tan-ghost text-tan border border-tan-border flex items-center justify-center">
+                    <Clock className="h-4 w-4" />
+                  </div>
+                </div>
 
-            <div
-              onClick={() => setStatusFilter("taking")}
-              className={`rounded-2xl border p-3 flex items-center justify-between cursor-pointer transition-all ${
-                statusFilter === "taking"
-                  ? "border-steel bg-steel-ghost shadow-sm"
-                  : "border-border-default bg-surface-base hover:border-steel-border"
-              }`}
-            >
-              <div>
-                <span className="text-[11px] text-text-muted block font-medium">Currently Taking</span>
-                <strong className="text-lg font-black text-steel">
-                  {data?.counts.taking || 0}
-                </strong>
-              </div>
-              <div className="h-8 w-8 rounded-xl bg-steel-ghost text-steel border border-steel-border flex items-center justify-center">
-                <Monitor className="h-4 w-4" />
-              </div>
-            </div>
+                <div
+                  onClick={() => setStatusFilter("taking")}
+                  className={`rounded-2xl border p-3 flex items-center justify-between cursor-pointer transition-all ${
+                    statusFilter === "taking"
+                      ? "border-steel bg-steel-ghost shadow-sm"
+                      : "border-border-default bg-surface-base hover:border-steel-border"
+                  }`}
+                >
+                  <div>
+                    <span className="text-[11px] text-text-muted block font-medium">Currently Taking</span>
+                    <strong className="text-lg font-black text-steel">
+                      {data?.counts.taking || 0}
+                    </strong>
+                  </div>
+                  <div className="h-8 w-8 rounded-xl bg-steel-ghost text-steel border border-steel-border flex items-center justify-center">
+                    <Monitor className="h-4 w-4" />
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div
+                  className="rounded-2xl border border-border-default bg-surface-base p-3 flex items-center justify-between"
+                >
+                  <div>
+                    <span className="text-[11px] text-text-muted block font-medium">Class Average</span>
+                    <strong className="text-lg font-black text-tan">
+                      {classAverage}{" "}
+                      <span className="text-[10px] text-text-muted font-normal">
+                        / {totalQuestions}
+                      </span>
+                    </strong>
+                  </div>
+                  <div className="h-8 w-8 rounded-xl bg-tan-ghost text-tan border border-tan-border flex items-center justify-center">
+                    <Award className="h-4 w-4" />
+                  </div>
+                </div>
+
+                <div
+                  className="rounded-2xl border border-border-default bg-surface-base p-3 flex items-center justify-between"
+                >
+                  <div>
+                    <span className="text-[11px] text-text-muted block font-medium">Average %</span>
+                    <strong className="text-lg font-black text-sage">
+                      {classAveragePct}%
+                    </strong>
+                  </div>
+                  <div className="h-8 w-8 rounded-xl bg-sage-ghost text-sage border border-sage-border flex items-center justify-center">
+                    <CheckCircle2 className="h-4 w-4" />
+                  </div>
+                </div>
+              </>
+            )}
 
             <div
               onClick={() => setStatusFilter("submitted")}
@@ -696,15 +789,19 @@ export function LiveExamMonitorModal({
         )}
 
         {/* ── Filter Toolbar, Search, & Export Tools ────────────────── */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 px-4 sm:px-6 pt-3 pb-2 shrink-0">
-          {/* Status Filter Chips */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+        <div className="flex flex-col gap-2.5 px-4 sm:px-6 pt-3 pb-2.5 shrink-0 border-b border-border-default/50">
+          {/* Row 1: Status Filter Chips - full width with flex-wrap to prevent any cut-off */}
+          <div className="flex items-center gap-1.5 flex-wrap">
             {[
               { id: "all", label: `All (${data?.students.length || 0})` },
               { id: "present", label: `Present (${presentCount})` },
               { id: "absent", label: `Absent (${absentCount})` },
-              { id: "in_lobby", label: `In Lobby (${data?.counts.in_lobby || 0})` },
-              { id: "taking", label: `Taking (${data?.counts.taking || 0})` },
+              ...(data?.is_online_active
+                ? [
+                    { id: "in_lobby", label: `In Lobby (${data?.counts.in_lobby || 0})` },
+                    { id: "taking", label: `Taking (${data?.counts.taking || 0})` },
+                  ]
+                : []),
               { id: "submitted", label: `Submitted (${data?.counts.submitted || 0})` },
               { id: "violations", label: `Violations (${violationStudents.length})` },
             ].map((tab) => (
@@ -712,9 +809,9 @@ export function LiveExamMonitorModal({
                 key={tab.id}
                 type="button"
                 onClick={() => setStatusFilter(tab.id as typeof statusFilter)}
-                className={`px-3 py-1 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
                   statusFilter === tab.id
-                    ? "bg-steel text-white shadow-sm"
+                    ? "bg-steel text-white shadow-sm ring-1 ring-steel"
                     : "bg-surface-subtle text-text-muted hover:text-text-primary hover:bg-surface-muted"
                 }`}
               >
@@ -723,73 +820,124 @@ export function LiveExamMonitorModal({
             ))}
           </div>
 
-          {/* Search + View Toggle + Excel Tools */}
-          <div className="flex items-center flex-wrap gap-2">
-            <input
-              type="text"
-              placeholder="Search student..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="rounded-xl border border-border-default bg-surface-base px-3 py-1.5 text-xs text-text-primary placeholder:text-text-faint focus:border-steel focus:outline-none transition-all w-32 sm:w-44"
-            />
-
-            <div className="flex items-center rounded-xl bg-surface-subtle p-0.5 border border-border-default">
-              <button
-                type="button"
-                onClick={() => setViewMode("grid")}
-                className={`p-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  viewMode === "grid" ? "bg-surface-raised text-steel shadow-sm" : "text-text-muted hover:text-text-primary"
-                }`}
-                title="Student Cards Gallery"
-              >
-                Grid
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode("table")}
-                className={`p-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  viewMode === "table" ? "bg-surface-raised text-steel shadow-sm" : "text-text-muted hover:text-text-primary"
-                }`}
-                title="Detailed Audit Table"
-              >
-                Table
-              </button>
+          {/* Row 2: Search Input + View Toggle + Quick Copy for Excel + Export Excel */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div className="relative flex-1 max-w-xs">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted" />
+              <input
+                type="text"
+                placeholder="Search student or ID..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full rounded-xl border border-border-default bg-surface-base pl-8 pr-3 py-1.5 text-xs text-text-primary placeholder:text-text-faint focus:border-steel focus:outline-none transition-all"
+              />
             </div>
 
-            {/* Excel & Copy Tools */}
-            <button
-              type="button"
-              onClick={handleCopyForExcel}
-              className="flex items-center gap-1.5 rounded-xl border border-border-default bg-surface-subtle px-3 py-1.5 text-xs font-semibold text-text-secondary hover:text-text-primary hover:bg-surface-muted transition-colors cursor-pointer"
-              title="Copy records to clipboard for Excel / Google Sheets"
-            >
-              {copiedClipboard ? (
-                <>
-                  <Check className="h-3.5 w-3.5 text-sage" />
-                  <span className="text-sage font-bold">Copied!</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="h-3.5 w-3.5 text-tan" />
-                  <span>Copy</span>
-                </>
-              )}
-            </button>
+            <div className="flex items-center flex-wrap gap-2">
+              <div className="flex items-center rounded-xl bg-surface-subtle p-0.5 border border-border-default">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("grid")}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    viewMode === "grid" ? "bg-surface-raised text-steel shadow-sm" : "text-text-muted hover:text-text-primary"
+                  }`}
+                  title="Student Cards Gallery"
+                >
+                  Grid
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("table")}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    viewMode === "table" ? "bg-surface-raised text-steel shadow-sm" : "text-text-muted hover:text-text-primary"
+                  }`}
+                  title="Detailed Gradebook Table"
+                >
+                  Table
+                </button>
+              </div>
 
-            <button
-              type="button"
-              onClick={handleExportExcel}
-              disabled={exportingExcel}
-              className="flex items-center gap-1.5 rounded-xl bg-sage-ghost text-sage border border-sage-border hover:bg-sage/20 px-3 py-1.5 text-xs font-bold transition-colors cursor-pointer disabled:opacity-50"
-              title="Download full class gradebook (.xlsx) including absent students"
-            >
-              {exportingExcel ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-sage" />
-              ) : (
-                <FileSpreadsheet className="h-3.5 w-3.5 text-sage" />
-              )}
-              <span>Export Excel</span>
-            </button>
+              {/* Copy Grades Tool for Excel with Dropdown */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setCopyMenuOpen(!copyMenuOpen)}
+                  className={`flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-xs font-bold transition-all cursor-pointer shadow-xs ${
+                    copiedType
+                      ? "bg-sage-ghost text-sage border-sage-border"
+                      : "bg-surface-subtle text-text-secondary border-border-default hover:bg-surface-muted hover:text-text-primary"
+                  }`}
+                  title="Copy grades formatted for pasting directly into Excel"
+                >
+                  {copiedType ? (
+                    <>
+                      <Check className="h-3.5 w-3.5 text-sage" />
+                      <span>{copiedType}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3.5 w-3.5 text-tan" />
+                      <span>Copy Grades</span>
+                      <ChevronDown className="h-3 w-3 text-text-muted" />
+                    </>
+                  )}
+                </button>
+
+                {copyMenuOpen && (
+                  <div className="absolute right-0 mt-1.5 w-64 rounded-2xl border border-border-default bg-surface-raised shadow-xl p-1.5 z-30 animate-in fade-in zoom-in-95 space-y-1">
+                    <button
+                      type="button"
+                      onClick={() => handleCopyGrades("scores")}
+                      className="w-full text-left p-2 rounded-xl text-xs hover:bg-surface-muted transition-colors flex flex-col gap-0.5 cursor-pointer"
+                    >
+                      <span className="font-bold text-text-primary flex items-center justify-between">
+                        <span>Copy Scores Only</span>
+                        <span className="text-[10px] text-sage font-mono bg-sage-ghost px-1.5 py-0.5 rounded">Ctrl+V</span>
+                      </span>
+                      <span className="text-[11px] text-text-muted leading-tight">
+                        Single column of scores. Highlight your Excel score column and paste directly.
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyGrades("table")}
+                      className="w-full text-left p-2 rounded-xl text-xs hover:bg-surface-muted transition-colors flex flex-col gap-0.5 cursor-pointer"
+                    >
+                      <span className="font-bold text-text-primary">Copy Full Gradebook Table</span>
+                      <span className="text-[11px] text-text-muted leading-tight">
+                        No., ID, Name, Attendance, Status, Score, Max, and Date.
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyGrades("id_score")}
+                      className="w-full text-left p-2 rounded-xl text-xs hover:bg-surface-muted transition-colors flex flex-col gap-0.5 cursor-pointer"
+                    >
+                      <span className="font-bold text-text-primary">Copy Student ID &amp; Score</span>
+                      <span className="text-[11px] text-text-muted leading-tight">
+                        2 columns, ideal for VLOOKUP in your class record.
+                      </span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Export full section records to Excel */}
+              <button
+                type="button"
+                onClick={handleExportExcel}
+                disabled={exportingExcel}
+                className="flex items-center gap-1.5 rounded-xl border border-sage-border bg-sage-ghost px-3 py-1.5 text-xs font-bold text-sage hover:bg-sage/20 transition-all cursor-pointer shadow-xs disabled:opacity-50"
+                title="Download official section gradebook and attendance spreadsheet (.xlsx)"
+              >
+                {exportingExcel ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-sage" />
+                ) : (
+                  <FileSpreadsheet className="h-3.5 w-3.5 text-sage" />
+                )}
+                <span>Export Excel</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -981,7 +1129,20 @@ export function LiveExamMonitorModal({
                     </div>
 
                     {/* Bottom Action Footer on Card */}
-                    <div className="pt-3 mt-2 border-t border-border-default/50 flex items-center justify-end gap-1.5">
+                    <div className="pt-3 mt-2 border-t border-border-default/50 flex items-center justify-end gap-1.5 flex-wrap">
+                      {student.scanned_image_url && (
+                        <a
+                          href={student.scanned_image_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 rounded-xl border border-tan-border/60 bg-tan-ghost px-2.5 py-1 text-[11px] font-bold text-tan hover:bg-tan/20 transition-all cursor-pointer"
+                          title="View scanned bubble sheet"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          Scan Sheet
+                        </a>
+                      )}
+
                       {student.status === "SUBMITTED" && student.answers && student.answers.length > 0 && (
                         <button
                           type="button"
@@ -1013,23 +1174,30 @@ export function LiveExamMonitorModal({
               })}
             </div>
           ) : (
-            /* ── DETAILED AUDIT TABLE VIEW ───────────────────────────── */
+            /* ── DETAILED GRADEBOOK & AUDIT TABLE VIEW ───────────────── */
             <div className="overflow-x-auto rounded-2xl border border-border-default">
               <table className="w-full text-left text-xs">
                 <thead className="bg-surface-base border-b border-border-default text-[11px] font-bold text-text-secondary uppercase tracking-wider">
                   <tr>
+                    <th className="py-3 px-3 text-center w-10">#</th>
                     <th className="py-3 px-4">Student</th>
-                    <th className="py-3 px-4 text-center">Attendance</th>
-                    <th className="py-3 px-4">Live Status</th>
-                    <th className="py-3 px-4">Screen / Focus Health</th>
-                    <th className="py-3 px-4">Violations</th>
-                    <th className="py-3 px-4">Score</th>
+                    <th className="py-3 px-3 text-center">Attendance</th>
+                    <th className="py-3 px-3 text-center">Status</th>
+                    <th className="py-3 px-4 text-center">Score</th>
+                    <th className="py-3 px-3 text-center">Percentage</th>
+                    <th className="py-3 px-4">Integrity / Focus</th>
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border-default/50 bg-surface-overlay">
-                  {filteredStudents.map((student) => {
+                <tbody className="divide-y divide-border-default/50 bg-surface-overlay font-mono">
+                  {filteredStudents.map((student, idx) => {
                     const isAbsent = student.status === "NOT_JOINED";
+                    const maxS = student.max_score || totalQuestions || 50;
+                    const pct =
+                      student.status === "SUBMITTED" && student.total_score !== null && maxS > 0
+                        ? Math.round(((student.total_score || 0) / maxS) * 100)
+                        : 0;
+
                     return (
                       <tr
                         key={student.student_id}
@@ -1037,14 +1205,16 @@ export function LiveExamMonitorModal({
                           isAbsent ? "bg-burgundy-ghost/10" : ""
                         }`}
                       >
-                        <td className="py-3 px-4">
+                        <td className="py-3 px-3 text-center text-text-muted">{idx + 1}</td>
+
+                        <td className="py-3 px-4 font-sans">
                           <div className="font-bold text-text-primary">{student.name}</div>
                           <div className="font-mono text-[10px] text-text-muted">
-                            ID: 02000{String(student.student_number).padStart(6, "0")}
+                            ID: {student.full_student_id || `02000${String(student.student_number).padStart(6, "0")}`}
                           </div>
                         </td>
 
-                        <td className="py-3 px-4 text-center">
+                        <td className="py-3 px-3 text-center font-sans">
                           {isAbsent ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-burgundy-ghost px-2.5 py-0.5 text-[10px] font-bold text-burgundy-light border border-burgundy-border">
                               <UserX className="h-3 w-3" />
@@ -1058,18 +1228,18 @@ export function LiveExamMonitorModal({
                           )}
                         </td>
 
-                        <td className="py-3 px-4">
+                        <td className="py-3 px-3 text-center font-sans">
                           {isAbsent ? (
-                            <span className="text-text-faint text-[11px]">Did not attend</span>
+                            <span className="text-text-faint text-[11px]">Marked 0</span>
                           ) : student.status === "SUBMITTED" ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-sage-ghost px-2.5 py-0.5 text-[10px] font-bold text-sage border border-sage-border">
                               <CheckCircle2 className="h-3 w-3" />
-                              Submitted
+                              Graded
                             </span>
                           ) : student.status === "TAKING" ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-steel-ghost px-2.5 py-0.5 text-[10px] font-bold text-steel border border-steel-border animate-pulse">
                               <Monitor className="h-3 w-3" />
-                              Taking Exam
+                              Taking
                             </span>
                           ) : student.status === "IN_LOBBY" ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-tan-ghost px-2.5 py-0.5 text-[10px] font-bold text-tan border border-tan-border">
@@ -1078,50 +1248,75 @@ export function LiveExamMonitorModal({
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 rounded-full bg-surface-base px-2 py-0.5 text-[10px] font-semibold text-text-faint border border-border-default">
-                              Disconnected
+                              Offline
                             </span>
                           )}
                         </td>
 
-                        <td className="py-3 px-4">
+                        <td className="py-3 px-4 text-center font-mono">
                           {isAbsent ? (
-                            <span className="text-text-faint">—</span>
-                          ) : (student.status === "IN_LOBBY" || student.status === "TAKING") ? (
-                            <span className={student.is_fullscreen ? "text-sage font-semibold" : "text-burgundy-light font-bold"}>
-                              {student.is_fullscreen ? "Fullscreen" : "Windowed"} • {student.is_focused ? "Active" : "Unfocused"}
+                            <span className="font-bold text-burgundy-light">0 / {totalQuestions}</span>
+                          ) : student.status === "SUBMITTED" ? (
+                            <span className="font-bold text-text-primary">
+                              {student.total_score}{" "}
+                              <span className="text-text-muted font-normal">/ {maxS}</span>
+                            </span>
+                          ) : (
+                            <span className="text-text-muted text-[11px] font-sans">In progress</span>
+                          )}
+                        </td>
+
+                        <td className="py-3 px-3 text-center font-mono">
+                          {isAbsent ? (
+                            <span className="text-text-muted">0.0%</span>
+                          ) : student.status === "SUBMITTED" ? (
+                            <span
+                              className={`font-bold ${
+                                pct >= 75 ? "text-sage" : pct >= 50 ? "text-tan" : "text-burgundy-light"
+                              }`}
+                            >
+                              {pct}%
                             </span>
                           ) : (
                             <span className="text-text-faint">—</span>
                           )}
                         </td>
 
-                        <td className="py-3 px-4">
+                        <td className="py-3 px-4 font-sans">
                           {isAbsent ? (
-                            <span className="text-text-faint">—</span>
+                            <span className="text-text-faint text-[11px]">Did not attend</span>
                           ) : student.tab_switches > 0 ? (
                             <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-lg border text-burgundy-light bg-burgundy-ghost border-burgundy-border">
                               <AlertTriangle className="h-3.5 w-3.5" />
                               {student.tab_switches} alt-tab{student.tab_switches === 1 ? "" : "s"}
                             </span>
-                          ) : (
-                            <span className="text-text-muted text-[11px]">0 violations</span>
-                          )}
-                        </td>
-
-                        <td className="py-3 px-4 font-mono">
-                          {isAbsent ? (
-                            <span className="font-bold text-burgundy-light">0 / {totalQuestions}</span>
-                          ) : student.status === "SUBMITTED" ? (
-                            <span className="font-bold text-sage">
-                              {student.total_score} / {student.max_score || totalQuestions}
+                          ) : student.status === "IN_LOBBY" || student.status === "TAKING" ? (
+                            <span
+                              className={`text-[11px] font-medium ${
+                                student.is_fullscreen ? "text-sage" : "text-burgundy-light font-bold"
+                              }`}
+                            >
+                              {student.is_fullscreen ? "Fullscreen Locked" : "Windowed"}
                             </span>
                           ) : (
-                            <span className="text-text-muted text-[11px]">In progress</span>
+                            <span className="text-text-muted text-[11px]">No violations</span>
                           )}
                         </td>
 
-                        <td className="py-3 px-4 text-right">
+                        <td className="py-3 px-4 text-right font-sans">
                           <div className="inline-flex items-center gap-1.5">
+                            {student.scanned_image_url && (
+                              <a
+                                href={student.scanned_image_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 rounded-lg border border-tan-border/60 bg-tan-ghost px-2 py-1 text-xs font-bold text-tan hover:bg-tan/20 transition-all cursor-pointer"
+                                title="View scanned bubble sheet"
+                              >
+                                <span>Scan</span>
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
+                            )}
                             {student.status === "SUBMITTED" && student.answers && student.answers.length > 0 && (
                               <button
                                 type="button"
@@ -1157,9 +1352,10 @@ export function LiveExamMonitorModal({
         {/* ── Footer note ────────────────────────────────────────────── */}
         <div className="p-4 border-t border-border-default bg-surface-base flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs text-text-muted shrink-0">
           <div className="flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-tan shrink-0" />
+            <ShieldCheck className="h-4 w-4 text-steel shrink-0" />
             <span>
-              <strong>Lobby Workflow:</strong> Direct students to log in and join the lobby. Lock the lobby when class starts to block latecomers.
+              Showing <strong className="text-text-primary">{filteredStudents.length}</strong> of{" "}
+              {data?.total_students || 0} enrolled students
             </span>
           </div>
 
@@ -1169,16 +1365,21 @@ export function LiveExamMonitorModal({
               onClick={handleExportExcel}
               disabled={exportingExcel}
               className="rounded-xl border border-sage-border bg-sage-ghost px-3 py-1.5 text-xs font-bold text-sage hover:bg-sage/20 transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+              title="Download official section gradebook (.xlsx)"
             >
-              <FileSpreadsheet className="h-3.5 w-3.5" />
-              <span>Export Roster to Excel</span>
+              {exportingExcel ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <FileSpreadsheet className="h-3.5 w-3.5" />
+              )}
+              <span>Export to Excel (.xlsx)</span>
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl border border-border-default bg-surface-subtle px-4 py-1.5 text-xs font-semibold text-text-secondary hover:bg-surface-muted transition-colors cursor-pointer"
+              className="rounded-xl border border-border-default bg-surface-subtle px-4 py-1.5 text-xs font-semibold text-text-secondary hover:text-text-primary hover:bg-surface-muted transition-colors cursor-pointer"
             >
-              Close Monitor
+              Close
             </button>
           </div>
         </div>
