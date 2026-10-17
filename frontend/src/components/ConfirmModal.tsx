@@ -1,6 +1,7 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { AlertCircle } from "lucide-react";
 
 interface ConfirmModalProps {
@@ -26,7 +27,27 @@ export function ConfirmModal({
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
-  if (!isOpen) return null;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen, onCancel]);
+
+  if (!isOpen || !mounted) return null;
 
   const variantColors = {
     danger: "bg-burgundy hover:bg-burgundy-light text-white shadow-burgundy/20",
@@ -40,9 +61,17 @@ export function ConfirmModal({
     warning: "bg-cream-ghost text-cream border-cream-border",
   };
 
-  return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
-      <div className="w-full max-w-sm rounded-3xl border border-border-default bg-surface-overlay p-6 shadow-2xl space-y-4">
+  return createPortal(
+    <div
+      className="fixed inset-0 z-60 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onCancel();
+      }}
+    >
+      <div
+        className="w-full max-w-sm rounded-3xl border border-border-default bg-[#ffffff] dark:bg-[#141d26] p-6 shadow-2xl space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center gap-3.5">
           <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border ${iconColors[variant]}`}>
             {icon ? (
@@ -63,19 +92,20 @@ export function ConfirmModal({
           <button
             type="button"
             onClick={onCancel}
-            className="flex-1 rounded-2xl border border-border-default bg-surface-base py-2.5 text-xs font-semibold text-text-secondary hover:bg-surface-subtle transition-colors"
+            className="flex-1 rounded-2xl border border-border-default bg-surface-base py-2.5 text-xs font-semibold text-text-secondary hover:bg-surface-subtle transition-colors cursor-pointer"
           >
             {cancelText}
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className={`flex-1 rounded-2xl py-2.5 text-xs font-semibold shadow-lg transition-all ${variantColors[variant]}`}
+            className={`flex-1 rounded-2xl py-2.5 text-xs font-semibold shadow-lg transition-all cursor-pointer ${variantColors[variant]}`}
           >
             {confirmText}
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

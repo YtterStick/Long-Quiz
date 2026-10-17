@@ -169,7 +169,7 @@ export default function StudentReviewerPage() {
 
         {/* ── Mode 1: AI Handout Reviewer Deck Engine ───────────── */}
         {mode === "ai_handout" && (
-          <div className="rv-fade">
+          <div>
             <StudentHandoutReviewer />
           </div>
         )}

@@ -428,7 +428,7 @@ select:disabled {
   from { opacity: 0; transform: scale(0.96) translateY(-4px); }
   to { opacity: 1; transform: none; }
 }
-.rv-fade { animation: rv-fade-up 0.28s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.rv-fade { animation: rv-fade-up 0.28s cubic-bezier(0.2, 0.7, 0.2, 1); }
 .rv-pop { animation: rv-pop-in 0.16s ease-out both; transform-origin: top right; }
 
 .rv-btn-primary {

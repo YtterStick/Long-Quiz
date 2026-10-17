@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   Plus,
@@ -34,12 +35,31 @@ export function CustomDeckModal({
   initialDeck,
   onSaved,
 }: CustomDeckModalProps) {
+  const [mounted, setMounted] = useState(false);
   const isEditing = Boolean(initialDeck);
 
   const [title, setTitle] = useState("");
   const [topicName, setTopicName] = useState("");
   const [topicDescription, setTopicDescription] = useState("");
   const [activeModalTab, setActiveModalTab] = useState<"flashcards" | "pointers">("flashcards");
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen, onClose]);
 
   // Editable flashcards
   const [cards, setCards] = useState<ReviewerFlashcard[]>([]);
@@ -239,11 +259,19 @@ export function CustomDeckModal({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-5 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
-      <div className="relative w-full max-w-3xl max-h-[92vh] sm:max-h-[88vh] max-sm:rounded-t-3xl max-sm:pb-6 sm:rounded-3xl bg-surface-raised dark:bg-slate-900 border border-border-default dark:border-slate-800 shadow-2xl p-5 sm:p-7 flex flex-col overflow-hidden">
-        {/* Mobile Drag Indicator */}
-        <div className="w-10 h-1 rounded-full bg-slate-300 dark:bg-slate-700 mx-auto -mt-1 mb-3 sm:hidden" />
+  if (!isOpen || !mounted) return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-3.5 sm:p-5 bg-black/60 backdrop-blur-xs animate-fadeIn"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        className="relative w-full max-w-3xl max-h-[90vh] rounded-3xl bg-surface-raised dark:bg-[#141d26] border border-border-default shadow-2xl p-5 sm:p-7 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
 
         {/* Modal Header */}
         <div className="flex items-center justify-between pb-3.5 border-b border-border-default dark:border-slate-800 shrink-0">
@@ -531,6 +559,7 @@ export function CustomDeckModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

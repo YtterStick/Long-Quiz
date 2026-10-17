@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import {
   UploadCloud,
   FileText,
@@ -1904,24 +1905,29 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
       />
 
       {/* Create Folder Modal */}
-      {createFolderModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
-          <div className="relative w-full max-sm:rounded-t-3xl max-h-[90vh] sm:max-w-sm sm:rounded-3xl bg-surface-raised dark:bg-slate-900 border border-border-default dark:border-slate-800 shadow-2xl p-5 sm:p-6 space-y-4 overflow-y-auto animate-in slide-in-from-bottom sm:slide-in-from-bottom-0 duration-200">
-            {/* Mobile Drag Handle */}
-            <div className="w-10 h-1 rounded-full bg-slate-300 dark:bg-slate-700 mx-auto -mt-1 mb-2 sm:hidden" />
-
-            <div className="flex items-center justify-between pb-3 border-b border-border-default dark:border-slate-800">
+      {createFolderModalOpen && typeof document !== "undefined" && createPortal(
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3.5 sm:p-4 bg-black/60 backdrop-blur-xs animate-fadeIn"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setCreateFolderModalOpen(false);
+          }}
+        >
+          <div
+            className="relative w-full max-sm:rounded-3xl max-h-[90vh] sm:max-w-sm sm:rounded-3xl bg-surface-raised dark:bg-[#141d26] border border-border-default shadow-2xl p-5 sm:p-6 space-y-4 overflow-y-auto animate-in fade-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-border-default">
               <div className="flex items-center gap-2">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-steel-ghost text-steel border border-steel-border">
                   <FolderPlus className="h-4 w-4" />
                 </div>
-                <h3 className="text-sm font-bold text-text-primary dark:text-slate-100">
+                <h3 className="text-sm font-bold text-text-primary">
                   New Study Folder
                 </h3>
               </div>
               <button
                 onClick={() => setCreateFolderModalOpen(false)}
-                className="p-1 rounded-lg text-text-muted hover:text-text-primary"
+                className="p-1 rounded-lg text-text-muted hover:text-text-primary cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -1929,7 +1935,7 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
 
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-bold text-text-secondary dark:text-slate-300 mb-1">
+                <label className="block text-xs font-bold text-text-secondary mb-1">
                   Folder Name
                 </label>
                 <input
@@ -1937,13 +1943,13 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
                   value={newFolderName}
                   onChange={(e) => setNewFolderName(e.target.value)}
                   placeholder="e.g. Database Systems, Web Dev, Midterms"
-                  className="w-full p-2.5 bg-surface-base dark:bg-slate-800/80 border border-border-default dark:border-slate-700 rounded-xl text-xs text-text-primary dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-steel/30"
+                  className="w-full p-2.5 bg-surface-base border border-border-default rounded-xl text-xs text-text-primary focus:outline-none focus:border-steel"
                   autoFocus
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-text-secondary dark:text-slate-300 mb-1.5">
+                <label className="block text-xs font-bold text-text-secondary mb-1.5">
                   Folder Color Tag
                 </label>
                 <div className="flex items-center gap-2.5">
@@ -1977,7 +1983,7 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
               </div>
             </div>
 
-            <div className="flex gap-2 pt-2 border-t border-border-default dark:border-slate-800">
+            <div className="flex gap-2 pt-2 border-t border-border-default">
               <button
                 type="button"
                 onClick={() => setCreateFolderModalOpen(false)}
@@ -1995,23 +2001,29 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Move Deck Modal */}
-      {movingDeck && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
-          <div className="relative w-full max-sm:rounded-t-3xl max-h-[90vh] sm:max-w-sm sm:rounded-3xl bg-surface-raised dark:bg-slate-900 border border-border-default dark:border-slate-800 shadow-2xl p-5 sm:p-6 space-y-4 overflow-y-auto animate-in slide-in-from-bottom sm:slide-in-from-bottom-0 duration-200">
-            {/* Mobile Drag Handle */}
-            <div className="w-10 h-1 rounded-full bg-slate-300 dark:bg-slate-700 mx-auto -mt-1 mb-2 sm:hidden" />
-
-            <div className="flex items-center justify-between pb-3 border-b border-border-default dark:border-slate-800">
+      {movingDeck && typeof document !== "undefined" && createPortal(
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-3.5 sm:p-4 bg-black/60 backdrop-blur-xs animate-fadeIn"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setMovingDeck(null);
+          }}
+        >
+          <div
+            className="relative w-full max-sm:rounded-3xl max-h-[90vh] sm:max-w-sm sm:rounded-3xl bg-surface-raised dark:bg-[#141d26] border border-border-default shadow-2xl p-5 sm:p-6 space-y-4 overflow-y-auto animate-in fade-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-border-default">
               <div className="flex items-center gap-2">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-steel-ghost text-steel border border-steel-border">
                   <MoveRight className="h-4 w-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-text-primary dark:text-slate-100">
+                  <h3 className="text-sm font-bold text-text-primary">
                     Move to Folder
                   </h3>
                   <p className="text-[11px] text-text-muted truncate max-w-50">
@@ -2039,7 +2051,7 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
                     className={`w-full flex items-center justify-between p-2.5 rounded-xl border text-left transition cursor-pointer ${
                       isCurrent
                         ? "bg-steel-ghost/40 border-steel text-steel font-bold"
-                        : "bg-surface-base dark:bg-slate-800/60 border-border-default dark:border-slate-700 hover:border-steel text-text-primary"
+                        : "bg-surface-base border-border-default hover:border-steel text-text-primary"
                     }`}
                   >
                     <div className="flex items-center gap-2">
@@ -2054,7 +2066,7 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
               })}
             </div>
 
-            <div className="pt-2 border-t border-border-default dark:border-slate-800 flex justify-end">
+            <div className="pt-2 border-t border-border-default flex justify-end">
               <button
                 type="button"
                 onClick={() => setMovingDeck(null)}
@@ -2064,7 +2076,8 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Confirm Delete Folder Modal */}
