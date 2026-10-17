@@ -26,6 +26,7 @@ import {
 } from "@/lib/api";
 import { StudentAvatar } from "@/components/avatar/StudentAvatar";
 import { parseAvatarConfig } from "@/types/avatar";
+import { SkeletonFriendsCircle, Skeleton } from "@/components/ui/Skeleton";
 
 interface StudentFriendsCircleProps {
   onOpenReviewerWithDeck?: (deck: any) => void;
@@ -151,12 +152,7 @@ export function StudentFriendsCircle({ onOpenReviewerWithDeck }: StudentFriendsC
   };
 
   if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-text-muted">
-        <Loader2 className="w-8 h-8 animate-spin text-steel mb-3" />
-        <p className="text-sm font-medium">Connecting to your Study Circle...</p>
-      </div>
-    );
+    return <SkeletonFriendsCircle />;
   }
 
   return (
@@ -213,7 +209,22 @@ export function StudentFriendsCircle({ onOpenReviewerWithDeck }: StudentFriendsC
             <h4 className="text-xs font-bold uppercase tracking-wider text-text-muted mb-3">
               Search Results ({searchResults.length})
             </h4>
-            {searchResults.length === 0 && !isSearching ? (
+            {isSearching && searchResults.length === 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="flex items-center justify-between p-3.5 rounded-xl border border-border-default bg-surface-base/80">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Skeleton className="h-10 w-10 rounded-full shrink-0" />
+                      <div className="space-y-1.5 min-w-0">
+                        <Skeleton className="h-3.5 w-28" />
+                        <Skeleton className="h-2.5 w-16" />
+                      </div>
+                    </div>
+                    <Skeleton className="h-7 w-20 rounded-full shrink-0" />
+                  </div>
+                ))}
+              </div>
+            ) : searchResults.length === 0 ? (
               <p className="text-sm text-text-muted py-3 text-center">
                 No students found matching &quot;{searchQuery}&quot;.
               </p>

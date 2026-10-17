@@ -43,6 +43,7 @@ import {
 } from "lucide-react";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
 import {
+  Skeleton,
   SkeletonTable,
   SkeletonStudentStats,
   SkeletonDashboardPage,
@@ -876,7 +877,7 @@ export default function StudentDashboard() {
 
   const showPasswordReset = mustResetPassword || Boolean(user?.must_change_password);
 
-  if (!mounted || authLoading) {
+  if (!mounted || authLoading || (loading && !info)) {
     return <SkeletonDashboardPage role="student" />;
   }
 
@@ -1062,7 +1063,9 @@ export default function StudentDashboard() {
                 </button>
               </div>
 
-              {availableExams.length === 0 ? (
+              {loading ? (
+                <SkeletonStudentExamGrid count={2} />
+              ) : availableExams.length === 0 ? (
                 <div className="py-8 text-center border-2 border-dashed border-border-default rounded-2xl p-4 space-y-1">
                   <p className="text-xs font-semibold text-text-secondary">No Online Exams Currently Open</p>
                   <p className="text-[11px] text-text-muted">
@@ -1145,7 +1148,9 @@ export default function StudentDashboard() {
                 </button>
               </div>
 
-              {grades.length === 0 ? (
+              {loading ? (
+                <SkeletonGradeCards count={2} />
+              ) : grades.length === 0 ? (
                 <div className="py-8 text-center border-2 border-dashed border-border-default rounded-2xl p-4 space-y-1">
                   <p className="text-xs font-semibold text-text-secondary">No Graded Submissions Yet</p>
                   <p className="text-[11px] text-text-muted">
