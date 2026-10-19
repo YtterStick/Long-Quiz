@@ -149,7 +149,24 @@ class StudentResetPasswordResponse(BaseModel):
 
 class StudentBulkCreateResponse(BaseModel):
     created: int
+    skipped: Optional[int] = 0
+    total: Optional[int] = 0
     students: List[StudentOut]
+    errors: Optional[List[str]] = None
+
+
+class StudentBatchCreate(BaseModel):
+    """Batch account creation: register many student accounts in one request."""
+    section_id: Optional[str] = None
+    students: List[StudentCSVRow] = Field(..., min_length=1, max_length=500)
+
+
+class StudentUpdate(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    student_number: Optional[Union[int, str]] = None
+    section_id: Optional[str] = None
+    is_active: Optional[bool] = None
 
 
 # ─── Exam ─────────────────────────────────────────────────────

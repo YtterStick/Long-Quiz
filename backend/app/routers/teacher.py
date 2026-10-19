@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, update, delete, String
 from sqlalchemy.orm import selectinload, joinedload
-from typing import Optional
+from typing import Optional, Sequence, Union
 from app.database import get_db
 from app.models import (
     User, Teacher, Student, Section, Exam, ExamAnswerKey, ExamQuestion,
@@ -13,7 +13,7 @@ from app.models import (
 )
 from app.schemas import (
     SectionCreate, SectionUpdate, SectionOut,
-    StudentCreate, StudentOut, StudentBulkCreateResponse, EnrollStudent,
+    StudentCreate, StudentOut, StudentBulkCreateResponse, StudentBatchCreate, EnrollStudent,
     PasswordResetRequestOut, StudentResetPasswordResponse,
     ExamCreate, ExamUpdate, ExamOut, AnswerKeyItem,
     QuestionItem, QuestionOut, QuestionnaireUpdate, ExamVisibilityUpdate,
@@ -676,6 +676,141 @@ async def create_student(
     out = StudentOut.model_validate(student_out)
     out.temp_password = temp_password
     return out
+
+
+async def _batch_create_students(
+    rows: Sequence[tuple[str, str, Union[int, str, None]]],
+    section_id: Optional[str],
+    db: AsyncSession,
+) -> StudentBulkCreateResponse:
+    """
+    Shared batch account creator. Each row is (first_name, last_name, student_number|None).
+    Rows with invalid/duplicate explicit IDs are skipped and reported in `errors`
+    instead of aborting the whole batch.
+    """
+    created: list[StudentOut] = []
+    errors: list[str] = []
+    used_numbers: set[int] = set()
+
+    for idx, (first_name, last_name, raw_id) in enumerate(rows, start=1):
+        first_name = (first_name or "").strip()
+        last_name = (last_name or "").strip()
+        label = f"Row {idx} ({first_name} {last_name}".strip() + ")"
+        if not first_name or not last_name:
+            errors.append(f"Row {idx}: first and last name are required.")
+            continue
+
+        student_number: Optional[int] = None
+        if raw_id is not None and str(raw_id).strip():
+            try:
+                student_number = clean_student_omr_number(raw_id)
+            except ValueError as e:
+                errors.append(f"{label}: {e}")
+                continue
+            if student_number in used_numbers:
+                errors.append(f"{label}: duplicate ID {student_number:06d} in this batch.")
+                continue
+            exists = await db.execute(select(Student).where(Student.student_number == student_number))
+            if exists.scalar_one_or_none():
+                errors.append(
+                    f"{label}: ID {STATIC_STUDENT_PREFIX}{student_number:06d} is already registered."
+                )
+                continue
+        else:
+            student_number = generate_student_number()
+            while True:
+                exists = await db.execute(select(Student).where(Student.student_number == student_number))
+                if not exists.scalar_one_or_none() and student_number not in used_numbers:
+                    break
+                student_number = generate_student_number()
+        used_numbers.add(student_number)
+
+        temp_password = generate_temp_password()
+        username = generate_student_username(last_name, student_number)
+        suffix = 0
+        orig_username = username
+        while True:
+            exists = await db.execute(select(User).where(User.username == username))
+            if not exists.scalar_one_or_none():
+                break
+            suffix += 1
+            username = f"{orig_username}{suffix}"
+
+        user = User(
+            username=username,
+            password_hash=hash_password(temp_password),
+            role=Role.STUDENT,
+            first_name=first_name,
+            last_name=last_name,
+            must_change_password=True,
+        )
+        db.add(user)
+        await db.flush()
+
+        student = Student(user_id=user.id, student_number=student_number, section_id=section_id)
+        db.add(student)
+        await db.flush()
+
+        result = await db.execute(
+            select(Student)
+            .options(selectinload(Student.user), selectinload(Student.section))
+            .where(Student.id == student.id)
+        )
+        out = StudentOut.model_validate(result.scalar_one())
+        out.temp_password = temp_password
+        created.append(out)
+
+    return StudentBulkCreateResponse(
+        created=len(created),
+        skipped=len(errors),
+        total=len(rows),
+        students=created,
+        errors=errors or None,
+    )
+
+
+async def _verify_optional_section(section_id: Optional[str], current_user: User, db: AsyncSession) -> Optional[str]:
+    if not section_id:
+        return None
+    teacher = await _get_teacher(current_user, db)
+    sec = await db.execute(
+        select(Section).where(Section.id == section_id, Section.teacher_id == teacher.id)
+    )
+    if not sec.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Section not found")
+    return section_id
+
+
+@router.post("/students/batch", response_model=StudentBulkCreateResponse)
+async def batch_create_students(
+    body: StudentBatchCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Batch-register many student accounts at once (optionally enrolling them into a section)."""
+    section_id = await _verify_optional_section(body.section_id, current_user, db)
+    rows = [(r.first_name, r.last_name, r.student_number) for r in body.students]
+    return await _batch_create_students(rows, section_id, db)
+
+
+@router.post("/students/batch-upload", response_model=StudentBulkCreateResponse)
+async def batch_upload_students(
+    file: UploadFile = File(...),
+    section_id: Optional[str] = Form(None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Batch-register student accounts from an Excel/CSV file (columns: ID, Name). Section is optional."""
+    section_id = await _verify_optional_section(section_id, current_user, db)
+    content = await file.read()
+    parsed = parse_student_file(content, filename=file.filename or "")
+    if not parsed:
+        raise HTTPException(
+            status_code=400,
+            detail="No valid student records found in file. Please ensure the file contains an 'ID' and 'Name' column.",
+        )
+    rows = [(first, last, csv_id) for first, last, csv_id in parsed]
+    return await _batch_create_students(rows, section_id, db)
 
 
 @router.get("/sections/{section_id}/students", response_model=list[StudentOut])

@@ -7,6 +7,23 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 /** What students see once grades are released for a class exam. */
 export type ReleaseMode = "FULL" | "SCORES_ONLY";
 
+/** Result of a batch student-account creation request. */
+export interface BatchCreateStudentsResult {
+  created: number;
+  skipped?: number;
+  total?: number;
+  errors?: string[] | null;
+  students: Array<{
+    id: string;
+    student_number: number;
+    full_student_id?: string;
+    section_id?: string | null;
+    section?: { id: string; name: string; subject?: string } | null;
+    user: { id: string; username: string; first_name: string; last_name: string };
+    temp_password?: string;
+  }>;
+}
+
 interface RequestOptions {
   method?: string;
   body?: unknown;
@@ -166,6 +183,119 @@ export const admin = {
 
   deleteTeacher: (userId: string) =>
     request("/api/admin/teachers/" + userId, { method: "DELETE" }),
+
+  // Students
+  listStudents: (params?: { search?: string; section_id?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.search) q.append("search", params.search);
+    if (params?.section_id) q.append("section_id", params.section_id);
+    const qs = q.toString() ? `?${q.toString()}` : "";
+    return request<Array<{
+      id: string;
+      user_id: string;
+      student_number: number;
+      full_student_id?: string;
+      section_id?: string | null;
+      section?: {
+        id: string;
+        name: string;
+        subject?: string;
+      } | null;
+      user: {
+        id: string;
+        username: string;
+        first_name: string;
+        last_name: string;
+        role: string;
+        is_active: boolean;
+        must_change_password: boolean;
+        created_at: string;
+      };
+      temp_password?: string;
+      has_pending_reset_request?: boolean;
+    }>>(`/api/admin/students${qs}`);
+  },
+
+  createStudent: (data: {
+    first_name: string;
+    last_name: string;
+    student_number?: number | string;
+    username?: string;
+    section_id?: string;
+  }) =>
+    request<{
+      id: string;
+      user_id: string;
+      student_number: number;
+      full_student_id?: string;
+      section_id?: string | null;
+      user: {
+        id: string;
+        username: string;
+        first_name: string;
+        last_name: string;
+        role: string;
+        is_active: boolean;
+        must_change_password: boolean;
+      };
+      temp_password?: string;
+    }>("/api/admin/students", { method: "POST", body: data }),
+
+  uploadStudents: (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    return request<{
+      created: number;
+      skipped?: number;
+      total?: number;
+      students: Array<{
+        id: string;
+        user_id: string;
+        student_number: number;
+        full_student_id?: string;
+        user: {
+          id: string;
+          username: string;
+          first_name: string;
+          last_name: string;
+        };
+        temp_password?: string;
+      }>;
+    }>("/api/admin/students/upload", {
+      method: "POST",
+      body: formData,
+      isFormData: true,
+    });
+  },
+
+  updateStudent: (studentId: string, data: {
+    first_name?: string;
+    last_name?: string;
+    student_number?: number | string;
+    section_id?: string | null;
+    is_active?: boolean;
+  }) => request(`/api/admin/students/${studentId}`, { method: "PUT", body: data }),
+
+  resetStudentPassword: (studentId: string) =>
+    request<{
+      message: string;
+      student_id: string;
+      username: string;
+      full_student_id: string;
+      temp_password: string;
+    }>(`/api/admin/students/${studentId}/reset-password`, { method: "POST" }),
+
+  deleteStudent: (studentId: string) =>
+    request<{ message: string }>(`/api/admin/students/${studentId}`, { method: "DELETE" }),
+
+  listSections: () =>
+    request<Array<{
+      id: string;
+      name: string;
+      subject: string;
+      teacher_id: string;
+      teacher_name?: string;
+    }>>("/api/admin/sections"),
 };
 
 // ─── Teacher ──────────────────────────────────────────────────
@@ -457,6 +587,24 @@ export const teacher = {
 
   deleteStudent: (studentId: string) =>
     request(`/api/teacher/students/${studentId}`, { method: "DELETE" }),
+
+  // Batch account creation (section optional)
+  batchCreateStudents: (data: {
+    section_id?: string;
+    students: Array<{ first_name: string; last_name: string; student_number?: number | string }>;
+  }) =>
+    request<BatchCreateStudentsResult>(`/api/teacher/students/batch`, { method: "POST", body: data }),
+
+  batchUploadStudents: (file: File, sectionId?: string) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (sectionId) formData.append("section_id", sectionId);
+    return request<BatchCreateStudentsResult>(`/api/teacher/students/batch-upload`, {
+      method: "POST",
+      body: formData,
+      isFormData: true,
+    });
+  },
 
   // Password Reset Management
   listPasswordResetRequests: () =>

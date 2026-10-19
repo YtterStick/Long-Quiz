@@ -539,6 +539,13 @@ export const MALE_HAIRSTYLES: HairStyleId[] = [
   "grad_cap",
 ];
 
+export function sanitizeHairForGender(hairStyle: HairStyleId, gender?: GenderId): HairStyleId {
+  const isMale = gender === "male";
+  const pool = isMale ? MALE_HAIRSTYLES : FEMALE_HAIRSTYLES;
+  if (pool.includes(hairStyle)) return hairStyle;
+  return isMale ? "crop" : "bangs";
+}
+
 export const STUDENT_OUTFITS: OutfitId[] = [
   "blazer",
   "hoodie",

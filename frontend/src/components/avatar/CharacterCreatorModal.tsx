@@ -1294,10 +1294,18 @@ export function CharacterCreatorModal({
                                 : "border-border-default hover:border-border-emphasis bg-surface-base/50 hover:bg-surface-base"
                             }`}
                           >
-                            <HairPreviewSvg
-                              styleId={item.id}
-                              colorHex={HAIR_COLORS[config.hairColor]?.hex || "#1c242c"}
-                            />
+                            <div className="w-9 h-9 shrink-0 flex items-center justify-center overflow-hidden rounded-lg bg-surface-base border border-border-default">
+                              <StudentAvatar
+                                config={{
+                                  ...config,
+                                  gender: selectedGender,
+                                  hairStyle: item.id,
+                                }}
+                                size={44}
+                                showBackdrop={false}
+                                variant="head"
+                              />
+                            </div>
                             <span className="text-xs font-black text-text-primary truncate">
                               {item.label}
                             </span>

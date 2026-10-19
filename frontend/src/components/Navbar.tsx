@@ -110,6 +110,34 @@ export function Navbar({ onOpenPasswordModal, onOpenCloset }: NavbarProps) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // NOTE: All hooks must run before any early return. Previously these lived below
+  // `if (!user) return null`, which crashed the page ("This page couldn't load")
+  // the moment logout cleared the user, because React saw fewer hooks than before.
+  const [studentCurrentTab, setStudentCurrentTab] = useState<string>("dashboard");
+
+  useEffect(() => {
+    if (user?.role === "STUDENT") {
+      if (pathname.startsWith("/student/reviewer")) {
+        setStudentCurrentTab("reviewers");
+        return;
+      }
+      if (pathname.startsWith("/student/dashboard")) {
+        if (typeof window !== "undefined") {
+          const tab = new URLSearchParams(window.location.search).get("tab") || "dashboard";
+          setStudentCurrentTab(tab);
+        }
+      }
+      const handler = (e: Event) => {
+        const detail = (e as CustomEvent).detail;
+        if (detail) {
+          setStudentCurrentTab(detail);
+        }
+      };
+      window.addEventListener("studentTabChange", handler);
+      return () => window.removeEventListener("studentTabChange", handler);
+    }
+  }, [user, pathname]);
+
   if (!user) return null;
 
   const effectiveAvatar =
@@ -137,6 +165,7 @@ export function Navbar({ onOpenPasswordModal, onOpenCloset }: NavbarProps) {
   const teacherNav = [
     { href: "/teacher/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/teacher/sections", label: "Sections", icon: School },
+    { href: "/teacher/students", label: "Students", icon: Users },
     { href: "/teacher/exams", label: "Exams", icon: FileText },
     { href: "/teacher/scan", label: "Scan Sheet", icon: ScanLine },
   ];
@@ -148,31 +177,6 @@ export function Navbar({ onOpenPasswordModal, onOpenCloset }: NavbarProps) {
     { href: "/student/reviewer", tab: "reviewers", label: "Study Reviewers", icon: BookOpen },
     { href: "/student/dashboard?tab=friends", tab: "friends", label: "Friends Circle", icon: Users },
   ];
-
-  const [studentCurrentTab, setStudentCurrentTab] = useState<string>("dashboard");
-
-  useEffect(() => {
-    if (user?.role === "STUDENT") {
-      if (pathname.startsWith("/student/reviewer")) {
-        setStudentCurrentTab("reviewers");
-        return;
-      }
-      if (pathname.startsWith("/student/dashboard")) {
-        if (typeof window !== "undefined") {
-          const tab = new URLSearchParams(window.location.search).get("tab") || "dashboard";
-          setStudentCurrentTab(tab);
-        }
-      }
-      const handler = (e: Event) => {
-        const detail = (e as CustomEvent).detail;
-        if (detail) {
-          setStudentCurrentTab(detail);
-        }
-      };
-      window.addEventListener("studentTabChange", handler);
-      return () => window.removeEventListener("studentTabChange", handler);
-    }
-  }, [user, pathname]);
 
   const homeHref = user
     ? user.role === "ADMIN"

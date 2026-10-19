@@ -131,10 +131,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => {
-    clearSession();
     if (typeof window !== "undefined") {
-      window.location.href = "/";
+      // Clear persisted credentials, then hard-navigate away. We intentionally do NOT
+      // null out React state first: doing so re-renders every mounted page with
+      // `user === null` before the navigation completes, which can crash pages that
+      // assume an authenticated user and surface the "This page couldn't load" screen.
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(USER_KEY);
+      window.location.replace("/");
+      return;
     }
+    clearSession();
   };
 
   return (

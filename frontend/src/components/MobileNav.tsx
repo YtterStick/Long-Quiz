@@ -52,6 +52,7 @@ export function MobileNav() {
   const teacherNav = [
     { href: "/teacher/dashboard", label: "Home", icon: LayoutDashboard },
     { href: "/teacher/sections", label: "Sections", icon: School },
+    { href: "/teacher/students", label: "Students", icon: Users },
     { href: "/teacher/exams", label: "Exams", icon: FileText },
     { href: "/teacher/scan", label: "Scan", icon: ScanLine },
   ];
@@ -127,7 +128,7 @@ export function MobileNav() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center gap-0.5 rounded-2xl px-4 py-2 transition-all ${
+              className={`flex flex-col items-center gap-0.5 rounded-2xl px-2.5 py-2 transition-all ${
                 isActive
                   ? "bg-steel-ghost text-steel font-bold"
                   : "text-text-muted hover:text-text-secondary active:scale-95"

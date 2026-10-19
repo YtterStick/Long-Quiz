@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useId } from "react";
 import {
   StudentAvatarConfig,
   SKIN_TONES,
@@ -9,6 +9,7 @@ import {
   ACCENT_COLORS,
   BACKDROP_THEMES,
   DEFAULT_AVATAR_CONFIG,
+  sanitizeHairForGender,
 } from "@/types/avatar";
 
 interface StudentAvatarProps {
@@ -18,17 +19,25 @@ interface StudentAvatarProps {
   showBackdrop?: boolean;
   animate?: boolean;
   loading?: boolean;
+  /** "head" crops to the head + hair only (used for hairstyle thumbnails). */
+  variant?: "full" | "head";
 }
 
 export function StudentAvatar({
-  config,
+  config: rawConfig,
   size = 120,
   className = "",
   showBackdrop = true,
   animate = false,
   loading = false,
+  variant = "full",
 }: StudentAvatarProps) {
-  if (loading || !config) {
+  // Unique per-instance prefix for SVG gradient IDs. Without this, multiple avatars on the
+  // same page share IDs (e.g. `outfit-grad-steel`) and the browser may resolve `url(#...)`
+  // to a gradient inside a hidden avatar, so picked colors fail to render.
+  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+
+  if (loading || !rawConfig) {
     return (
       <div
         style={{ width: size, height: size }}
@@ -40,6 +49,11 @@ export function StudentAvatar({
     );
   }
 
+  // Enforce gender-exclusive hairstyles at render time (female-only hair never shows on male, and vice versa)
+  const config: StudentAvatarConfig = {
+    ...rawConfig,
+    hairStyle: sanitizeHairForGender(rawConfig.hairStyle, rawConfig.gender),
+  };
   const safeConfig = config || DEFAULT_AVATAR_CONFIG;
   const skin = SKIN_TONES[safeConfig.skinTone] || SKIN_TONES.peach;
   const hair = HAIR_COLORS[safeConfig.hairColor] || HAIR_COLORS.midnight;
@@ -50,14 +64,21 @@ export function StudentAvatar({
   const shoulderY = isFemale ? 145 : 138;
   const lapelLeftX = isFemale ? 76 : 68;
   const lapelRightX = isFemale ? 124 : 132;
+  const isHead = variant === "head";
+  const drawBackdrop = showBackdrop && !isHead;
+  const glowId = `glow-${uid}`;
+  const hairShineId = `hair-shine-${uid}`;
+  const outfitGradId = `outfit-grad-${uid}`;
 
   return (
     <div
       style={{ width: size, height: size }}
-      className={`relative inline-flex items-center justify-center shrink-0 select-none overflow-hidden rounded-full ${className}`}
+      className={`relative inline-flex items-center justify-center shrink-0 select-none ${
+        isHead ? "" : "overflow-hidden rounded-full"
+      } ${className}`}
     >
       <svg
-        viewBox="0 0 200 200"
+        viewBox={isHead ? "35 10 130 130" : "0 0 200 200"}
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
         className={`w-full h-full transition-transform duration-300 ${
@@ -66,30 +87,30 @@ export function StudentAvatar({
       >
         <defs>
           {/* Backdrop radial glow */}
-          <radialGradient id={`glow-${config.backdrop}`} cx="50%" cy="50%" r="50%">
+          <radialGradient id={glowId} cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor={backdrop.ringColor} stopOpacity="0.4" />
             <stop offset="70%" stopColor={backdrop.ringColor} stopOpacity="0.1" />
             <stop offset="100%" stopColor={backdrop.ringColor} stopOpacity="0.0" />
           </radialGradient>
 
           {/* Hair shine gradient */}
-          <linearGradient id={`hair-shine-${config.hairColor}`} x1="0%" y1="0%" x2="100%" y2="100%">
+          <linearGradient id={hairShineId} x1="0%" y1="0%" x2="100%" y2="100%">
             <stop offset="0%" stopColor={hair.highlight} stopOpacity="0.9" />
             <stop offset="100%" stopColor={hair.hex} />
           </linearGradient>
 
           {/* Outfit lighting gradient */}
-          <linearGradient id={`outfit-grad-${config.outfitColor}`} x1="0%" y1="0%" x2="0%" y2="100%">
+          <linearGradient id={outfitGradId} x1="0%" y1="0%" x2="0%" y2="100%">
             <stop offset="0%" stopColor={outfit.hex} />
             <stop offset="100%" stopColor={outfit.shadow} />
           </linearGradient>
         </defs>
 
         {/* ── 1. Backdrop Canvas ──────────────────────────────────── */}
-        {showBackdrop && (
+        {drawBackdrop && (
           <g>
             <circle cx="100" cy="100" r="98" className="fill-surface-base" />
-            <circle cx="100" cy="100" r="98" fill={`url(#glow-${config.backdrop})`} />
+            <circle cx="100" cy="100" r="98" fill={`url(#${glowId})`} />
 
             {config.backdrop === "chalkboard" && (
               <g opacity="0.35">
@@ -207,13 +228,13 @@ export function StudentAvatar({
             /* Feminine Silhouette: Graceful, slender shoulders with gentle slope */
             <path
               d="M 48 198 C 50 166, 68 145, 100 145 C 132 145, 150 166, 152 198 Z"
-              fill={`url(#outfit-grad-${config.outfitColor})`}
+              fill={`url(#${outfitGradId})`}
             />
           ) : (
             /* Masculine Silhouette: Broad, athletic collegiate shoulders with defined frame */
             <path
               d="M 34 198 C 36 156, 58 138, 100 138 C 142 138, 164 156, 166 198 Z"
-              fill={`url(#outfit-grad-${config.outfitColor})`}
+              fill={`url(#${outfitGradId})`}
             />
           )}
 
@@ -232,16 +253,41 @@ export function StudentAvatar({
           {config.outfit === "teacher_blazer" && (
             <g>
               {/* Crisp inner dress shirt */}
-              <polygon points={`100,${shoulderY - 4} 82,${shoulderY} 90,172 100,180 110,172 118,${shoulderY}`} fill="#ffffff" />
-              {/* Notched Formal Lapels */}
-              <path d={`M ${isFemale ? 76 : 68} ${shoulderY} L 88 174 L ${isFemale ? 72 : 64} 198`} stroke={outfit.shadow} strokeWidth="3" fill="none" />
-              <path d={`M ${isFemale ? 124 : 132} ${shoulderY} L 112 174 L ${isFemale ? 128 : 136} 198`} stroke={outfit.shadow} strokeWidth="3" fill="none" />
-              {/* Pocket Square in breast pocket */}
-              <rect x={isFemale ? 72 : 64} y="166" width="16" height="5" rx="1.5" fill={outfit.shadow} />
-              <polygon points={`${isFemale ? 77 : 69},166 ${isFemale ? 80 : 72},160 ${isFemale ? 84 : 76},166`} fill={accent.hex} />
-              <polygon points={`${isFemale ? 81 : 73},166 ${isFemale ? 85 : 77},162 ${isFemale ? 88 : 80},166`} fill="#ffffff" />
-              {/* Brass/Gold Faculty Button */}
-              <circle cx="100" cy="184" r="3" fill={accent.hex} />
+              <polygon points={`100,${shoulderY - 4} 84,${shoulderY} 92,178 100,188 108,178 116,${shoulderY}`} fill="#ffffff" />
+              {/* Accent silk tie (follows Accent / Tie color) */}
+              <polygon points={`97,${shoulderY + 2} 103,${shoulderY + 2} 102,${shoulderY + 8} 98,${shoulderY + 8}`} fill={accent.hex} />
+              <polygon points={`98,${shoulderY + 8} 102,${shoulderY + 8} 104.5,182 100,190 95.5,182`} fill={accent.hex} />
+              {/* Filled notched lapels in the primary fabric (follow Primary Fabric color) */}
+              <polygon
+                points={`${lapelLeftX},${shoulderY} 86,${shoulderY} 98,188 88,170 80,173`}
+                fill={outfit.hex}
+                stroke={outfit.shadow}
+                strokeWidth="2"
+                strokeLinejoin="round"
+              />
+              <polygon
+                points={`${lapelRightX},${shoulderY} 114,${shoulderY} 102,188 112,170 120,173`}
+                fill={outfit.hex}
+                stroke={outfit.shadow}
+                strokeWidth="2"
+                strokeLinejoin="round"
+              />
+              {/* Accent lapel piping */}
+              <path d={`M 86 ${shoulderY} L 98 188`} stroke={accent.hex} strokeWidth="1.6" strokeLinecap="round" />
+              <path d={`M 114 ${shoulderY} L 102 188`} stroke={accent.hex} strokeWidth="1.6" strokeLinecap="round" />
+              {/* Breast pocket with accent pocket square */}
+              <rect x={isFemale ? 110 : 114} y="178" width="15" height="4" rx="1.2" fill={outfit.shadow} />
+              <polygon
+                points={`${isFemale ? 112 : 116},178 ${isFemale ? 115 : 119},171 ${isFemale ? 118 : 122},178`}
+                fill={accent.hex}
+              />
+              <polygon
+                points={`${isFemale ? 117 : 121},178 ${isFemale ? 120 : 124},173 ${isFemale ? 123 : 127},178`}
+                fill="#ffffff"
+                opacity="0.85"
+              />
+              {/* Faculty buttons */}
+              <circle cx="100" cy="194" r="2.6" fill={accent.hex} stroke={outfit.shadow} strokeWidth="0.8" />
             </g>
           )}
 
