@@ -280,17 +280,6 @@ export function ExamSheetIllustration({ className = "w-64 h-64" }: IllustrationP
         <circle cx="70" cy="5" r="4.5" className="fill-surface-base stroke-border-emphasis" strokeWidth="1" />
       </g>
 
-      {/* Floating Check / Score Badge */}
-      <g transform="translate(180, 175)" className="animate-bounce" style={{ animationDuration: "3s" }}>
-        <circle cx="20" cy="20" r="22" className="fill-sage text-white shadow-lg" />
-        <path
-          d="M 12 20 L 18 26 L 28 14"
-          stroke="white"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </g>
 
       {/* Pencil Element */}
       <g transform="translate(45, 140) rotate(-35)">
