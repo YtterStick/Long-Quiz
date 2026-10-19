@@ -38,7 +38,7 @@ export function PasswordChangeModal({
   onClose,
   onOpenCloset,
 }: PasswordChangeModalProps) {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
   const [activeTab, setActiveTab] = useState<"profile" | "password">("profile");
 
   // Character & Motto state
@@ -166,13 +166,28 @@ export function PasswordChangeModal({
     try {
       await authApi.changePassword(currentPassword, newPassword);
       setSuccess(true);
-      setTimeout(() => {
-        setSuccess(false);
-        setCurrentPassword("");
-        setNewPassword("");
-        setConfirmPassword("");
-        if (onClose) onClose();
-      }, 1500);
+
+      if (forced) {
+        const usernameParam = user?.username ? `&u=${encodeURIComponent(user.username)}` : "";
+        setTimeout(() => {
+          if (typeof window !== "undefined") {
+            localStorage.removeItem("token");
+            localStorage.removeItem("evalo_user");
+            window.location.replace(`/?reset=success${usernameParam}`);
+          } else {
+            logout();
+          }
+        }, 1200);
+      } else {
+        await refreshUser?.();
+        setTimeout(() => {
+          setSuccess(false);
+          setCurrentPassword("");
+          setNewPassword("");
+          setConfirmPassword("");
+          if (onClose) onClose();
+        }, 1500);
+      }
     } catch (err: unknown) {
       if (err instanceof Error) {
         const msg = err.message;
@@ -406,7 +421,11 @@ export function PasswordChangeModal({
             {success && (
               <div className="flex items-center gap-2 rounded-xl bg-sage-ghost border border-sage-border p-3 text-xs text-sage">
                 <CheckCircle2 className="h-4 w-4 shrink-0" />
-                <span>Password changed successfully! Redirecting...</span>
+                <span>
+                  {forced
+                    ? "Password set successfully! Redirecting to login..."
+                    : "Password changed successfully!"}
+                </span>
               </div>
             )}
 

@@ -8,6 +8,7 @@ import {
   Lock,
   ArrowRight,
   AlertCircle,
+  CheckCircle2,
   Loader2,
   Eye,
   EyeOff,
@@ -32,10 +33,24 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   const [mustResetPassword, setMustResetPassword] = useState(false);
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
   const [isInputFocused, setIsInputFocused] = useState(false);
+
+  // Check for reset=success in URL query
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("reset") === "success") {
+        setSuccessMsg("Password set successfully! Please sign in with your new password.");
+        const u = params.get("u");
+        if (u) setUsername(decodeURIComponent(u));
+        window.history.replaceState({}, "", "/");
+      }
+    }
+  }, []);
 
   // Auto-redirect if already logged in
   useEffect(() => {
@@ -62,6 +77,7 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSuccessMsg(null);
     setSubmitting(true);
 
     try {
@@ -135,7 +151,7 @@ export default function LoginPage() {
             isInputFocused ? "-translate-y-8 transition-transform duration-300 ease-out" : ""
           }`}
         >
-          <div className="glass-card rounded-[32px] p-6 sm:p-10 shadow-2xl border border-border-emphasis/70 backdrop-blur-2xl bg-surface-raised/95">
+          <div className="glass-card rounded-4xl p-6 sm:p-10 shadow-2xl border border-border-emphasis/70 backdrop-blur-2xl bg-surface-raised/95">
             {/* Card Title */}
             <div className="text-center mb-7">
               <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-text-primary">
@@ -145,6 +161,14 @@ export default function LoginPage() {
                 Enter your username or Student ID to continue
               </p>
             </div>
+
+            {/* Success Notification */}
+            {successMsg && (
+              <div className="mb-5 flex items-center gap-2.5 rounded-2xl bg-sage-ghost border border-sage-border p-3.5 text-xs text-sage animate-in fade-in duration-200">
+                <CheckCircle2 className="h-4 w-4 shrink-0" />
+                <span>{successMsg}</span>
+              </div>
+            )}
 
             {/* Error Notification */}
             {error && (
