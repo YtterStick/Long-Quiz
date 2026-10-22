@@ -591,14 +591,18 @@ export default function TeacherExamsPage() {
     }
   };
 
+  const [deletingExam, setDeletingExam] = useState(false);
   const confirmDeleteExam = async () => {
     if (!examToDelete) return;
+    setDeletingExam(true);
     try {
       await teacherApi.deleteExam(examToDelete.id);
       setExamToDelete(null);
       await loadExams();
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to delete exam");
+    } finally {
+      setDeletingExam(false);
     }
   };
 
@@ -2077,6 +2081,7 @@ export default function TeacherExamsPage() {
       {/* Delete Exam Confirmation Modal */}
       <ConfirmModal
         isOpen={!!examToDelete}
+        loading={deletingExam}
         title="Delete Exam Questionnaire"
         message={`Are you sure you want to delete "${examToDelete?.title}"? All associated answer keys and scan submissions for this exam will be permanently removed.`}
         confirmText="Delete Exam"

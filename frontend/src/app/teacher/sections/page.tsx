@@ -233,6 +233,12 @@ export default function TeacherSectionsPage() {
   const [savingStudent, setSavingStudent] = useState(false);
   const [editStudentError, setEditStudentError] = useState<string | null>(null);
 
+  // Modal in-flight loading states
+  const [deletingSection, setDeletingSection] = useState(false);
+  const [unrollingStudent, setUnrollingStudent] = useState(false);
+  const [permanentlyDeletingStudent, setPermanentlyDeletingStudent] = useState(false);
+  const [unassigningExam, setUnassigningExam] = useState(false);
+
   useEffect(() => {
     if (!authLoading && (!user || user.role !== "TEACHER")) {
       router.push("/");
@@ -475,6 +481,7 @@ export default function TeacherSectionsPage() {
 
   const confirmDeleteSection = async () => {
     if (!sectionToDelete) return;
+    setDeletingSection(true);
     try {
       await teacherApi.deleteSection(sectionToDelete.id);
       if (selectedSection?.id === sectionToDelete.id) setSelectedSection(null);
@@ -483,6 +490,8 @@ export default function TeacherSectionsPage() {
       await loadAllStudents();
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to delete section");
+    } finally {
+      setDeletingSection(false);
     }
   };
 
@@ -609,6 +618,7 @@ export default function TeacherSectionsPage() {
 
   const confirmUnenrollStudent = async () => {
     if (!studentToUnenroll || !selectedSection) return;
+    setUnrollingStudent(true);
     try {
       await teacherApi.unenrollStudent(selectedSection.id, studentToUnenroll.id);
       const sId = selectedSection.id;
@@ -621,11 +631,14 @@ export default function TeacherSectionsPage() {
       }
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to unenroll student");
+    } finally {
+      setUnrollingStudent(false);
     }
   };
 
   const confirmPermanentDeleteStudent = async () => {
     if (!studentToPermanentlyDelete) return;
+    setPermanentlyDeletingStudent(true);
     try {
       await teacherApi.deleteStudent(studentToPermanentlyDelete.id);
       const sId = studentToPermanentlyDelete.section_id || selectedSection?.id;
@@ -640,6 +653,8 @@ export default function TeacherSectionsPage() {
       await loadAllStudents();
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to delete student account");
+    } finally {
+      setPermanentlyDeletingStudent(false);
     }
   };
 
@@ -2524,6 +2539,7 @@ export default function TeacherSectionsPage() {
       {/* Section Delete Confirmation Modal */}
       <ConfirmModal
         isOpen={!!sectionToDelete}
+        loading={deletingSection}
         title="Delete Class Section"
         message={`Are you sure you want to delete "${sectionToDelete?.name}" (${sectionToDelete?.subject})? All ${sectionToDelete?.student_count || 0} enrolled student accounts and past exam grades will remain safe and preserved in the application directory.`}
         confirmText="Delete Section"
@@ -2537,6 +2553,7 @@ export default function TeacherSectionsPage() {
       {/* Student Unenroll from Section Confirmation Modal */}
       <ConfirmModal
         isOpen={!!studentToUnenroll}
+        loading={unrollingStudent}
         title="Remove Student from Section"
         message={`Are you sure you want to remove ${studentToUnenroll?.user.first_name} ${studentToUnenroll?.user.last_name} (ID: 02000${String(studentToUnenroll?.student_number).padStart(6, "0")}) from "${selectedSection?.name}"? Their student account, login credentials, and quiz submissions will NOT be deleted and will remain intact in the application.`}
         confirmText="Remove from Section"
@@ -2550,6 +2567,7 @@ export default function TeacherSectionsPage() {
       {/* Permanent Account Delete Confirmation Modal (Directory only) */}
       <ConfirmModal
         isOpen={!!studentToPermanentlyDelete}
+        loading={permanentlyDeletingStudent}
         title="Permanently Delete Student Account"
         message={`Are you sure you want to permanently delete the account for ${studentToPermanentlyDelete?.user.first_name} ${studentToPermanentlyDelete?.user.last_name} (ID: 02000${String(studentToPermanentlyDelete?.student_number).padStart(6, "0")})? This action cannot be undone.`}
         confirmText="Permanently Delete"
@@ -2668,6 +2686,7 @@ export default function TeacherSectionsPage() {
       {/* Exam Unassign Confirmation Modal */}
       <ConfirmModal
         isOpen={!!examToUnassign}
+        loading={unassigningExam}
         title="Remove Exam from Class"
         message={`Are you sure you want to remove "${examToUnassign?.exam?.title || "this exam"}" from ${selectedSection?.name}? The exam questionnaire and answer keys remain safe in your Exam Bank. Student submissions will be preserved.`}
         confirmText="Remove Exam"

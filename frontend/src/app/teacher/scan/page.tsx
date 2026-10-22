@@ -895,7 +895,7 @@ export default function TeacherScanPage() {
                 </div>
               </div>
             ) : (
-              <div className="glass-card rounded-2xl p-12 text-center border border-border-default flex flex-col items-center justify-center min-h-[360px]">
+              <div className="glass-card rounded-2xl p-12 text-center border border-border-default flex flex-col items-center justify-center min-h-90">
                 <ScanLine className="h-16 w-16 text-text-faint mb-4 animate-pulse" />
                 <h3 className="text-lg font-bold text-text-primary">Awaiting Bubble Sheet Scan</h3>
                 <p className="text-xs text-text-muted max-w-sm mt-1">

@@ -220,7 +220,6 @@ export function LiveExamMonitorModal({
 
   // End Exam (auto disables online quiz access, finalizes exam session)
   const handleConfirmEndExam = async () => {
-    setEndExamConfirmOpen(false);
     setEndingExam(true);
     try {
       await teacherApi.endSectionExam(sectionId, examId);
@@ -239,6 +238,7 @@ export function LiveExamMonitorModal({
       }
       setRetakeNotice("Exam ended. Online quiz access has been disabled for this class.");
       setTimeout(() => setRetakeNotice(null), 5000);
+      setEndExamConfirmOpen(false);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to end exam");
     } finally {
@@ -1388,6 +1388,7 @@ export function LiveExamMonitorModal({
       {/* Sub-modal: End Exam Confirmation */}
       <ConfirmModal
         isOpen={endExamConfirmOpen}
+        loading={endingExam}
         title="End Exam Session Confirmation"
         message={`Are you sure you want to end "${examTitle}" for section "${sectionName}"? This will auto-disable the online quiz for this class, lock the lobby, and finalize student records.`}
         confirmText="Yes, End Exam"

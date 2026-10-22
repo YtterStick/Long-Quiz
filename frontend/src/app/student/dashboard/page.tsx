@@ -2458,6 +2458,7 @@ export default function StudentDashboard() {
       {/* Confirmation Modal when submitting incomplete exam */}
       <ConfirmModal
         isOpen={confirmSubmitOpen}
+        loading={submittingOnlineExam}
         title="Submit Incomplete Exam?"
         message={`You have answered ${Object.keys(takingAnswers).length} out of ${activeTakingExam?.questions.length || 0} questions. Any unanswered questions will receive 0 points. Are you sure you want to submit now?`}
         confirmText="Yes, Submit Now"
