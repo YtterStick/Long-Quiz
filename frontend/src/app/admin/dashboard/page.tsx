@@ -131,6 +131,12 @@ export default function AdminDashboard() {
     temp_password: string;
   } | null>(null);
 
+  // In-flight Action Loading States
+  const [resettingTeacherId, setResettingTeacherId] = useState<string | null>(null);
+  const [resettingStudentId, setResettingStudentId] = useState<string | null>(null);
+  const [deletingTeacher, setDeletingTeacher] = useState(false);
+  const [deletingStudent, setDeletingStudent] = useState(false);
+
   // Pagination State
   const [studentPage, setStudentPage] = useState(1);
   const [studentPageSize, setStudentPageSize] = useState(10);
@@ -196,8 +202,8 @@ export default function AdminDashboard() {
     }
   }, [user, authLoading, router]);
 
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (showSkeleton = false) => {
+    if (showSkeleton) setLoading(true);
     try {
       const [statsData, teachersData, studentsData, sectionsData] = await Promise.all([
         adminApi.getDashboard(),
@@ -321,12 +327,15 @@ export default function AdminDashboard() {
 
   const confirmDeleteTeacher = async () => {
     if (!teacherToDelete) return;
+    setDeletingTeacher(true);
     try {
       await adminApi.deleteTeacher(teacherToDelete.user.id);
       setTeacherToDelete(null);
       await fetchData();
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to delete teacher");
+    } finally {
+      setDeletingTeacher(false);
     }
   };
 
@@ -385,16 +394,20 @@ export default function AdminDashboard() {
 
   const confirmDeleteStudent = async () => {
     if (!studentToDelete) return;
+    setDeletingStudent(true);
     try {
       await adminApi.deleteStudent(studentToDelete.id);
       setStudentToDelete(null);
       await fetchData();
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to delete student");
+    } finally {
+      setDeletingStudent(false);
     }
   };
 
   const handleResetPassword = async (student: StudentItem) => {
+    setResettingStudentId(student.id);
     try {
       const res = await adminApi.resetStudentPassword(student.id);
       setResetPasswordModal({
@@ -406,10 +419,13 @@ export default function AdminDashboard() {
       await fetchData();
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to reset password");
+    } finally {
+      setResettingStudentId(null);
     }
   };
 
   const handleResetTeacherPassword = async (teacher: TeacherItem) => {
+    setResettingTeacherId(teacher.id);
     try {
       const res = await adminApi.resetTeacherPassword(teacher.user_id || teacher.id);
       setResetTeacherPasswordModal({
@@ -420,6 +436,8 @@ export default function AdminDashboard() {
       await fetchData();
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to reset teacher password");
+    } finally {
+      setResettingTeacherId(null);
     }
   };
 
@@ -826,10 +844,15 @@ export default function AdminDashboard() {
                           <div className="flex items-center justify-end gap-1">
                             <button
                               title="Reset Password"
+                              disabled={resettingStudentId === st.id}
                               onClick={() => handleResetPassword(st)}
-                              className="rounded-lg p-1.5 text-text-muted hover:bg-surface-subtle hover:text-amber-400 transition-colors cursor-pointer"
+                              className="rounded-lg p-1.5 text-text-muted hover:bg-surface-subtle hover:text-amber-400 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-wait"
                             >
-                              <Key className="h-4 w-4" />
+                              {resettingStudentId === st.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin text-amber-400" />
+                              ) : (
+                                <Key className="h-4 w-4" />
+                              )}
                             </button>
                             <button
                               title="Edit Student"
@@ -951,10 +974,15 @@ export default function AdminDashboard() {
                           <div className="flex items-center justify-end gap-1">
                             <button
                               title="Reset Teacher Password"
+                              disabled={resettingTeacherId === t.id}
                               onClick={() => handleResetTeacherPassword(t)}
-                              className="rounded-lg p-1.5 text-text-muted hover:bg-surface-subtle hover:text-amber-400 transition-colors cursor-pointer"
+                              className="rounded-lg p-1.5 text-text-muted hover:bg-surface-subtle hover:text-amber-400 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-wait"
                             >
-                              <KeyRound className="h-4 w-4" />
+                              {resettingTeacherId === t.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin text-amber-400" />
+                              ) : (
+                                <KeyRound className="h-4 w-4" />
+                              )}
                             </button>
                             <button
                               title="Edit Teacher Profile"
@@ -1775,6 +1803,7 @@ export default function AdminDashboard() {
       {/* Delete Teacher Confirmation */}
       <ConfirmModal
         isOpen={!!teacherToDelete}
+        loading={deletingTeacher}
         title="Delete Teacher Account"
         message={`Are you sure you want to delete the account for ${teacherToDelete?.user.first_name} ${teacherToDelete?.user.last_name} (@${teacherToDelete?.user.username})? All their sections and exams will also be permanently deleted.`}
         confirmText="Delete Account"
@@ -1788,6 +1817,7 @@ export default function AdminDashboard() {
       {/* Delete Student Confirmation */}
       <ConfirmModal
         isOpen={!!studentToDelete}
+        loading={deletingStudent}
         title="Delete Student Account"
         message={`Are you sure you want to delete the account for ${studentToDelete?.user.first_name} ${studentToDelete?.user.last_name} (${studentToDelete?.full_student_id || `02000${studentToDelete?.student_number}`})? Their exam history and lobby access will be permanently removed.`}
         confirmText="Delete Account"

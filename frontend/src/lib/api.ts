@@ -47,6 +47,28 @@ function getToken(): string | null {
   return localStorage.getItem("token");
 }
 
+let activeRequestsCount = 0;
+const activityListeners = new Set<(count: number) => void>();
+
+export function subscribeToNetworkActivity(cb: (count: number) => void) {
+  activityListeners.add(cb);
+  cb(activeRequestsCount);
+  return () => {
+    activityListeners.delete(cb);
+  };
+}
+
+function notifyNetworkDelta(delta: number) {
+  activeRequestsCount = Math.max(0, activeRequestsCount + delta);
+  activityListeners.forEach((cb) => {
+    try {
+      cb(activeRequestsCount);
+    } catch {
+      // ignore
+    }
+  });
+}
+
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
   const { method = "GET", body, headers = {}, isFormData = false } = options;
   const token = getToken();
@@ -72,6 +94,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     config.body = isFormData ? (body as FormData) : JSON.stringify(body);
   }
 
+  notifyNetworkDelta(1);
   let response: Response;
   try {
     response = await fetch(`${API_BASE}${endpoint}`, config);
@@ -80,6 +103,8 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
       throw new Error("Unable to connect to the server. Please ensure the backend is running.");
     }
     throw err;
+  } finally {
+    notifyNetworkDelta(-1);
   }
 
   if (!response.ok) {

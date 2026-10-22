@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 import { ThemeProvider } from "@/lib/theme-context";
+import { GlobalLoadingBar } from "@/components/ui/GlobalLoadingBar";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -27,6 +28,7 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <ThemeProvider>
+          <GlobalLoadingBar />
           <AuthProvider>{children}</AuthProvider>
         </ThemeProvider>
       </body>

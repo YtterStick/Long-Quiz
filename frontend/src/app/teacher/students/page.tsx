@@ -359,8 +359,10 @@ export default function TeacherStudentsPage() {
   };
 
   // Permanent Delete
+  const [deletingStudent, setDeletingStudent] = useState(false);
   const confirmDeleteStudent = async () => {
     if (!studentToDelete) return;
+    setDeletingStudent(true);
     try {
       await teacherApi.deleteStudent(studentToDelete.id);
       if (selectedStudentDetail?.id === studentToDelete.id) {
@@ -370,6 +372,8 @@ export default function TeacherStudentsPage() {
       await loadData();
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to delete student account");
+    } finally {
+      setDeletingStudent(false);
     }
   };
 
@@ -1701,6 +1705,7 @@ export default function TeacherStudentsPage() {
       {/* Confirm Permanent Delete */}
       <ConfirmModal
         isOpen={!!studentToDelete}
+        loading={deletingStudent}
         onCancel={() => setStudentToDelete(null)}
         onConfirm={confirmDeleteStudent}
         title="Permanently Delete Student"

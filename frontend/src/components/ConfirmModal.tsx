@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, Loader2 } from "lucide-react";
 
 interface ConfirmModalProps {
   isOpen: boolean;
@@ -12,6 +12,7 @@ interface ConfirmModalProps {
   cancelText?: string;
   variant?: "danger" | "primary" | "warning";
   icon?: React.ReactNode;
+  loading?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -24,6 +25,7 @@ export function ConfirmModal({
   cancelText = "Cancel",
   variant = "danger",
   icon,
+  loading = false,
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
@@ -92,15 +94,18 @@ export function ConfirmModal({
           <button
             type="button"
             onClick={onCancel}
-            className="flex-1 rounded-2xl border border-border-default bg-surface-base py-2.5 text-xs font-semibold text-text-secondary hover:bg-surface-subtle transition-colors cursor-pointer"
+            disabled={loading}
+            className="flex-1 rounded-2xl border border-border-default bg-surface-base py-2.5 text-xs font-semibold text-text-secondary hover:bg-surface-subtle transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {cancelText}
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className={`flex-1 rounded-2xl py-2.5 text-xs font-semibold shadow-lg transition-all cursor-pointer ${variantColors[variant]}`}
+            disabled={loading}
+            className={`flex-1 flex items-center justify-center gap-1.5 rounded-2xl py-2.5 text-xs font-semibold shadow-lg transition-all cursor-pointer disabled:opacity-60 disabled:cursor-wait ${variantColors[variant]}`}
           >
+            {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             {confirmText}
           </button>
         </div>
