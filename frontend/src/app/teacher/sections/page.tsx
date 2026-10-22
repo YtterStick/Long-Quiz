@@ -36,6 +36,7 @@ import {
   Monitor,
   Play,
   Activity,
+  Pencil,
 } from "lucide-react";
 import Link from "next/link";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
@@ -204,6 +205,22 @@ export default function TeacherSectionsPage() {
     tempPassword: string;
   } | null>(null);
   const [copiedTempPassword, setCopiedTempPassword] = useState(false);
+
+  // Edit Section & Subject Modal state
+  const [editingSection, setEditingSection] = useState<SectionItem | null>(null);
+  const [editSectionName, setEditSectionName] = useState("");
+  const [editSectionSubject, setEditSectionSubject] = useState("");
+  const [savingSection, setSavingSection] = useState(false);
+  const [editSectionError, setEditSectionError] = useState<string | null>(null);
+
+  // Edit Student Modal state
+  const [editingStudent, setEditingStudent] = useState<StudentItem | null>(null);
+  const [editStudentFirstName, setEditStudentFirstName] = useState("");
+  const [editStudentLastName, setEditStudentLastName] = useState("");
+  const [editStudentNumber, setEditStudentNumber] = useState("");
+  const [editStudentSectionId, setEditStudentSectionId] = useState("");
+  const [savingStudent, setSavingStudent] = useState(false);
+  const [editStudentError, setEditStudentError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && (!user || user.role !== "TEACHER")) {
@@ -615,6 +632,100 @@ export default function TeacherSectionsPage() {
     }
   };
 
+  const openEditSectionModal = (sec: SectionItem) => {
+    setEditingSection(sec);
+    setEditSectionName(sec.name);
+    setEditSectionSubject(sec.subject);
+    setEditSectionError(null);
+  };
+
+  const handleSaveSectionEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSection) return;
+    if (!editSectionName.trim() || !editSectionSubject.trim()) {
+      setEditSectionError("Section name and subject name are required.");
+      return;
+    }
+    setSavingSection(true);
+    setEditSectionError(null);
+    try {
+      const updated = await teacherApi.updateSection(editingSection.id, {
+        name: editSectionName.trim(),
+        subject: editSectionSubject.trim(),
+      });
+      setSections((prev) =>
+        prev.map((s) =>
+          s.id === updated.id ? { ...s, name: updated.name, subject: updated.subject } : s
+        )
+      );
+      if (selectedSection?.id === updated.id) {
+        setSelectedSection((prev) =>
+          prev ? { ...prev, name: updated.name, subject: updated.subject } : null
+        );
+      }
+      setEditingSection(null);
+    } catch (err: unknown) {
+      setEditSectionError(err instanceof Error ? err.message : "Failed to update section");
+    } finally {
+      setSavingSection(false);
+    }
+  };
+
+  const openEditStudentModal = (s: StudentItem) => {
+    setEditingStudent(s);
+    setEditStudentFirstName(s.user.first_name);
+    setEditStudentLastName(s.user.last_name);
+    setEditStudentNumber(String(s.student_number));
+    setEditStudentSectionId(s.section_id || "");
+    setEditStudentError(null);
+  };
+
+  const handleSaveStudentEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingStudent) return;
+    if (!editStudentFirstName.trim() || !editStudentLastName.trim()) {
+      setEditStudentError("First name and last name are required.");
+      return;
+    }
+    setSavingStudent(true);
+    setEditStudentError(null);
+    try {
+      const res = await teacherApi.updateStudent(editingStudent.id, {
+        first_name: editStudentFirstName.trim(),
+        last_name: editStudentLastName.trim(),
+        student_number: editStudentNumber.trim() ? editStudentNumber.trim() : undefined,
+        section_id: editStudentSectionId ? editStudentSectionId : "",
+      });
+      await loadAllStudents();
+      if (selectedSection) {
+        await loadStudents(selectedSection.id);
+      }
+      if (selectedStudentDetail?.id === editingStudent.id) {
+        setSelectedStudentDetail((prev) =>
+          prev
+            ? {
+                ...prev,
+                student_number: res.student_number,
+                full_student_id: res.full_student_id,
+                section_id: res.section_id,
+                section: res.section,
+                user: {
+                  ...prev.user,
+                  first_name: res.user.first_name,
+                  last_name: res.user.last_name,
+                },
+              }
+            : null
+        );
+      }
+      setEditingStudent(null);
+    } catch (err: unknown) {
+      setEditStudentError(err instanceof Error ? err.message : "Failed to update student");
+    } finally {
+      setSavingStudent(false);
+    }
+  };
+
   // Filter students for Student Directory tab
   const filteredDirectoryStudents = allStudents.filter((s) => {
     if (directoryFilter === "unassigned" && s.section_id) return false;
@@ -705,11 +816,20 @@ export default function TeacherSectionsPage() {
                   <ChevronLeft className="h-5 w-5" />
                 </button>
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <h1 className="text-2xl font-bold text-text-primary">{selectedSection.name}</h1>
                     <span className="rounded-full bg-tan-ghost px-2.5 py-0.5 text-xs font-semibold text-tan border border-tan-border">
                       {selectedSection.subject}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => openEditSectionModal(selectedSection)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border border-border-default bg-surface-subtle hover:bg-surface-muted text-xs font-semibold text-text-secondary hover:text-text-primary transition-colors cursor-pointer ml-1"
+                      title="Edit Section Name & Subject"
+                    >
+                      <Pencil className="h-3.5 w-3.5 text-steel" />
+                      <span>Edit Section</span>
+                    </button>
                   </div>
                   <p className="text-xs text-text-muted mt-1">
                     {students.length} Enrolled Students • {sectionExams.length} Assigned Exams
@@ -860,17 +980,30 @@ export default function TeacherSectionsPage() {
                                 </span>
                               )}
                             </div>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setStudentToUnenroll(s);
-                              }}
-                              className="rounded-lg bg-surface-subtle p-1.5 text-text-muted hover:bg-burgundy-ghost hover:text-burgundy-light transition-colors cursor-pointer"
-                              title="Remove from Section (Unenroll)"
-                            >
-                              <UserX className="h-4 w-4" />
-                            </button>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openEditStudentModal(s);
+                                }}
+                                className="rounded-lg bg-surface-subtle p-1.5 text-text-muted hover:text-steel hover:bg-steel-ghost transition-colors cursor-pointer"
+                                title="Edit Student Name & Info"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setStudentToUnenroll(s);
+                                }}
+                                className="rounded-lg bg-surface-subtle p-1.5 text-text-muted hover:bg-burgundy-ghost hover:text-burgundy-light transition-colors cursor-pointer"
+                                title="Remove from Section (Unenroll)"
+                              >
+                                <UserX className="h-4 w-4" />
+                              </button>
+                            </div>
                           </div>
 
                           <div className="flex items-center gap-3">
@@ -1320,13 +1453,27 @@ export default function TeacherSectionsPage() {
                             <span className="rounded-full bg-tan-ghost px-2.5 py-0.5 text-xs font-semibold text-tan border border-tan-border">
                               {sec.subject}
                             </span>
-                            <button
-                              onClick={() => setSectionToDelete(sec)}
-                              className="text-text-faint hover:text-burgundy-light transition-colors p-1 cursor-pointer"
-                              title="Delete Section"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openEditSectionModal(sec);
+                                }}
+                                className="text-text-faint hover:text-steel transition-colors p-1 cursor-pointer rounded-lg hover:bg-surface-subtle"
+                                title="Edit Section & Subject Name"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSectionToDelete(sec)}
+                                className="text-text-faint hover:text-burgundy-light transition-colors p-1 cursor-pointer rounded-lg hover:bg-surface-subtle"
+                                title="Delete Section"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
                           </div>
                           <h3 className="text-xl font-bold text-text-primary">{sec.name}</h3>
                           <div className="mt-4 flex items-center gap-2 text-xs text-text-muted">
@@ -1529,9 +1676,20 @@ export default function TeacherSectionsPage() {
                   {selectedStudentDetail.user.last_name[0]?.toUpperCase()}
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-text-primary">
-                    {selectedStudentDetail.user.first_name} {selectedStudentDetail.user.last_name}
-                  </h2>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-lg font-bold text-text-primary">
+                      {selectedStudentDetail.user.first_name} {selectedStudentDetail.user.last_name}
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => openEditStudentModal(selectedStudentDetail)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl border border-border-default bg-surface-subtle hover:bg-surface-muted text-xs font-semibold text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+                      title="Edit Student Name"
+                    >
+                      <Pencil className="h-3.5 w-3.5 text-steel" />
+                      <span>Edit Name</span>
+                    </button>
+                  </div>
                   <div className="flex items-center gap-1.5 mt-1">
                     <span className="font-mono text-xs text-tan font-medium">
                       @{selectedStudentDetail.user.username}
@@ -2452,6 +2610,216 @@ export default function TeacherSectionsPage() {
         />
       )}
 
+
+      {/* ── MODAL: EDIT SECTION & SUBJECT ─────────────────────── */}
+      {editingSection && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-3xl border border-border-default bg-surface-raised p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-border-default pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-tan-ghost text-tan border border-tan-border">
+                  <Pencil className="h-4.5 w-4.5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-text-primary">Edit Section & Subject</h2>
+                  <p className="text-[11px] text-text-muted">Update class section name and course subject.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingSection(null)}
+                className="rounded-lg p-1.5 text-text-muted hover:text-text-primary hover:bg-surface-subtle cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {editSectionError && (
+              <div className="flex items-center gap-2 rounded-xl bg-burgundy-ghost border border-burgundy-border p-3 text-xs text-burgundy-light">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>{editSectionError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveSectionEdit} className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-semibold text-text-secondary mb-1">
+                  Section / Class Name <span className="text-burgundy">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editSectionName}
+                  onChange={(e) => setEditSectionName(e.target.value)}
+                  placeholder="e.g. BSIT 3-A"
+                  className="w-full rounded-xl border border-border-emphasis bg-surface-base px-3 py-2 text-xs text-text-primary placeholder-text-faint focus:border-steel focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-text-secondary mb-1">
+                  Subject / Course Name <span className="text-burgundy">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editSectionSubject}
+                  onChange={(e) => setEditSectionSubject(e.target.value)}
+                  placeholder="e.g. Data Structures & Algorithms"
+                  className="w-full rounded-xl border border-border-emphasis bg-surface-base px-3 py-2 text-xs text-text-primary placeholder-text-faint focus:border-steel focus:outline-none"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingSection(null)}
+                  className="flex-1 rounded-xl border border-border-default bg-surface-base py-2.5 text-xs font-bold text-text-muted hover:text-text-primary hover:bg-surface-subtle cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingSection}
+                  className="flex-1 flex items-center justify-center gap-1.5 rounded-xl gradient-bg-primary py-2.5 text-xs font-bold text-white shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  {savingSection ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Check className="h-4 w-4" />
+                  )}
+                  <span>Save Changes</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: EDIT STUDENT NAME & DETAILS ─────────────────── */}
+      {editingStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-3xl border border-border-default bg-surface-raised p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-border-default pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-steel-ghost text-steel border border-steel-border">
+                  <Pencil className="h-4.5 w-4.5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-text-primary">Edit Student</h2>
+                  <p className="text-[11px] text-text-muted">Update student name and institutional profile.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingStudent(null)}
+                className="rounded-lg p-1.5 text-text-muted hover:text-text-primary hover:bg-surface-subtle cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {editStudentError && (
+              <div className="flex items-center gap-2 rounded-xl bg-burgundy-ghost border border-burgundy-border p-3 text-xs text-burgundy-light">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>{editStudentError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveStudentEdit} className="space-y-3.5">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-text-secondary mb-1">
+                    First Name <span className="text-burgundy">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editStudentFirstName}
+                    onChange={(e) => setEditStudentFirstName(e.target.value)}
+                    placeholder="e.g. Maria"
+                    className="w-full rounded-xl border border-border-emphasis bg-surface-base px-3 py-2 text-xs text-text-primary placeholder-text-faint focus:border-steel focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-text-secondary mb-1">
+                    Last Name <span className="text-burgundy">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editStudentLastName}
+                    onChange={(e) => setEditStudentLastName(e.target.value)}
+                    placeholder="e.g. Santos"
+                    className="w-full rounded-xl border border-border-emphasis bg-surface-base px-3 py-2 text-xs text-text-primary placeholder-text-faint focus:border-steel focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-text-secondary mb-1">
+                  Student ID (OMR Number)
+                </label>
+                <div className="flex items-center rounded-xl border border-border-emphasis bg-surface-base focus-within:border-steel transition-colors overflow-hidden">
+                  <span className="px-3 py-2 text-xs font-mono font-bold text-text-muted bg-surface-subtle border-r border-border-default select-none">
+                    02000
+                  </span>
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={editStudentNumber}
+                    onChange={(e) => setEditStudentNumber(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="282222"
+                    className="w-full bg-transparent px-3 py-2 text-xs font-mono font-bold text-text-primary placeholder-text-faint focus:outline-none"
+                  />
+                </div>
+                <p className="text-[10px] text-text-muted mt-1">6-digit number printed on bubble sheets.</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-text-secondary mb-1">
+                  Class Section Assignment
+                </label>
+                <CustomSelect
+                  value={editStudentSectionId}
+                  onChange={(val) => setEditStudentSectionId(val)}
+                  placeholder="None (Unassigned in Directory)"
+                  options={[
+                    { value: "", label: "None (Unassigned in Directory)" },
+                    ...sections.map((sec) => ({
+                      value: sec.id,
+                      label: sec.name,
+                      badge: sec.subject,
+                    })),
+                  ]}
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingStudent(null)}
+                  className="flex-1 rounded-xl border border-border-default bg-surface-base py-2.5 text-xs font-bold text-text-muted hover:text-text-primary hover:bg-surface-subtle cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingStudent}
+                  className="flex-1 flex items-center justify-center gap-1.5 rounded-xl gradient-bg-primary py-2.5 text-xs font-bold text-white shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  {savingStudent ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Check className="h-4 w-4" />
+                  )}
+                  <span>Save Changes</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <PasswordChangeModal
         isOpen={passwordModalOpen}

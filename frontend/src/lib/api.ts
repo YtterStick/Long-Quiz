@@ -350,10 +350,24 @@ export const teacher = {
   }>>("/api/teacher/sections"),
 
   createSection: (data: { name: string; subject: string }) =>
-    request("/api/teacher/sections", { method: "POST", body: data }),
+    request<{
+      id: string;
+      name: string;
+      subject: string;
+      teacher_id: string;
+      created_at: string;
+      student_count: number;
+    }>("/api/teacher/sections", { method: "POST", body: data }),
 
   updateSection: (id: string, data: { name?: string; subject?: string }) =>
-    request("/api/teacher/sections/" + id, { method: "PUT", body: data }),
+    request<{
+      id: string;
+      name: string;
+      subject: string;
+      teacher_id: string;
+      created_at: string;
+      student_count: number;
+    }>("/api/teacher/sections/" + id, { method: "PUT", body: data }),
 
   deleteSection: (id: string) =>
     request("/api/teacher/sections/" + id, { method: "DELETE" }),
@@ -593,6 +607,30 @@ export const teacher = {
 
   deleteStudent: (studentId: string) =>
     request(`/api/teacher/students/${studentId}`, { method: "DELETE" }),
+
+  updateStudent: (studentId: string, data: {
+    first_name?: string;
+    last_name?: string;
+    student_number?: number | string;
+    section_id?: string | null;
+  }) =>
+    request<{
+      id: string;
+      student_number: number;
+      full_student_id?: string;
+      section_id?: string | null;
+      section?: {
+        id: string;
+        name: string;
+        subject?: string;
+      } | null;
+      user: {
+        id: string;
+        first_name: string;
+        last_name: string;
+        username: string;
+      };
+    }>(`/api/teacher/students/${studentId}`, { method: "PUT", body: data }),
 
   // Batch account creation (section optional)
   batchCreateStudents: (data: {

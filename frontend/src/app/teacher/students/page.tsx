@@ -32,6 +32,7 @@ import {
   CheckCircle2,
   Sparkles,
   Download,
+  Pencil,
 } from "lucide-react";
 import Link from "next/link";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
@@ -133,6 +134,15 @@ export default function TeacherStudentsPage() {
   } | null>(null);
   const [copiedTempPassword, setCopiedTempPassword] = useState(false);
   const [copiedSingle, setCopiedSingle] = useState(false);
+
+  // Edit Student Modal state
+  const [editingStudent, setEditingStudent] = useState<StudentItem | null>(null);
+  const [editFirstName, setEditFirstName] = useState("");
+  const [editLastName, setEditLastName] = useState("");
+  const [editStudentNumber, setEditStudentNumber] = useState("");
+  const [editSectionId, setEditSectionId] = useState("");
+  const [submittingEdit, setSubmittingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!authLoading && (!user || user.role !== "TEACHER")) {
@@ -360,6 +370,58 @@ export default function TeacherStudentsPage() {
       await loadData();
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to delete student account");
+    }
+  };
+
+  const openEditModal = (s: StudentItem) => {
+    setEditingStudent(s);
+    setEditFirstName(s.user.first_name);
+    setEditLastName(s.user.last_name);
+    setEditStudentNumber(String(s.student_number));
+    setEditSectionId(s.section_id || "");
+    setEditError(null);
+  };
+
+  const handleSaveStudentEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingStudent) return;
+    if (!editFirstName.trim() || !editLastName.trim()) {
+      setEditError("First name and last name are required.");
+      return;
+    }
+    setSubmittingEdit(true);
+    setEditError(null);
+    try {
+      const res = await teacherApi.updateStudent(editingStudent.id, {
+        first_name: editFirstName.trim(),
+        last_name: editLastName.trim(),
+        student_number: editStudentNumber.trim() ? editStudentNumber.trim() : undefined,
+        section_id: editSectionId ? editSectionId : "",
+      });
+      await loadData();
+      if (selectedStudentDetail?.id === editingStudent.id) {
+        setSelectedStudentDetail((prev) =>
+          prev
+            ? {
+                ...prev,
+                student_number: res.student_number,
+                full_student_id: res.full_student_id,
+                section_id: res.section_id,
+                section: res.section,
+                user: {
+                  ...prev.user,
+                  first_name: res.user.first_name,
+                  last_name: res.user.last_name,
+                },
+              }
+            : null
+        );
+      }
+      setEditingStudent(null);
+    } catch (err: unknown) {
+      setEditError(err instanceof Error ? err.message : "Failed to update student");
+    } finally {
+      setSubmittingEdit(false);
     }
   };
 
@@ -626,16 +688,30 @@ export default function TeacherStudentsPage() {
 
                       {/* Actions Column */}
                       <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openStudentDetail(s);
-                          }}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-steel hover:bg-steel-ghost border border-transparent hover:border-steel-border transition-colors cursor-pointer"
-                        >
-                          Manage &rarr;
-                        </button>
+                        <div className="inline-flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openEditModal(s);
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-text-muted hover:text-steel hover:bg-steel-ghost border border-transparent hover:border-steel-border transition-colors cursor-pointer"
+                            title="Edit Student Name & Details"
+                          >
+                            <Pencil className="h-3 w-3" />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openStudentDetail(s);
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-steel hover:bg-steel-ghost border border-transparent hover:border-steel-border transition-colors cursor-pointer"
+                          >
+                            Manage &rarr;
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -689,7 +765,17 @@ export default function TeacherStudentsPage() {
                 </div>
 
                 <div className="flex items-center justify-between pt-3 border-t border-border-default/60 text-[11px] text-text-muted">
-                  <span>{s.section ? s.section.subject || "Enrolled" : "Directory Record"}</span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openEditModal(s);
+                    }}
+                    className="inline-flex items-center gap-1 text-text-muted hover:text-steel font-bold cursor-pointer transition-colors"
+                  >
+                    <Pencil className="h-3 w-3" />
+                    <span>Edit</span>
+                  </button>
                   <span className="font-bold text-steel group-hover:translate-x-0.5 transition-transform">
                     View Info &rarr;
                   </span>
@@ -1293,9 +1379,20 @@ export default function TeacherStudentsPage() {
                   {selectedStudentDetail.user.last_name[0]?.toUpperCase()}
                 </div>
                 <div>
-                  <h2 className="text-base font-bold text-text-primary">
-                    {selectedStudentDetail.user.first_name} {selectedStudentDetail.user.last_name}
-                  </h2>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base font-bold text-text-primary">
+                      {selectedStudentDetail.user.first_name} {selectedStudentDetail.user.last_name}
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() => openEditModal(selectedStudentDetail)}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border border-border-default bg-surface-subtle hover:bg-surface-muted text-[11px] font-bold text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+                      title="Edit Student Name"
+                    >
+                      <Pencil className="h-3 w-3 text-steel" />
+                      <span>Edit Name</span>
+                    </button>
+                  </div>
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <span className="font-mono text-xs text-steel font-bold">
                       @{selectedStudentDetail.user.username}
@@ -1472,6 +1569,131 @@ export default function TeacherStudentsPage() {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL 4: EDIT STUDENT NAME & DETAILS ─────────────────── */}
+      {editingStudent && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-3xl border border-border-default bg-surface-raised p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-border-default pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-steel-ghost text-steel border border-steel-border">
+                  <Pencil className="h-4.5 w-4.5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-text-primary">Edit Student</h2>
+                  <p className="text-[11px] text-text-muted">Update student name and institutional profile.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingStudent(null)}
+                className="rounded-lg p-1.5 text-text-muted hover:text-text-primary hover:bg-surface-subtle cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {editError && (
+              <div className="flex items-center gap-2 rounded-xl bg-burgundy-ghost border border-burgundy-border p-3 text-xs text-burgundy-light">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                <span>{editError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveStudentEdit} className="space-y-3.5">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-text-secondary mb-1">
+                    First Name <span className="text-burgundy">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editFirstName}
+                    onChange={(e) => setEditFirstName(e.target.value)}
+                    placeholder="e.g. Maria"
+                    className="w-full rounded-xl border border-border-emphasis bg-surface-base px-3 py-2 text-xs text-text-primary placeholder-text-faint focus:border-steel focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-text-secondary mb-1">
+                    Last Name <span className="text-burgundy">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editLastName}
+                    onChange={(e) => setEditLastName(e.target.value)}
+                    placeholder="e.g. Santos"
+                    className="w-full rounded-xl border border-border-emphasis bg-surface-base px-3 py-2 text-xs text-text-primary placeholder-text-faint focus:border-steel focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-text-secondary mb-1">
+                  Student ID (OMR Number)
+                </label>
+                <div className="flex items-center rounded-xl border border-border-emphasis bg-surface-base focus-within:border-steel transition-colors overflow-hidden">
+                  <span className="px-3 py-2 text-xs font-mono font-bold text-text-muted bg-surface-subtle border-r border-border-default select-none">
+                    02000
+                  </span>
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={editStudentNumber}
+                    onChange={(e) => setEditStudentNumber(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    placeholder="282222"
+                    className="w-full bg-transparent px-3 py-2 text-xs font-mono font-bold text-text-primary placeholder-text-faint focus:outline-none"
+                  />
+                </div>
+                <p className="text-[10px] text-text-muted mt-1">6-digit number printed on bubble sheets.</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-text-secondary mb-1">
+                  Class Section Assignment
+                </label>
+                <CustomSelect
+                  value={editSectionId}
+                  onChange={(val) => setEditSectionId(val)}
+                  placeholder="None (Unassigned in Directory)"
+                  options={[
+                    { value: "", label: "None (Unassigned in Directory)" },
+                    ...sections.map((sec) => ({
+                      value: sec.id,
+                      label: sec.name,
+                      badge: sec.subject,
+                    })),
+                  ]}
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingStudent(null)}
+                  className="flex-1 rounded-xl border border-border-default bg-surface-base py-2.5 text-xs font-bold text-text-muted hover:text-text-primary hover:bg-surface-subtle cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingEdit}
+                  className="flex-1 flex items-center justify-center gap-1.5 rounded-xl gradient-bg-primary py-2.5 text-xs font-bold text-white shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  {submittingEdit ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Check className="h-4 w-4" />
+                  )}
+                  <span>Save Changes</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -13,7 +13,7 @@ from app.models import (
 )
 from app.schemas import (
     SectionCreate, SectionUpdate, SectionOut,
-    StudentCreate, StudentOut, StudentBulkCreateResponse, StudentBatchCreate, EnrollStudent,
+    StudentCreate, StudentUpdate, StudentOut, StudentBulkCreateResponse, StudentBatchCreate, EnrollStudent,
     PasswordResetRequestOut, StudentResetPasswordResponse,
     ExamCreate, ExamUpdate, ExamOut, AnswerKeyItem,
     QuestionItem, QuestionOut, QuestionnaireUpdate, ExamVisibilityUpdate,
@@ -1084,6 +1084,72 @@ async def unenroll_student(
     student.section_id = None
     await db.flush()
     return {"message": "Student unenrolled from section successfully"}
+
+
+@router.put("/students/{student_id}", response_model=StudentOut)
+async def update_student(
+    student_id: str,
+    body: StudentUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """
+    Update student profile (first name, last name), student ID, or section assignment as teacher.
+    """
+    result = await db.execute(
+        select(Student)
+        .options(selectinload(Student.user), selectinload(Student.section))
+        .where(Student.id == student_id)
+    )
+    student = result.scalar_one_or_none()
+    if not student or not student.user:
+        raise HTTPException(status_code=404, detail="Student not found")
+
+    user = student.user
+    if body.first_name is not None and body.first_name.strip():
+        user.first_name = body.first_name.strip()
+    if body.last_name is not None and body.last_name.strip():
+        user.last_name = body.last_name.strip()
+
+    if body.student_number is not None and str(body.student_number).strip():
+        try:
+            new_num = clean_student_omr_number(body.student_number)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        if new_num != student.student_number:
+            exists = await db.execute(
+                select(Student).where(Student.student_number == new_num, Student.id != student_id)
+            )
+            if exists.scalar_one_or_none():
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Student ID {format_full_student_id(new_num)} is already in use by another student."
+                )
+            student.student_number = new_num
+
+    if body.section_id is not None:
+        if body.section_id == "" or body.section_id == "none":
+            student.section_id = None
+        else:
+            teacher = await _get_teacher(current_user, db)
+            sec_res = await db.execute(
+                select(Section).where(Section.id == body.section_id, Section.teacher_id == teacher.id)
+            )
+            if not sec_res.scalar_one_or_none():
+                raise HTTPException(status_code=404, detail="Section not found or not owned by teacher")
+            student.section_id = body.section_id
+
+    await db.flush()
+
+    res = await db.execute(
+        select(Student)
+        .options(selectinload(Student.user), selectinload(Student.section))
+        .where(Student.id == student.id)
+    )
+    st = res.scalar_one()
+    out = StudentOut.model_validate(st)
+    out.full_student_id = format_full_student_id(st.student_number)
+    return out
 
 
 @router.delete("/students/{student_id}")
