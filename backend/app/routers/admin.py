@@ -47,16 +47,21 @@ async def get_dashboard(
 
 @router.get("/teachers", response_model=list[TeacherOut])
 async def list_teachers(
+    page: Optional[int] = None,
+    page_size: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_role(Role.ADMIN)),
 ):
     """List all teacher accounts."""
-    result = await db.execute(
+    stmt = (
         select(Teacher)
         .join(User)
         .options(selectinload(Teacher.user))
         .order_by(User.created_at.desc())
     )
+    if page is not None and page_size is not None and page > 0 and page_size > 0:
+        stmt = stmt.offset((page - 1) * page_size).limit(page_size)
+    result = await db.execute(stmt)
     teachers = result.scalars().all()
     return teachers
 
@@ -151,18 +156,59 @@ async def delete_teacher(
     return {"message": "Teacher deleted successfully"}
 
 
+@router.post("/teachers/{teacher_or_user_id}/reset-password", response_model=dict)
+async def reset_teacher_password(
+    teacher_or_user_id: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_role(Role.ADMIN)),
+):
+    """Admin-triggered password reset for a teacher. Generates temporary password."""
+    stmt = (
+        select(User)
+        .outerjoin(Teacher, Teacher.user_id == User.id)
+        .where(
+            or_(
+                User.id == teacher_or_user_id,
+                Teacher.id == teacher_or_user_id,
+            ),
+            User.role == Role.TEACHER,
+        )
+    )
+    result = await db.execute(stmt)
+    teacher_user = result.scalar_one_or_none()
+    if not teacher_user:
+        raise HTTPException(status_code=404, detail="Teacher not found")
+
+    temp_password = generate_temp_password()
+    teacher_user.password_hash = hash_password(temp_password)
+    teacher_user.must_change_password = True
+    teacher_user.failed_login_attempts = 0
+    teacher_user.locked_until = None
+    await db.flush()
+
+    return {
+        "message": f"Password reset for {teacher_user.first_name} {teacher_user.last_name}",
+        "user_id": teacher_user.id,
+        "username": teacher_user.username,
+        "temp_password": temp_password,
+    }
+
+
 # ─── STUDENT MANAGEMENT ─────────────────────────────────────────
 
 @router.get("/students", response_model=list[StudentOut])
 async def list_students(
     search: Optional[str] = None,
     section_id: Optional[str] = None,
+    page: Optional[int] = None,
+    page_size: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_role(Role.ADMIN)),
 ):
     """
     List all registered students in the institution.
-    Supports filtering by search query (name, username, student ID) and section.
+    Supports filtering by search query (name, username, student ID) and section,
+    with optional pagination.
     """
     stmt = (
         select(Student)
@@ -189,6 +235,8 @@ async def list_students(
         stmt = stmt.where(or_(*filters))
 
     stmt = stmt.order_by(User.last_name.asc(), User.first_name.asc())
+    if page is not None and page_size is not None and page > 0 and page_size > 0:
+        stmt = stmt.offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(stmt)
     students = result.scalars().all()
 

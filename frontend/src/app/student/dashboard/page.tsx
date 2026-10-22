@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/Navbar";
 import { student as studentApi } from "@/lib/api";
+import { Pagination } from "@/components/ui/Pagination";
 import {
   GraduationCap,
   FileCheck,
@@ -194,6 +195,29 @@ export default function StudentDashboard() {
   const [loading, setLoading] = useState(true);
   const [loadingReviewers, setLoadingReviewers] = useState(false);
   const [reviewerSectionMode, setReviewerSectionMode] = useState<"ai_handout" | "public_exams">("ai_handout");
+
+  // Pagination States
+  const [examsPage, setExamsPage] = useState(1);
+  const [examsPageSize, setExamsPageSize] = useState(6);
+  const [gradesPage, setGradesPage] = useState(1);
+  const [gradesPageSize, setGradesPageSize] = useState(8);
+  const [reviewersPage, setReviewersPage] = useState(1);
+  const [reviewersPageSize, setReviewersPageSize] = useState(6);
+
+  const paginatedAvailableExams = useMemo(() => {
+    const start = (examsPage - 1) * examsPageSize;
+    return availableExams.slice(start, start + examsPageSize);
+  }, [availableExams, examsPage, examsPageSize]);
+
+  const paginatedGrades = useMemo(() => {
+    const start = (gradesPage - 1) * gradesPageSize;
+    return grades.slice(start, start + gradesPageSize);
+  }, [grades, gradesPage, gradesPageSize]);
+
+  const paginatedPublicReviewers = useMemo(() => {
+    const start = (reviewersPage - 1) * reviewersPageSize;
+    return publicReviewers.slice(start, start + reviewersPageSize);
+  }, [publicReviewers, reviewersPage, reviewersPageSize]);
 
   // Online Exam Taking & Proctoring State
   const [mobileBlockedOpen, setMobileBlockedOpen] = useState(false);
@@ -1199,6 +1223,16 @@ export default function StudentDashboard() {
                       </div>
                     );
                   })}
+                  <Pagination
+                    currentPage={reviewersPage}
+                    totalPages={Math.ceil(publicReviewers.length / reviewersPageSize)}
+                    totalItems={publicReviewers.length}
+                    pageSize={reviewersPageSize}
+                    onPageChange={setReviewersPage}
+                    onPageSizeChange={setReviewersPageSize}
+                    pageSizeOptions={[6, 12]}
+                    itemLabel="public reviewers"
+                  />
                 </div>
               )}
             </div>
@@ -1305,8 +1339,9 @@ export default function StudentDashboard() {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {availableExams.map((exam) => (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {paginatedAvailableExams.map((exam) => (
                   <div
                     key={exam.id}
                     className="glass-card glass-card-hover rounded-2xl p-4 sm:p-5 border border-border-default flex flex-col justify-between space-y-4 hover:border-steel/40 transition-all shadow-sm"
@@ -1425,6 +1460,17 @@ export default function StudentDashboard() {
                     </div>
                   </div>
                 ))}
+                </div>
+                <Pagination
+                  currentPage={examsPage}
+                  totalPages={Math.ceil(availableExams.length / examsPageSize)}
+                  totalItems={availableExams.length}
+                  pageSize={examsPageSize}
+                  onPageChange={setExamsPage}
+                  onPageSizeChange={setExamsPageSize}
+                  pageSizeOptions={[6, 12]}
+                  itemLabel="online exams"
+                />
               </div>
             )}
           </div>
@@ -1458,7 +1504,8 @@ export default function StudentDashboard() {
               </div>
             ) : (
               <div className="space-y-4">
-                {grades.map((grade, idx) => {
+                {paginatedGrades.map((grade, idx) => {
+                  const globalIdx = (gradesPage - 1) * gradesPageSize + idx;
                   const isExpanded = expandedExamIndex === idx;
                   const keyMap: Record<number, string> = {};
                   grade.answer_keys.forEach((k) => {
@@ -1744,6 +1791,16 @@ export default function StudentDashboard() {
                     </div>
                   );
                 })}
+                <Pagination
+                  currentPage={gradesPage}
+                  totalPages={Math.ceil(grades.length / gradesPageSize)}
+                  totalItems={grades.length}
+                  pageSize={gradesPageSize}
+                  onPageChange={setGradesPage}
+                  onPageSizeChange={setGradesPageSize}
+                  pageSizeOptions={[8, 16]}
+                  itemLabel="graded exams"
+                />
               </div>
             )}
           </div>
@@ -1831,8 +1888,8 @@ export default function StudentDashboard() {
               </div>
             ) : (
               <div className="space-y-4">
-                {publicReviewers.map((rev, revIdx) => {
-                  const isExpanded = expandedReviewerIndex === revIdx;
+                {paginatedPublicReviewers.map((rev, revIdx) => {
+                  const isExpanded = expandedReviewerIndex === (reviewersPage - 1) * reviewersPageSize + revIdx;
                   const keyMap: Record<number, string> = {};
                   rev.answer_keys.forEach((k) => {
                     keyMap[k.question_number] = k.correct_option;

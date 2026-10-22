@@ -35,6 +35,7 @@ import {
 import Link from "next/link";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { Pagination } from "@/components/ui/Pagination";
 import Webcam from "react-webcam";
 
 interface SectionOption {
@@ -451,6 +452,18 @@ export default function TeacherScanPage() {
       );
     });
   }, [gradebook, statusFilter, searchQuery]);
+
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  useEffect(() => {
+    setPage(1);
+  }, [selectedSectionId, selectedExamId, statusFilter, searchQuery, pageSize]);
+
+  const paginatedRecords = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredRecords.slice(start, start + pageSize);
+  }, [filteredRecords, page, pageSize]);
 
   if (authLoading || initialLoading) {
     return <ScanPageSkeleton />;
@@ -1082,8 +1095,9 @@ export default function TeacherScanPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border-subtle/60 font-mono text-xs">
-                    {filteredRecords.map((rec, index) => {
+                    {paginatedRecords.map((rec, index) => {
                       const isAbsent = rec.status === "ABSENT";
+                      const displayIndex = (page - 1) * pageSize + index + 1;
                       return (
                         <tr
                           key={rec.student_id}
@@ -1091,7 +1105,7 @@ export default function TeacherScanPage() {
                             isAbsent ? "bg-burgundy-ghost/10" : ""
                           }`}
                         >
-                          <td className="py-3 px-4 text-center text-text-muted">{index + 1}</td>
+                          <td className="py-3 px-4 text-center text-text-muted">{displayIndex}</td>
                           <td className="py-3 px-4 font-bold text-text-primary">
                             {rec.full_student_id}
                           </td>
@@ -1170,6 +1184,16 @@ export default function TeacherScanPage() {
                     })}
                   </tbody>
                 </table>
+                <Pagination
+                  currentPage={page}
+                  totalPages={Math.ceil(filteredRecords.length / pageSize)}
+                  totalItems={filteredRecords.length}
+                  pageSize={pageSize}
+                  onPageChange={setPage}
+                  onPageSizeChange={setPageSize}
+                  pageSizeOptions={[10, 25, 50]}
+                  itemLabel="student records"
+                />
               </div>
             )}
           </div>

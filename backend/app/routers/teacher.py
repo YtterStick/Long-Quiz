@@ -551,13 +551,15 @@ async def toggle_section_exam_grades(
 async def list_all_students(
     search: Optional[str] = Query(None),
     unassigned_only: bool = Query(False),
+    page: Optional[int] = Query(None, ge=1),
+    page_size: Optional[int] = Query(None, ge=1),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(Role.TEACHER)),
 ):
     """
     List all students registered in the application.
     Supports searching by name, username, or student number.
-    Can filter by unassigned_only=True.
+    Can filter by unassigned_only=True, with optional pagination.
     """
     stmt = (
         select(Student)
@@ -576,6 +578,8 @@ async def list_all_students(
             )
         )
     stmt = stmt.order_by(Student.student_number)
+    if page is not None and page_size is not None and page > 0 and page_size > 0:
+        stmt = stmt.offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(stmt)
     students = result.scalars().unique().all()
 
@@ -1310,6 +1314,8 @@ async def dismiss_password_reset_request(
 @router.get("/exams", response_model=list[ExamOut])
 async def list_exams(
     include_public: bool = Query(False, description="Include public exams from other teachers"),
+    page: Optional[int] = Query(None, ge=1),
+    page_size: Optional[int] = Query(None, ge=1),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(Role.TEACHER)),
 ):
@@ -1323,7 +1329,10 @@ async def list_exams(
         query = select(Exam).options(*options).where(
             Exam.teacher_id == teacher.id
         )
-    result = await db.execute(query.order_by(Exam.created_at.desc()))
+    query = query.order_by(Exam.created_at.desc())
+    if page is not None and page_size is not None and page > 0 and page_size > 0:
+        query = query.offset((page - 1) * page_size).limit(page_size)
+    result = await db.execute(query)
     exams = result.scalars().all()
     out = []
     for exam in exams:

@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/Navbar";
 import { teacher as teacherApi } from "@/lib/api";
+import { Pagination } from "@/components/ui/Pagination";
 import {
   School,
   Plus,
@@ -135,6 +136,16 @@ export default function TeacherSectionsPage() {
   const [selectedSection, setSelectedSection] = useState<SectionItem | null>(null);
   const [students, setStudents] = useState<StudentItem[]>([]);
   const [studentsLoading, setStudentsLoading] = useState(false);
+
+  // Pagination states
+  const [sectionsPage, setSectionsPage] = useState(1);
+  const [sectionsPageSize, setSectionsPageSize] = useState(6);
+  const [rosterPage, setRosterPage] = useState(1);
+  const [rosterPageSize, setRosterPageSize] = useState(9);
+  const [dirPage, setDirPage] = useState(1);
+  const [dirPageSize, setDirPageSize] = useState(9);
+  const [secExamsPage, setSecExamsPage] = useState(1);
+  const [secExamsPageSize, setSecExamsPageSize] = useState(6);
 
   // Sub-tabs inside selected section: "students" vs "exams"
   const [sectionViewTab, setSectionViewTab] = useState<"students" | "exams">("students");
@@ -743,6 +754,39 @@ export default function TeacherSectionsPage() {
     );
   });
 
+  // Reset pagination when search / active section changes
+  useEffect(() => {
+    setDirPage(1);
+  }, [directorySearch, directoryFilter, dirPageSize]);
+
+  useEffect(() => {
+    setRosterPage(1);
+  }, [selectedSection, rosterPageSize]);
+
+  useEffect(() => {
+    setSecExamsPage(1);
+  }, [selectedSection, secExamsPageSize]);
+
+  const paginatedSections = useMemo(() => {
+    const start = (sectionsPage - 1) * sectionsPageSize;
+    return sections.slice(start, start + sectionsPageSize);
+  }, [sections, sectionsPage, sectionsPageSize]);
+
+  const paginatedRosterStudents = useMemo(() => {
+    const start = (rosterPage - 1) * rosterPageSize;
+    return students.slice(start, start + rosterPageSize);
+  }, [students, rosterPage, rosterPageSize]);
+
+  const paginatedDirectoryStudents = useMemo(() => {
+    const start = (dirPage - 1) * dirPageSize;
+    return filteredDirectoryStudents.slice(start, start + dirPageSize);
+  }, [filteredDirectoryStudents, dirPage, dirPageSize]);
+
+  const paginatedSectionExams = useMemo(() => {
+    const start = (secExamsPage - 1) * secExamsPageSize;
+    return sectionExams.slice(start, start + secExamsPageSize);
+  }, [sectionExams, secExamsPage, secExamsPageSize]);
+
   // Filter available students for enrolling into the current section
   const availableToEnroll = allStudents.filter((s) => {
     if (!selectedSection) return false;
@@ -960,8 +1004,9 @@ export default function TeacherSectionsPage() {
                     </div>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                    {students.map((s) => (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                      {paginatedRosterStudents.map((s) => (
                       <div
                         key={s.id}
                         onClick={() => openStudentDetail(s)}
@@ -1029,6 +1074,17 @@ export default function TeacherSectionsPage() {
                         </div>
                       </div>
                     ))}
+                    </div>
+                    <Pagination
+                      currentPage={rosterPage}
+                      totalPages={Math.ceil(students.length / rosterPageSize)}
+                      totalItems={students.length}
+                      pageSize={rosterPageSize}
+                      onPageChange={setRosterPage}
+                      onPageSizeChange={setRosterPageSize}
+                      pageSizeOptions={[9, 18, 36]}
+                      itemLabel="students in roster"
+                    />
                   </div>
                 )}
               </div>
@@ -1068,7 +1124,7 @@ export default function TeacherSectionsPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {sectionExams.map((se) => (
+                    {paginatedSectionExams.map((se) => (
                       <div
                         key={se.id}
                         className="glass-card rounded-2xl p-5 sm:p-6 border border-border-default space-y-5 transition-all"
@@ -1357,6 +1413,16 @@ export default function TeacherSectionsPage() {
                       </div>
 
                     ))}
+                    <Pagination
+                      currentPage={secExamsPage}
+                      totalPages={Math.ceil(sectionExams.length / secExamsPageSize)}
+                      totalItems={sectionExams.length}
+                      pageSize={secExamsPageSize}
+                      onPageChange={setSecExamsPage}
+                      onPageSizeChange={setSecExamsPageSize}
+                      pageSizeOptions={[6, 12]}
+                      itemLabel="assigned exams"
+                    />
                   </div>
                 )}
               </div>
@@ -1442,8 +1508,9 @@ export default function TeacherSectionsPage() {
                     </button>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                    {sections.map((sec) => (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                      {paginatedSections.map((sec) => (
                       <div
                         key={sec.id}
                         className="glass-card glass-card-hover rounded-2xl p-6 border border-border-default flex flex-col justify-between"
@@ -1510,6 +1577,17 @@ export default function TeacherSectionsPage() {
                         </div>
                       </div>
                     ))}
+                    </div>
+                    <Pagination
+                      currentPage={sectionsPage}
+                      totalPages={Math.ceil(sections.length / sectionsPageSize)}
+                      totalItems={sections.length}
+                      pageSize={sectionsPageSize}
+                      onPageChange={setSectionsPage}
+                      onPageSizeChange={setSectionsPageSize}
+                      pageSizeOptions={[6, 9, 18]}
+                      itemLabel="sections"
+                    />
                   </div>
                 )}
               </div>
@@ -1596,8 +1674,9 @@ export default function TeacherSectionsPage() {
                       </p>
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                      {filteredDirectoryStudents.map((s) => (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                        {paginatedDirectoryStudents.map((s) => (
                         <div
                           key={s.id}
                           onClick={() => openStudentDetail(s)}
@@ -1656,7 +1735,18 @@ export default function TeacherSectionsPage() {
                         </div>
                       ))}
                     </div>
-                  )}
+                    <Pagination
+                      currentPage={dirPage}
+                      totalPages={Math.ceil(filteredDirectoryStudents.length / dirPageSize)}
+                      totalItems={filteredDirectoryStudents.length}
+                      pageSize={dirPageSize}
+                      onPageChange={setDirPage}
+                      onPageSizeChange={setDirPageSize}
+                      pageSizeOptions={[9, 18, 36]}
+                      itemLabel="registered students"
+                    />
+                  </div>
+                )}
                 </div>
               </div>
             )}

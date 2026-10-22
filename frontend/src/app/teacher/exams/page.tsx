@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/Navbar";
 import { teacher as teacherApi } from "@/lib/api";
+import { Pagination } from "@/components/ui/Pagination";
 import {
   FileSpreadsheet,
   Plus,
@@ -83,6 +84,20 @@ export default function TeacherExamsPage() {
   const [exams, setExams] = useState<ExamItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [includePublic, setIncludePublic] = useState(false);
+
+  // Pagination State
+  const [examPage, setExamPage] = useState(1);
+  const [examPageSize, setExamPageSize] = useState(9);
+
+  // Reset page when switching public/private filter
+  useEffect(() => {
+    setExamPage(1);
+  }, [includePublic, examPageSize]);
+
+  const paginatedExams = useMemo(() => {
+    const start = (examPage - 1) * examPageSize;
+    return exams.slice(start, start + examPageSize);
+  }, [exams, examPage, examPageSize]);
 
   // Builder States
   const [isBuilderOpen, setIsBuilderOpen] = useState(false);
@@ -1551,8 +1566,9 @@ export default function TeacherExamsPage() {
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-                {exams.map((exam) => {
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                  {paginatedExams.map((exam) => {
                   const isOwner = exam.is_owner !== undefined ? exam.is_owner : true;
                   const isToggling = togglingVisibilityId === exam.id;
                   const questionCount = exam.questions?.filter((q) => q.question_text?.trim()).length || 0;
@@ -1677,6 +1693,17 @@ export default function TeacherExamsPage() {
                     </div>
                   );
                 })}
+                </div>
+                <Pagination
+                  currentPage={examPage}
+                  totalPages={Math.ceil(exams.length / examPageSize)}
+                  totalItems={exams.length}
+                  pageSize={examPageSize}
+                  onPageChange={setExamPage}
+                  onPageSizeChange={setExamPageSize}
+                  pageSizeOptions={[6, 9, 18]}
+                  itemLabel="exams"
+                />
               </div>
             )}
           </div>

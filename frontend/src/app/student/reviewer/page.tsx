@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { Navbar } from "@/components/Navbar";
 import { StudentHandoutReviewer } from "@/components/StudentHandoutReviewer";
 import { SkeletonReviewerList } from "@/components/ui/Skeleton";
+import { Pagination } from "@/components/ui/Pagination";
 import { student as studentApi } from "@/lib/api";
 import {
   BookOpen,
@@ -52,6 +53,10 @@ export default function StudentReviewerPage() {
   const [expandedReviewerIndex, setExpandedReviewerIndex] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Pagination
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(6);
+
   useEffect(() => {
     if (!authLoading && !user) {
       router.push("/login");
@@ -83,14 +88,25 @@ export default function StudentReviewerPage() {
     return null;
   }
 
-  const filteredPublicReviewers = publicReviewers.filter((rev) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      rev.title?.toLowerCase().includes(q) ||
-      rev.questions.some((item) => item.question_text?.toLowerCase().includes(q))
-    );
-  });
+  const filteredPublicReviewers = useMemo(() => {
+    return publicReviewers.filter((rev) => {
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      return (
+        rev.title?.toLowerCase().includes(q) ||
+        rev.questions.some((item) => item.question_text?.toLowerCase().includes(q))
+      );
+    });
+  }, [publicReviewers, searchQuery]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [searchQuery, pageSize]);
+
+  const paginatedReviewers = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredPublicReviewers.slice(start, start + pageSize);
+  }, [filteredPublicReviewers, page, pageSize]);
 
   return (
     <div className="min-h-screen bg-surface-base text-text-primary flex flex-col">
@@ -216,8 +232,9 @@ export default function StudentReviewerPage() {
               </div>
             ) : (
               <div className="space-y-4">
-                {filteredPublicReviewers.map((rev, revIdx) => {
-                  const isExpanded = expandedReviewerIndex === revIdx;
+                {paginatedReviewers.map((rev, revIdx) => {
+                  const globalIdx = (page - 1) * pageSize + revIdx;
+                  const isExpanded = expandedReviewerIndex === globalIdx;
                   const keyMap: Record<number, string> = {};
                   rev.answer_keys.forEach((k) => {
                     keyMap[k.question_number] = k.correct_option;
@@ -247,7 +264,7 @@ export default function StudentReviewerPage() {
 
                         <button
                           type="button"
-                          onClick={() => setExpandedReviewerIndex(isExpanded ? null : revIdx)}
+                          onClick={() => setExpandedReviewerIndex(isExpanded ? null : globalIdx)}
                           className="flex items-center justify-center gap-1.5 rounded-xl gradient-bg-primary px-4 py-2.5 text-xs font-semibold text-text-primary shadow-md shadow-steel/20 w-full sm:w-auto cursor-pointer"
                         >
                           <BookOpen className="h-4 w-4" />
@@ -337,6 +354,16 @@ export default function StudentReviewerPage() {
                     </div>
                   );
                 })}
+                <Pagination
+                  currentPage={page}
+                  totalPages={Math.ceil(filteredPublicReviewers.length / pageSize)}
+                  totalItems={filteredPublicReviewers.length}
+                  pageSize={pageSize}
+                  onPageChange={setPage}
+                  onPageSizeChange={setPageSize}
+                  pageSizeOptions={[6, 12]}
+                  itemLabel="questionnaires"
+                />
               </div>
             )}
           </div>

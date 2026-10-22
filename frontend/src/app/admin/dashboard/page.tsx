@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/Navbar";
@@ -23,6 +23,7 @@ import {
   Check,
   Upload,
   Key,
+  KeyRound,
   Download,
   Sparkles,
   FileText,
@@ -34,6 +35,7 @@ import { PasswordChangeModal } from "@/components/PasswordChangeModal";
 import { SkeletonStatCards, SkeletonTable, SkeletonDashboardPage } from "@/components/ui/Skeleton";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { WelcomeHero } from "@/components/WelcomeHero";
+import { Pagination } from "@/components/ui/Pagination";
 
 interface TeacherItem {
   id: string;
@@ -123,6 +125,17 @@ export default function AdminDashboard() {
     full_student_id: string;
     temp_password: string;
   } | null>(null);
+  const [resetTeacherPasswordModal, setResetTeacherPasswordModal] = useState<{
+    teacher_name: string;
+    username: string;
+    temp_password: string;
+  } | null>(null);
+
+  // Pagination State
+  const [studentPage, setStudentPage] = useState(1);
+  const [studentPageSize, setStudentPageSize] = useState(10);
+  const [teacherPage, setTeacherPage] = useState(1);
+  const [teacherPageSize, setTeacherPageSize] = useState(10);
 
   // Teacher Form State
   const [newTeacherFirstName, setNewTeacherFirstName] = useState("");
@@ -396,6 +409,20 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleResetTeacherPassword = async (teacher: TeacherItem) => {
+    try {
+      const res = await adminApi.resetTeacherPassword(teacher.user_id || teacher.id);
+      setResetTeacherPasswordModal({
+        teacher_name: `${teacher.user.first_name} ${teacher.user.last_name}`,
+        username: res.username,
+        temp_password: res.temp_password,
+      });
+      await fetchData();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to reset teacher password");
+    }
+  };
+
   // Batch Excel / CSV upload
   const handleBatchUpload = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -478,6 +505,25 @@ export default function AdminDashboard() {
 
     return matchesSearch && matchesSection;
   });
+
+  // Reset pagination when search or filters change
+  useEffect(() => {
+    setStudentPage(1);
+  }, [searchTerm, selectedSectionFilter, studentPageSize]);
+
+  useEffect(() => {
+    setTeacherPage(1);
+  }, [searchTerm, teacherPageSize]);
+
+  const paginatedStudents = useMemo(() => {
+    const start = (studentPage - 1) * studentPageSize;
+    return filteredStudents.slice(start, start + studentPageSize);
+  }, [filteredStudents, studentPage, studentPageSize]);
+
+  const paginatedTeachers = useMemo(() => {
+    const start = (teacherPage - 1) * teacherPageSize;
+    return filteredTeachers.slice(start, start + teacherPageSize);
+  }, [filteredTeachers, teacherPage, teacherPageSize]);
 
   if (authLoading) {
     return <SkeletonDashboardPage role="admin" />;
@@ -737,7 +783,7 @@ export default function AdminDashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border-default/60 text-text-secondary">
-                    {filteredStudents.map((st) => (
+                    {paginatedStudents.map((st) => (
                       <tr key={st.id} className="hover:bg-surface-subtle/30 transition-colors">
                         <td className="py-3.5 px-4 font-mono">
                           <span className="font-bold text-text-primary">
@@ -781,7 +827,7 @@ export default function AdminDashboard() {
                             <button
                               title="Reset Password"
                               onClick={() => handleResetPassword(st)}
-                              className="rounded-lg p-1.5 text-text-muted hover:bg-surface-subtle hover:text-amber-400 transition-colors"
+                              className="rounded-lg p-1.5 text-text-muted hover:bg-surface-subtle hover:text-amber-400 transition-colors cursor-pointer"
                             >
                               <Key className="h-4 w-4" />
                             </button>
@@ -796,14 +842,14 @@ export default function AdminDashboard() {
                                 setEditStudentIsActive(st.user.is_active);
                                 setIsEditStudentModalOpen(true);
                               }}
-                              className="rounded-lg p-1.5 text-text-muted hover:bg-surface-subtle hover:text-steel transition-colors"
+                              className="rounded-lg p-1.5 text-text-muted hover:bg-surface-subtle hover:text-steel transition-colors cursor-pointer"
                             >
                               <Edit2 className="h-4 w-4" />
                             </button>
                             <button
                               title="Delete Student"
                               onClick={() => setStudentToDelete(st)}
-                              className="rounded-lg p-1.5 text-text-muted hover:bg-surface-subtle hover:text-burgundy-light transition-colors"
+                              className="rounded-lg p-1.5 text-text-muted hover:bg-surface-subtle hover:text-burgundy-light transition-colors cursor-pointer"
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
@@ -813,6 +859,16 @@ export default function AdminDashboard() {
                     ))}
                   </tbody>
                 </table>
+                <Pagination
+                  currentPage={studentPage}
+                  totalPages={Math.ceil(filteredStudents.length / studentPageSize)}
+                  totalItems={filteredStudents.length}
+                  pageSize={studentPageSize}
+                  onPageChange={setStudentPage}
+                  onPageSizeChange={setStudentPageSize}
+                  pageSizeOptions={[10, 25, 50]}
+                  itemLabel="students"
+                />
               </div>
             )}
           </div>
@@ -859,7 +915,7 @@ export default function AdminDashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border-default/60 text-text-secondary">
-                    {filteredTeachers.map((t) => (
+                    {paginatedTeachers.map((t) => (
                       <tr key={t.id} className="hover:bg-surface-subtle/30 transition-colors">
                         <td className="py-3.5 px-4 font-semibold text-text-primary">
                           {t.user.first_name} {t.user.last_name}
@@ -894,6 +950,14 @@ export default function AdminDashboard() {
                         <td className="py-3.5 px-4 text-right">
                           <div className="flex items-center justify-end gap-1">
                             <button
+                              title="Reset Teacher Password"
+                              onClick={() => handleResetTeacherPassword(t)}
+                              className="rounded-lg p-1.5 text-text-muted hover:bg-surface-subtle hover:text-amber-400 transition-colors cursor-pointer"
+                            >
+                              <KeyRound className="h-4 w-4" />
+                            </button>
+                            <button
+                              title="Edit Teacher Profile"
                               onClick={() => {
                                 setEditingTeacher(t);
                                 setEditTeacherFirstName(t.user.first_name);
@@ -901,13 +965,14 @@ export default function AdminDashboard() {
                                 setEditTeacherIsActive(t.user.is_active);
                                 setIsEditTeacherModalOpen(true);
                               }}
-                              className="rounded-lg p-1.5 text-text-muted hover:bg-surface-subtle hover:text-steel transition-colors"
+                              className="rounded-lg p-1.5 text-text-muted hover:bg-surface-subtle hover:text-steel transition-colors cursor-pointer"
                             >
                               <Edit2 className="h-4 w-4" />
                             </button>
                             <button
+                              title="Delete Teacher"
                               onClick={() => setTeacherToDelete(t)}
-                              className="rounded-lg p-1.5 text-text-muted hover:bg-surface-subtle hover:text-burgundy-light transition-colors"
+                              className="rounded-lg p-1.5 text-text-muted hover:bg-surface-subtle hover:text-burgundy-light transition-colors cursor-pointer"
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
@@ -917,6 +982,16 @@ export default function AdminDashboard() {
                     ))}
                   </tbody>
                 </table>
+                <Pagination
+                  currentPage={teacherPage}
+                  totalPages={Math.ceil(filteredTeachers.length / teacherPageSize)}
+                  totalItems={filteredTeachers.length}
+                  pageSize={teacherPageSize}
+                  onPageChange={setTeacherPage}
+                  onPageSizeChange={setTeacherPageSize}
+                  pageSizeOptions={[10, 25, 50]}
+                  itemLabel="teachers"
+                />
               </div>
             )}
           </div>
@@ -1424,7 +1499,61 @@ export default function AdminDashboard() {
               <button
                 type="button"
                 onClick={() => setResetPasswordModal(null)}
-                className="w-1/2 rounded-xl gradient-bg-primary py-2 text-xs font-bold text-white shadow-md shadow-steel/20"
+                className="w-1/2 rounded-xl gradient-bg-primary py-2 text-xs font-bold text-white shadow-md shadow-steel/20 cursor-pointer"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: RESET TEACHER PASSWORD RESULT ─── */}
+      {resetTeacherPasswordModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-border-default bg-surface-overlay p-6 shadow-2xl">
+            <div className="flex items-center gap-2 text-amber-400 text-sm font-bold mb-3">
+              <KeyRound className="h-5 w-5" />
+              Teacher Password Reset
+            </div>
+            <p className="text-xs text-text-muted mb-4">
+              Temporary password for <span className="font-bold text-text-primary">{resetTeacherPasswordModal.teacher_name}</span>:
+            </p>
+
+            <div className="rounded-xl border border-border-default bg-surface-base p-3 mb-4 space-y-1.5 font-mono text-xs">
+              <div className="flex justify-between">
+                <span className="text-text-muted">Username:</span>
+                <span className="font-bold text-tan">@{resetTeacherPasswordModal.username}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-text-muted">Temp Password:</span>
+                <span className="font-bold text-emerald-400">{resetTeacherPasswordModal.temp_password}</span>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-text-muted mb-4">
+              The teacher will be required to choose a new password upon their next login.
+            </p>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(
+                    `Teacher: ${resetTeacherPasswordModal.teacher_name}\nUsername: ${resetTeacherPasswordModal.username}\nTemporary Password: ${resetTeacherPasswordModal.temp_password}`
+                  );
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 2000);
+                }}
+                className="w-1/2 flex items-center justify-center gap-1.5 rounded-xl border border-border-emphasis bg-surface-subtle py-2 text-xs font-semibold text-text-primary hover:bg-surface-muted cursor-pointer"
+              >
+                {copied ? <Check className="h-3.5 w-3.5 text-sage" /> : <Copy className="h-3.5 w-3.5" />}
+                {copied ? "Copied!" : "Copy"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setResetTeacherPasswordModal(null)}
+                className="w-1/2 rounded-xl gradient-bg-primary py-2 text-xs font-bold text-white shadow-md shadow-steel/20 cursor-pointer"
               >
                 Done
               </button>

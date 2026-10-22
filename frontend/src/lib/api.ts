@@ -155,20 +155,26 @@ export const admin = {
       total_submissions: number;
     }>("/api/admin/dashboard"),
 
-  listTeachers: () => request<Array<{
-    id: string;
-    user_id: string;
-    user: {
+  listTeachers: (params?: { page?: number; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.page) q.append("page", String(params.page));
+    if (params?.limit) q.append("page_size", String(params.limit));
+    const qs = q.toString() ? `?${q.toString()}` : "";
+    return request<Array<{
       id: string;
-      username: string;
-      first_name: string;
-      last_name: string;
-      role: string;
-      is_active: boolean;
-      must_change_password: boolean;
-      created_at: string;
-    };
-  }>>("/api/admin/teachers"),
+      user_id: string;
+      user: {
+        id: string;
+        username: string;
+        first_name: string;
+        last_name: string;
+        role: string;
+        is_active: boolean;
+        must_change_password: boolean;
+        created_at: string;
+      };
+    }>>(`/api/admin/teachers${qs}`);
+  },
 
   createTeacher: (data: {
     username?: string;
@@ -190,11 +196,21 @@ export const admin = {
   deleteTeacher: (userId: string) =>
     request("/api/admin/teachers/" + userId, { method: "DELETE" }),
 
+  resetTeacherPassword: (teacherOrUserId: string) =>
+    request<{
+      message: string;
+      user_id: string;
+      username: string;
+      temp_password: string;
+    }>("/api/admin/teachers/" + teacherOrUserId + "/reset-password", { method: "POST" }),
+
   // Students
-  listStudents: (params?: { search?: string; section_id?: string }) => {
+  listStudents: (params?: { search?: string; section_id?: string; page?: number; limit?: number }) => {
     const q = new URLSearchParams();
     if (params?.search) q.append("search", params.search);
     if (params?.section_id) q.append("section_id", params.section_id);
+    if (params?.page) q.append("page", String(params.page));
+    if (params?.limit) q.append("page_size", String(params.limit));
     const qs = q.toString() ? `?${q.toString()}` : "";
     return request<Array<{
       id: string;
