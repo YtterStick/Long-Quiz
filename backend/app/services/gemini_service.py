@@ -47,7 +47,7 @@ def call_gemini_json(prompt: str, system_instruction: Optional[str] = None) -> O
         logger.warning("No GEMINI_API_KEY available. Falling back to local parser.")
         return None
 
-    models_to_try = ["gemini-flash-latest", "gemini-3.8-flash"]
+    models_to_try = ["gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-3.7-flash", "gemini-flash-latest"]
     payload: Dict[str, Any] = {
         "contents": [
             {
@@ -56,7 +56,8 @@ def call_gemini_json(prompt: str, system_instruction: Optional[str] = None) -> O
         ],
         "generationConfig": {
             "responseMimeType": "application/json",
-            "temperature": 0.3,
+            "temperature": 0.2,
+            "maxOutputTokens": 8192,
         }
     }
 
@@ -76,7 +77,7 @@ def call_gemini_json(prompt: str, system_instruction: Optional[str] = None) -> O
             method="POST"
         )
         try:
-            with urllib.request.urlopen(req, timeout=35) as resp:
+            with urllib.request.urlopen(req, timeout=45) as resp:
                 raw_bytes = resp.read()
                 data = json.loads(raw_bytes.decode("utf-8"))
                 candidates = data.get("candidates", [])
@@ -129,8 +130,8 @@ def generate_exam_from_handout(
     source_text = distilled if (distilled and len(distilled) > 100) else raw_text
     
     # Cap source text if extremely long to fit within fast token window
-    if len(source_text) > 40000:
-        source_text = source_text[:40000]
+    if len(source_text) > 120000:
+        source_text = source_text[:120000]
 
     system_prompt = (
         "You are an expert college test creator and curriculum assessor at a Philippine higher education institution (such as STI College). "
@@ -183,6 +184,9 @@ Follow these strict STI College Examination standards:
    - Provide a clear, educational explanation for why the correct option is right and how it applies to the concept.
 4. EXAM TITLE:
    - Generate a concise, professional title based on the handout's topic (e.g. "Advance Database Systems - Transactions & Normalization", "Object-Oriented Programming Prelim Exam").
+5. STRICT EXCLUSIONS:
+   - DO NOT create questions about references, bibliographies, book publishers, citations, or course syllabus metadata.
+   - Every question must be complete, fluent, and test legitimate academic knowledge from the handout.
 {teacher_custom_block}
 Return ONLY a valid JSON object matching this schema:
 {{
@@ -382,10 +386,13 @@ def fallback_generate_exam_from_text(
 
 def generate_reviewer_deck_gemini(raw_text: str, custom_title: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
-    Uses Gemini to generate an enriched student study reviewer deck:
-    - Grouped topics with key terms and exam pointers
-    - 3D Flip Flashcards
+    Uses Gemini to generate an enriched, 100% comprehensive student study reviewer deck:
+    - Grouped topics covering every major section/chapter across the entire handout
+    - Complete key terms and definitions
+    - In-depth bullet pointers and exam tips
+    - 3D Flip Flashcards spanning all topics evenly from start to finish
     - Interactive practice quiz cards with explanations
+    - Strictly excludes references, bibliographies, citations, and incomplete fragments.
     Returns None if Gemini is unavailable, allowing caller to use local parser.
     """
     key = get_gemini_api_key()
@@ -394,42 +401,149 @@ def generate_reviewer_deck_gemini(raw_text: str, custom_title: Optional[str] = N
 
     distilled = distill_handout_text(raw_text)
     source_text = distilled if (distilled and len(distilled) > 100) else raw_text
-    if len(source_text) > 40000:
-        source_text = source_text[:40000]
+    # Support full documents up to 120,000 characters without early truncation
+    if len(source_text) > 120000:
+        source_text = source_text[:120000]
+
+    system_instruction = (
+        "You are an expert university curriculum assessor and academic reviewer specialist. "
+        "Your mission is to generate an exhaustive, high-yield student study reviewer that covers 100% "
+        "of the lesson handout from start to finish without leaving out any chapters, lessons, or topics. "
+        "You strictly exclude bibliographies, reference citation lists, and broken incomplete fragments."
+    )
+
+    clean_deck_title = custom_title or "Comprehensive Handout Study Reviewer"
 
     prompt = f"""
-Analyze this student study handout / lecture notes:
+Analyze the following complete course handout / lecture notes:
 ---
 {source_text}
 ---
 
-Generate an interactive, comprehensive student study reviewer deck with:
-1. title: Clean descriptive subject / module title.
-2. topics: List of 2 to 4 major topic modules. Each topic must have:
-   - topic_name: string
-   - description: string
-   - key_terms: list of {{ "term": string, "definition": string }}
-   - bullet_points: list of key takeaway summary bullet strings
-   - exam_tips: list of practical exam advice strings
-3. flashcards: 10 to 20 flashcards with:
-   - id: string ("fc-1", "fc-2", ...)
-   - front: Term or core concept (keep concise)
-   - back: Definition, formula, or clear explanation
-   - category: string ("Key Terminology", "Concept", "Formula")
-4. quiz_cards: 10 to 15 practice multiple-choice questions with:
-   - id: string ("quiz-1", "quiz-2", ...)
-   - question_number: int
-   - question: string
-   - options: {{ "A": string, "B": string, "C": string, "D": string }}
-   - correct_option: "A" | "B" | "C" | "D"
-   - correct_answer_text: string
-   - explanation: string explaining why this is correct
+Generate an EXHAUSTIVE, 100% COMPLETE academic study reviewer deck based strictly on the handout provided above.
+
+CRITICAL COVERAGE REQUIREMENTS:
+1. 100% FULL-DOCUMENT COVERAGE (DO NOT STOP HALFWAY):
+   - You MUST cover the ENTIRE handout from the first page/section to the very last page/section.
+   - Do NOT summarize only the beginning or first 2 to 3 topics.
+   - Every major chapter, lesson module, core principle, process, algorithm, and formula across the entire document must be included.
+   - Organize into as many structured topic modules as needed to cover every lesson section (typically 3 to 8 topics depending on the handout length).
+
+2. STRICT EXCLUSIONS (WHAT NOT TO INCLUDE):
+   - DO NOT include references, bibliographies, citations, works cited, reading lists, external web URLs, textbook publisher details, author lists, or course administration/syllabus metadata.
+   - DO NOT include incomplete fragments, broken words, or placeholder notes (e.g. "See figure 1", "Source: ...").
+   - Every flashcard, key term, bullet point, and quiz question must be complete, coherent, grammatically sound, and academically rigorous.
+
+REQUIRED OUTPUT STRUCTURE (Valid JSON):
+{{
+  "title": "{clean_deck_title}",
+  "topics": [
+    {{
+      "topic_name": "Clear descriptive topic/module title",
+      "description": "Comprehensive 1-2 sentence overview of what this topic module covers",
+      "key_terms": [
+        {{ "term": "Exact Term Name", "definition": "Complete, rigorous definition of the term" }}
+      ],
+      "bullet_points": [
+        "Complete key takeaway bullet point explaining a core rule, principle, or procedure"
+      ],
+      "exam_tips": [
+        "Practical exam/study tip specific to this topic"
+      ]
+    }}
+  ],
+  "flashcards": [
+    {{
+      "id": "fc-1",
+      "front": "Term or core concept",
+      "back": "Comprehensive definition, rule, or explanation",
+      "category": "Key Terminology"
+    }}
+  ],
+  "quiz_cards": [
+    {{
+      "id": "quiz-1",
+      "question_number": 1,
+      "question": "Clear, complete question stem testing understanding across the handout",
+      "options": {{
+        "A": "First plausible choice",
+        "B": "Second plausible choice",
+        "C": "Third plausible choice",
+        "D": "Fourth plausible choice"
+      }},
+      "correct_option": "A",
+      "correct_answer_text": "Matching correct text",
+      "explanation": "Clear explanation of why this answer is correct"
+    }}
+  ]
+}}
+
+Generate:
+- topics: 3 to 8 topic modules covering EVERY section in the handout (each topic must have 4 to 8 key_terms and 4 to 8 bullet_points).
+- flashcards: 15 to 30 flashcards evenly distributed across ALL topics from the beginning, middle, and end of the handout.
+- quiz_cards: 12 to 20 practice questions spanning all topics across the entire handout.
 
 Return ONLY a valid JSON object matching this schema.
 """
 
-    result = call_gemini_json(prompt, system_instruction="You are a dedicated university academic tutor creating high-retention study flashcards and review materials.")
+    result = call_gemini_json(prompt, system_instruction=system_instruction)
     if result and "topics" in result and "flashcards" in result and "quiz_cards" in result:
+        # Post-filter out any references or invalid citations that might have slipped through
+        bad_topic_keywords = [
+            "reference", "references", "bibliography", "works cited", "suggested reading",
+            "further reading", "reading list", "citation"
+        ]
+        cleaned_topics = []
+        for t in result.get("topics", []):
+            name_lower = (t.get("topic_name") or "").lower()
+            if any(k in name_lower for k in bad_topic_keywords):
+                continue
+
+            # Filter terms inside topic
+            clean_terms = []
+            for item in t.get("key_terms", []):
+                t_name = (item.get("term") or "").strip()
+                t_def = (item.get("definition") or "").strip()
+                if not t_name or not t_def:
+                    continue
+                if any(k in t_name.lower() for k in bad_topic_keywords) or re.search(r"https?://|www\.|\bisbn\b", t_def.lower()):
+                    continue
+                clean_terms.append(item)
+            t["key_terms"] = clean_terms
+
+            # Filter bullets inside topic
+            clean_bullets = []
+            for b in t.get("bullet_points", []):
+                b_str = (b or "").strip()
+                if b_str and not re.search(r"https?://|www\.|\bisbn\b", b_str.lower()) and not any(k in b_str.lower() for k in bad_topic_keywords):
+                    clean_bullets.append(b_str)
+            t["bullet_points"] = clean_bullets
+
+            cleaned_topics.append(t)
+
+        result["topics"] = cleaned_topics
+
+        # Filter flashcards
+        clean_flashcards = []
+        for fc in result.get("flashcards", []):
+            front = (fc.get("front") or "").strip()
+            back = (fc.get("back") or "").strip()
+            if not front or not back:
+                continue
+            if any(k in front.lower() for k in bad_topic_keywords) or re.search(r"https?://|www\.|\bisbn\b", back.lower()):
+                continue
+            clean_flashcards.append(fc)
+        result["flashcards"] = clean_flashcards
+
+        # Filter quiz cards
+        clean_quizzes = []
+        for q in result.get("quiz_cards", []):
+            q_text = (q.get("question") or "").strip()
+            if not q_text or any(k in q_text.lower() for k in bad_topic_keywords):
+                continue
+            clean_quizzes.append(q)
+        result["quiz_cards"] = clean_quizzes
+
         result["total_pointers"] = sum(len(t.get("key_terms", [])) + len(t.get("bullet_points", [])) for t in result.get("topics", []))
         result["total_flashcards"] = len(result.get("flashcards", []))
         result["total_quiz_cards"] = len(result.get("quiz_cards", []))

@@ -239,7 +239,7 @@ export default function TeacherSectionsPage() {
   const [permanentlyDeletingStudent, setPermanentlyDeletingStudent] = useState(false);
   const [unassigningExam, setUnassigningExam] = useState(false);
 
-  useEffect(() => {
+  useEffect(() => { 
     if (!authLoading && (!user || user.role !== "TEACHER")) {
       router.push("/");
     }
