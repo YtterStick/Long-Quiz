@@ -1,15 +1,16 @@
 """Pydantic request/response schemas for all API endpoints."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List, Union
 from datetime import datetime
 from app.models import Role
+from app.security import validate_password_strength
 
 
 # ─── Auth ─────────────────────────────────────────────────────
 class LoginRequest(BaseModel):
-    username: str
-    password: str
+    username: str = Field(..., max_length=150)
+    password: str = Field(..., max_length=256)
 
 
 class TokenResponse(BaseModel):
@@ -21,12 +22,17 @@ class TokenResponse(BaseModel):
 
 
 class PasswordChangeRequest(BaseModel):
-    current_password: str
-    new_password: str = Field(..., min_length=6)
+    current_password: str = Field(..., max_length=256)
+    new_password: str = Field(..., min_length=8, max_length=72)
+
+    @field_validator("new_password")
+    @classmethod
+    def _strong(cls, v: str) -> str:
+        return validate_password_strength(v)
 
 
 class StudentResetRequestBody(BaseModel):
-    identifier: str  # 6-digit OMR ID, 02000-prefixed ID, or username
+    identifier: str = Field(..., max_length=150)  # 6-digit OMR ID, 02000-prefixed ID, or username
 
 
 # ─── User ─────────────────────────────────────────────────────

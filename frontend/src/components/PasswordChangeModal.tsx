@@ -152,8 +152,13 @@ export function PasswordChangeModal({
     e.preventDefault();
     setError(null);
 
-    if (newPassword.length < 6) {
-      setError("New password must be at least 6 characters long.");
+    if (newPassword.length < 8) {
+      setError("New password must be at least 8 characters long.");
+      return;
+    }
+
+    if (!/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword)) {
+      setError("New password must contain at least one letter and one number.");
       return;
     }
 
@@ -448,13 +453,15 @@ export function PasswordChangeModal({
 
             <div>
               <label className="block text-xs font-semibold text-text-secondary mb-1">
-                New Password (min 6 characters)
+                New Password (min 8 characters, letters + numbers)
               </label>
               <div className="relative">
                 <input
                   type="password"
                   required
-                  minLength={6}
+                  minLength={8}
+                  maxLength={72}
+                  autoComplete="new-password"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="••••••••"

@@ -1,6 +1,7 @@
 """Utility functions: password generation, CSV parsing, student number generation."""
 
 import random
+import secrets
 import string
 import csv
 import io
@@ -10,10 +11,16 @@ from typing import List, Tuple
 STATIC_STUDENT_PREFIX = "02000"
 
 
-def generate_temp_password(length: int = 8) -> str:
-    """Generate a readable temporary password."""
-    chars = string.ascii_letters + string.digits
-    return ''.join(random.choices(chars, k=length))
+def generate_temp_password(length: int = 10) -> str:
+    """Generate a readable, cryptographically secure temporary password."""
+    # Exclude look-alike characters (0/O, 1/l/I) so students can type it from a printout
+    letters = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ"
+    digits = "23456789"
+    chars = letters + digits
+    while True:
+        pwd = ''.join(secrets.choice(chars) for _ in range(length))
+        if any(c in letters for c in pwd) and any(c in digits for c in pwd):
+            return pwd
 
 
 def generate_username(first_name: str, last_name: str, suffix: int = 0) -> str:

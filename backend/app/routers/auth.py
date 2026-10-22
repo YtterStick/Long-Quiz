@@ -1,7 +1,8 @@
 """Authentication routes: login, password change."""
 
-from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status
+import logging
+from datetime import datetime, timedelta, timezone
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import joinedload
@@ -10,17 +11,35 @@ from app.models import User, Student, PasswordResetRequest, ResetRequestStatus
 from app.schemas import LoginRequest, TokenResponse, PasswordChangeRequest, StudentResetRequestBody
 from typing import Optional
 from pydantic import BaseModel
-from app.auth import verify_password, hash_password, create_access_token
+from app.auth import verify_password, hash_password, create_access_token, burn_password_check
+from app.config import get_settings
 from app.deps import get_current_user
+from app.security import RateLimiter, get_client_ip, mask_name
 from app.utils import clean_student_omr_number
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
+logger = logging.getLogger("app.security.auth")
+settings = get_settings()
+
+_login_ip_limiter = RateLimiter(settings.LOGIN_RATE_LIMIT_PER_IP, settings.LOGIN_RATE_LIMIT_WINDOW_SECONDS)
+_reset_ip_limiter = RateLimiter(5, 600)  # 5 reset requests / 10 min / IP
+
+_INVALID_CREDENTIALS = "Incorrect username or password"
+
+
+def issue_token(user: User) -> str:
+    return create_access_token(
+        data={"sub": user.id, "role": user.role.value, "tv": user.token_version or 0}
+    )
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """Authenticate user and return JWT token."""
-    input_username = body.username.strip()
+    client_ip = get_client_ip(request)
+    _login_ip_limiter.hit(client_ip)
+
+    input_username = body.username.strip()[:150]
     result = await db.execute(select(User).where(func.lower(User.username) == input_username.lower()))
     user = result.scalar_one_or_none()
 
@@ -40,15 +59,36 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
             pass
 
     if user is None:
+        burn_password_check()  # equalise timing so usernames can't be probed
+        logger.warning("Failed login (unknown user) ip=%s", client_ip)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail=_INVALID_CREDENTIALS,
+        )
+
+    now = datetime.now(timezone.utc)
+    if user.locked_until and user.locked_until > now:
+        burn_password_check()
+        minutes = max(1, int((user.locked_until - now).total_seconds() // 60) + 1)
+        logger.warning("Login attempt on locked account user=%s ip=%s", user.id, client_ip)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Too many failed attempts. Account temporarily locked. Try again in {minutes} minute(s).",
         )
 
     if not verify_password(body.password, user.password_hash):
+        user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
+        if user.failed_login_attempts >= settings.LOGIN_MAX_FAILED_ATTEMPTS:
+            user.locked_until = now + timedelta(minutes=settings.LOGIN_LOCKOUT_MINUTES)
+            user.failed_login_attempts = 0
+            logger.warning("Account locked after repeated failures user=%s ip=%s", user.id, client_ip)
+        else:
+            logger.warning("Failed login user=%s ip=%s", user.id, client_ip)
+        # Commit the counter even though we raise (get_db rolls back on exceptions)
+        await db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect password",
+            detail=_INVALID_CREDENTIALS,
         )
 
     if not user.is_active:
@@ -57,7 +97,11 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
             detail="Account has been deactivated",
         )
 
-    token = create_access_token(data={"sub": user.id, "role": user.role.value})
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    user.last_login_at = now
+    token = issue_token(user)
+    logger.info("Successful login user=%s role=%s ip=%s", user.id, user.role.value, client_ip)
 
     return TokenResponse(
         access_token=token,
@@ -86,11 +130,20 @@ async def change_password(
             detail="New password must be different from current password",
         )
 
+    if body.new_password.lower() == current_user.username.lower():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must not be the same as your username",
+        )
+
+    # Setting password_hash bumps token_version -> all other sessions are signed out
     current_user.password_hash = hash_password(body.new_password)
     current_user.must_change_password = False
     await db.flush()
+    logger.info("Password changed user=%s", current_user.id)
 
-    return {"message": "Password changed successfully"}
+    # Hand the current device a fresh token so it stays logged in
+    return {"message": "Password changed successfully", "access_token": issue_token(current_user)}
 
 
 @router.get("/me", response_model=dict)
@@ -109,6 +162,7 @@ async def get_me(current_user: User = Depends(get_current_user)):
 @router.post("/student-reset-request")
 async def request_student_password_reset(
     body: StudentResetRequestBody,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -116,7 +170,8 @@ async def request_student_password_reset(
     Accepts 6-digit OMR ID, 02000-prefixed ID, or username.
     Creates or updates a pending PasswordResetRequest.
     """
-    ident = body.identifier.strip()
+    _reset_ip_limiter.hit(get_client_ip(request))
+    ident = body.identifier.strip()[:150]
     if not ident:
         raise HTTPException(status_code=400, detail="Please enter your Student ID or username.")
 
@@ -152,7 +207,8 @@ async def request_student_password_reset(
             detail="No student record found with the provided Student ID or username.",
         )
 
-    student_name = f"{student.user.first_name} {student.user.last_name}" if student.user else "Student"
+    # Anonymous endpoint: only reveal initials so it can't be used to harvest student names
+    student_name = mask_name(student.user.first_name, student.user.last_name) if student.user else "Student"
 
     # Check for existing pending request
     req_res = await db.execute(

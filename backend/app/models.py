@@ -4,10 +4,11 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 from sqlalchemy import (
-    String, Integer, Boolean, DateTime, ForeignKey, Enum as SAEnum, Text
+    String, Integer, Boolean, DateTime, ForeignKey, Enum as SAEnum, Text, event
 )
 from sqlalchemy.orm import DeclarativeBase, relationship, Mapped, mapped_column
 import enum
+from app.crypto import EncryptedText
 
 
 class Base(DeclarativeBase):
@@ -33,8 +34,24 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
+    # Security: incremented whenever the password changes -> invalidates all old JWTs
+    token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
+    # Security: brute-force lockout
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False, server_default="0")
+    locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
     teacher_profile: Mapped[Optional["Teacher"]] = relationship("Teacher", back_populates="user", uselist=False, cascade="all, delete-orphan")
     student_profile: Mapped[Optional["Student"]] = relationship("Student", back_populates="user", uselist=False, cascade="all, delete-orphan")
+
+
+@event.listens_for(User.password_hash, "set")
+def _bump_token_version_on_password_change(target: User, value, oldvalue, initiator):
+    """Any password change/reset (self-service, admin, or teacher) revokes existing sessions."""
+    if value != oldvalue:
+        target.token_version = (target.token_version or 0) + 1
+        target.failed_login_attempts = 0
+        target.locked_until = None
 
 
 class Teacher(Base):
@@ -161,7 +178,8 @@ class ExamAnswerKey(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     exam_id: Mapped[str] = mapped_column(String, ForeignKey("exams.id", ondelete="CASCADE"), nullable=False)
     question_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    correct_option: Mapped[str] = mapped_column(String(1), nullable=False)
+    # Encrypted at rest (see app/crypto.py) - the most valuable secret in the system
+    correct_option: Mapped[str] = mapped_column(EncryptedText, nullable=False)
 
     exam: Mapped[Optional["Exam"]] = relationship("Exam", back_populates="answer_keys")
 

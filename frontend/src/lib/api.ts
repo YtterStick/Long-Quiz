@@ -112,11 +112,17 @@ export const auth = {
       body: { username, password },
     }),
 
-  changePassword: (currentPassword: string, newPassword: string) =>
-    request("/api/auth/change-password", {
+  changePassword: async (currentPassword: string, newPassword: string) => {
+    const res = await request<{ message: string; access_token?: string }>("/api/auth/change-password", {
       method: "POST",
       body: { current_password: currentPassword, new_password: newPassword },
-    }),
+    });
+    // Password change revokes all previous sessions; keep this device signed in
+    if (res.access_token && typeof window !== "undefined") {
+      localStorage.setItem("token", res.access_token);
+    }
+    return res;
+  },
 
   requestStudentPasswordReset: (identifier: string) =>
     request<{
