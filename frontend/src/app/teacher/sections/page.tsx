@@ -38,6 +38,9 @@ import {
   Play,
   Activity,
   Pencil,
+  LayoutGrid,
+  Table as TableIcon,
+  List,
 } from "lucide-react";
 import Link from "next/link";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
@@ -146,6 +149,44 @@ export default function TeacherSectionsPage() {
   const [dirPageSize, setDirPageSize] = useState(9);
   const [secExamsPage, setSecExamsPage] = useState(1);
   const [secExamsPageSize, setSecExamsPageSize] = useState(6);
+
+  // View modes: "grid" (Cards, "like this") | "table" | "list"
+  const [rosterViewMode, setRosterViewMode] = useState<"grid" | "table" | "list">("grid");
+  const [rosterSearch, setRosterSearch] = useState("");
+  const [directoryViewMode, setDirectoryViewMode] = useState<"grid" | "table" | "list">("grid");
+
+  useEffect(() => {
+    try {
+      const savedRoster = localStorage.getItem("evalo_roster_view");
+      if (savedRoster === "grid" || savedRoster === "table" || savedRoster === "list") {
+        setRosterViewMode(savedRoster);
+      }
+      const savedDir = localStorage.getItem("evalo_dir_view");
+      if (savedDir === "grid" || savedDir === "table" || savedDir === "list") {
+        setDirectoryViewMode(savedDir);
+      }
+    } catch {
+      // Ignore
+    }
+  }, []);
+
+  const handleRosterViewModeChange = (mode: "grid" | "table" | "list") => {
+    setRosterViewMode(mode);
+    try {
+      localStorage.setItem("evalo_roster_view", mode);
+    } catch {
+      // Ignore
+    }
+  };
+
+  const handleDirectoryViewModeChange = (mode: "grid" | "table" | "list") => {
+    setDirectoryViewMode(mode);
+    try {
+      localStorage.setItem("evalo_dir_view", mode);
+    } catch {
+      // Ignore
+    }
+  };
 
   // Sub-tabs inside selected section: "students" vs "exams"
   const [sectionViewTab, setSectionViewTab] = useState<"students" | "exams">("students");
@@ -774,9 +815,27 @@ export default function TeacherSectionsPage() {
     setDirPage(1);
   }, [directorySearch, directoryFilter, dirPageSize]);
 
+  // Filter students in current section roster
+  const filteredRosterStudents = useMemo(() => {
+    if (!rosterSearch.trim()) return students;
+    const term = rosterSearch.toLowerCase().trim();
+    return students.filter((s) => {
+      const fullName = `${s.user.first_name} ${s.user.last_name}`.toLowerCase();
+      const idStr = `02000${String(s.student_number).padStart(6, "0")}`;
+      const rawId = String(s.student_number);
+      const userStr = s.user.username.toLowerCase();
+      return (
+        fullName.includes(term) ||
+        idStr.includes(term) ||
+        rawId.includes(term) ||
+        userStr.includes(term)
+      );
+    });
+  }, [students, rosterSearch]);
+
   useEffect(() => {
     setRosterPage(1);
-  }, [selectedSection, rosterPageSize]);
+  }, [selectedSection, rosterSearch, rosterPageSize]);
 
   useEffect(() => {
     setSecExamsPage(1);
@@ -789,8 +848,8 @@ export default function TeacherSectionsPage() {
 
   const paginatedRosterStudents = useMemo(() => {
     const start = (rosterPage - 1) * rosterPageSize;
-    return students.slice(start, start + rosterPageSize);
-  }, [students, rosterPage, rosterPageSize]);
+    return filteredRosterStudents.slice(start, start + rosterPageSize);
+  }, [filteredRosterStudents, rosterPage, rosterPageSize]);
 
   const paginatedDirectoryStudents = useMemo(() => {
     const start = (dirPage - 1) * dirPageSize;
@@ -977,18 +1036,111 @@ export default function TeacherSectionsPage() {
               </button>
             </div>
 
-            {/* Sub-tab 1: Enrolled Students List */}
+            {/* Sub-tab 1: Enrolled Students List with Cards, Table, and List views */}
             {sectionViewTab === "students" && (
-              <div>
-                {studentsLoading ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                    {[1, 2, 3].map((i) => (
-                      <div key={i} className="animate-pulse rounded-2xl bg-surface-subtle p-5 border border-border-default space-y-3">
-                        <div className="h-4 w-28 bg-surface-muted rounded" />
-                        <div className="h-5 w-40 bg-surface-muted rounded" />
+              <div className="space-y-4">
+                {/* Roster Toolbar: Search & View Switcher (Cards | Table | List) */}
+                {students.length > 0 && (
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-surface-raised/40 p-3 rounded-2xl border border-border-default">
+                    {/* Search Input */}
+                    <div className="relative flex-1 max-w-md">
+                      <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" />
+                      <input
+                        type="text"
+                        value={rosterSearch}
+                        onChange={(e) => setRosterSearch(e.target.value)}
+                        placeholder="Search student ID, name, or username..."
+                        className="w-full rounded-xl border border-border-default bg-surface-base pl-9 pr-8 py-2 text-xs text-text-primary placeholder:text-text-muted focus:border-steel focus:outline-none transition-colors"
+                      />
+                      {rosterSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setRosterSearch("")}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary cursor-pointer"
+                          title="Clear search"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* View Controls: View Mode Switcher & Rows Info */}
+                    <div className="flex items-center justify-between sm:justify-end gap-3">
+                      {rosterSearch && (
+                        <span className="text-[11px] text-text-muted hidden md:inline">
+                          Filtered: <strong className="text-text-primary">{filteredRosterStudents.length}</strong> of {students.length}
+                        </span>
+                      )}
+
+                      {/* View Switcher: Cards | Table | List */}
+                      <div className="inline-flex rounded-xl bg-surface-base p-1 border border-border-default shadow-xs">
+                        <button
+                          type="button"
+                          onClick={() => handleRosterViewModeChange("grid")}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            rosterViewMode === "grid"
+                              ? "bg-steel text-white shadow-xs"
+                              : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
+                          }`}
+                          title="Card Grid View (like this)"
+                        >
+                          <LayoutGrid className="h-3.5 w-3.5" />
+                          <span>Cards</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRosterViewModeChange("table")}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            rosterViewMode === "table"
+                              ? "bg-steel text-white shadow-xs"
+                              : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
+                          }`}
+                          title="Table View"
+                        >
+                          <TableIcon className="h-3.5 w-3.5" />
+                          <span>Table</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRosterViewModeChange("list")}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            rosterViewMode === "list"
+                              ? "bg-steel text-white shadow-xs"
+                              : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
+                          }`}
+                          title="List View"
+                        >
+                          <List className="h-3.5 w-3.5" />
+                          <span>List</span>
+                        </button>
                       </div>
-                    ))}
+                    </div>
                   </div>
+                )}
+
+                {studentsLoading ? (
+                  rosterViewMode === "table" ? (
+                    <div className="rounded-2xl border border-border-default bg-surface-raised overflow-hidden p-4 space-y-3">
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <div key={i} className="animate-pulse h-10 bg-surface-subtle rounded-xl" />
+                      ))}
+                    </div>
+                  ) : rosterViewMode === "list" ? (
+                    <div className="space-y-2.5">
+                      {[1, 2, 3, 4].map((i) => (
+                        <div key={i} className="animate-pulse h-16 bg-surface-subtle rounded-xl border border-border-default" />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                      {[1, 2, 3].map((i) => (
+                        <div key={i} className="animate-pulse rounded-2xl bg-surface-subtle p-5 border border-border-default space-y-3">
+                          <div className="h-4 w-28 bg-surface-muted rounded" />
+                          <div className="h-5 w-40 bg-surface-muted rounded" />
+                        </div>
+                      ))}
+                    </div>
+                  )
                 ) : students.length === 0 ? (
                   <div className="glass-card rounded-2xl p-12 text-center border border-border-default space-y-4">
                     <Users className="mx-auto h-12 w-12 text-text-faint" />
@@ -1018,39 +1170,274 @@ export default function TeacherSectionsPage() {
                       </button>
                     </div>
                   </div>
+                ) : filteredRosterStudents.length === 0 ? (
+                  <div className="glass-card rounded-2xl p-10 text-center border border-border-default space-y-3">
+                    <Search className="mx-auto h-10 w-10 text-text-muted opacity-50" />
+                    <p className="font-semibold text-text-primary text-sm">
+                      No enrolled students matching &ldquo;{rosterSearch}&rdquo;
+                    </p>
+                    <p className="text-xs text-text-muted">
+                      Check the spelling or try searching by student ID or username.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setRosterSearch("")}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-border-emphasis bg-surface-subtle px-3.5 py-1.5 text-xs font-semibold text-text-primary hover:bg-surface-muted transition-colors cursor-pointer"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      Clear Search
+                    </button>
+                  </div>
                 ) : (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                      {paginatedRosterStudents.map((s) => (
-                      <div
-                        key={s.id}
-                        onClick={() => openStudentDetail(s)}
-                        className="glass-card glass-card-hover rounded-2xl p-5 border border-border-default hover:border-steel/40 transition-all cursor-pointer flex flex-col justify-between group space-y-4 shadow-sm"
-                      >
-                        <div>
-                          <div className="flex items-center justify-between gap-2 mb-3">
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono font-bold text-sm text-text-primary tracking-wide group-hover:text-steel-light transition-colors">
-                                02000{String(s.student_number).padStart(6, "0")}
+                    {/* ── VIEW 1: CARD GRID (like this) ── */}
+                    {rosterViewMode === "grid" && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                        {paginatedRosterStudents.map((s) => (
+                          <div
+                            key={s.id}
+                            onClick={() => openStudentDetail(s)}
+                            className="glass-card glass-card-hover rounded-2xl p-5 border border-border-default hover:border-steel/40 transition-all cursor-pointer flex flex-col justify-between group space-y-4 shadow-sm"
+                          >
+                            <div>
+                              <div className="flex items-center justify-between gap-2 mb-3">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono font-bold text-sm text-text-primary tracking-wide group-hover:text-steel-light transition-colors">
+                                    02000{String(s.student_number).padStart(6, "0")}
+                                  </span>
+                                  {s.has_pending_reset_request && (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-tan/15 px-2 py-0.5 text-[10px] font-bold text-tan border border-tan/30 animate-pulse">
+                                      <KeyRound className="h-2.5 w-2.5" />
+                                      Reset Requested
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openEditStudentModal(s);
+                                    }}
+                                    className="rounded-lg bg-surface-subtle p-1.5 text-text-muted hover:text-steel hover:bg-steel-ghost transition-colors cursor-pointer"
+                                    title="Edit Student Name & Info"
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setStudentToUnenroll(s);
+                                    }}
+                                    className="rounded-lg bg-surface-subtle p-1.5 text-text-muted hover:bg-burgundy-ghost hover:text-burgundy-light transition-colors cursor-pointer"
+                                    title="Remove from Section (Unenroll)"
+                                  >
+                                    <UserX className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-3">
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-subtle text-sm font-bold text-text-primary border border-border-emphasis group-hover:border-steel/50 transition-colors">
+                                  {s.user.first_name[0]?.toUpperCase()}{s.user.last_name[0]?.toUpperCase()}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <h3 className="font-bold text-sm text-text-primary truncate group-hover:text-tan transition-colors">
+                                    {s.user.first_name} {s.user.last_name}
+                                  </h3>
+                                  <p className="font-mono text-xs text-text-muted truncate">
+                                    @{s.user.username}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between pt-3 border-t border-border-default/60 text-[11px] text-text-muted group-hover:text-text-secondary transition-colors">
+                              <span>OMR: {String(s.student_number).padStart(6, "0")}</span>
+                              <span className="font-semibold text-steel-light group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
+                                Student Info &rarr;
                               </span>
-                              {s.has_pending_reset_request && (
-                                <span className="inline-flex items-center gap-1 rounded-full bg-tan/15 px-2 py-0.5 text-[10px] font-bold text-tan border border-tan/30 animate-pulse">
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* ── VIEW 2: TABLE VIEW ── */}
+                    {rosterViewMode === "table" && (
+                      <div className="rounded-2xl border border-border-default bg-surface-raised shadow-xs overflow-hidden">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs">
+                            <thead>
+                              <tr className="border-b border-border-default bg-surface-base/80 text-[11px] uppercase font-bold text-text-muted tracking-wider">
+                                <th className="py-3.5 px-4">Student ID</th>
+                                <th className="py-3.5 px-4">OMR Code</th>
+                                <th className="py-3.5 px-4">Student Name</th>
+                                <th className="py-3.5 px-4">Username</th>
+                                <th className="py-3.5 px-4">Status</th>
+                                <th className="py-3.5 px-4 text-right">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border-default/60">
+                              {paginatedRosterStudents.map((s) => (
+                                <tr
+                                  key={s.id}
+                                  onClick={() => openStudentDetail(s)}
+                                  className="hover:bg-surface-subtle/70 transition-colors cursor-pointer group"
+                                >
+                                  {/* Student ID */}
+                                  <td className="py-3.5 px-4 font-mono font-bold text-text-primary group-hover:text-steel transition-colors whitespace-nowrap">
+                                    02000{String(s.student_number).padStart(6, "0")}
+                                  </td>
+
+                                  {/* OMR Code */}
+                                  <td className="py-3.5 px-4 font-mono whitespace-nowrap">
+                                    <span className="rounded-md bg-surface-subtle px-2 py-0.5 border border-border-default text-[11px] text-text-secondary">
+                                      {String(s.student_number).padStart(6, "0")}
+                                    </span>
+                                  </td>
+
+                                  {/* Student Name */}
+                                  <td className="py-3.5 px-4 whitespace-nowrap">
+                                    <div className="flex items-center gap-2.5">
+                                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface-subtle border border-border-default text-[11px] font-bold text-text-primary group-hover:border-steel/50 transition-colors">
+                                        {s.user.first_name[0]?.toUpperCase()}{s.user.last_name[0]?.toUpperCase()}
+                                      </div>
+                                      <span className="font-bold text-text-primary group-hover:text-tan transition-colors">
+                                        {s.user.first_name} {s.user.last_name}
+                                      </span>
+                                    </div>
+                                  </td>
+
+                                  {/* Username */}
+                                  <td className="py-3.5 px-4 font-mono text-steel whitespace-nowrap">
+                                    @{s.user.username}
+                                  </td>
+
+                                  {/* Status */}
+                                  <td className="py-3.5 px-4 whitespace-nowrap">
+                                    {s.has_pending_reset_request ? (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-tan/15 px-2.5 py-0.5 text-[10px] font-bold text-tan border border-tan/30 animate-pulse">
+                                        <KeyRound className="h-2.5 w-2.5" />
+                                        Reset Requested
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1.5 text-[11px] text-sage font-medium">
+                                        <span className="h-1.5 w-1.5 rounded-full bg-sage" />
+                                        Enrolled
+                                      </span>
+                                    )}
+                                  </td>
+
+                                  {/* Actions */}
+                                  <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                                    <div className="inline-flex items-center gap-1.5">
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          openEditStudentModal(s);
+                                        }}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-text-muted hover:text-steel hover:bg-steel-ghost border border-transparent hover:border-steel-border transition-colors cursor-pointer"
+                                        title="Edit Student Info"
+                                      >
+                                        <Pencil className="h-3.5 w-3.5" />
+                                        <span className="hidden sm:inline">Edit</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setStudentToUnenroll(s);
+                                        }}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-text-muted hover:text-burgundy-light hover:bg-burgundy-ghost border border-transparent hover:border-burgundy-border transition-colors cursor-pointer"
+                                        title="Remove from Section (Unenroll)"
+                                      >
+                                        <UserX className="h-3.5 w-3.5" />
+                                        <span className="hidden sm:inline">Remove</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          openStudentDetail(s);
+                                        }}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-steel-light hover:bg-steel-ghost border border-transparent hover:border-steel-border transition-colors cursor-pointer"
+                                        title="View Student Info"
+                                      >
+                                        <span>Info &rarr;</span>
+                                      </button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── VIEW 3: COMPACT LIST VIEW ── */}
+                    {rosterViewMode === "list" && (
+                      <div className="space-y-2">
+                        {paginatedRosterStudents.map((s) => (
+                          <div
+                            key={s.id}
+                            onClick={() => openStudentDetail(s)}
+                            className="glass-card glass-card-hover rounded-xl p-3 sm:px-4 sm:py-3 border border-border-default hover:border-steel/40 transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 group shadow-xs"
+                          >
+                            {/* Left: Avatar + Names */}
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-subtle text-xs font-bold text-text-primary border border-border-emphasis group-hover:border-steel/50 transition-colors">
+                                {s.user.first_name[0]?.toUpperCase()}{s.user.last_name[0]?.toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h3 className="font-bold text-sm text-text-primary truncate group-hover:text-tan transition-colors">
+                                    {s.user.first_name} {s.user.last_name}
+                                  </h3>
+                                  <span className="font-mono text-xs text-text-muted">
+                                    @{s.user.username}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5 text-[11px] text-text-muted">
+                                  <span className="font-mono font-semibold text-text-secondary">
+                                    02000{String(s.student_number).padStart(6, "0")}
+                                  </span>
+                                  <span>•</span>
+                                  <span>OMR: {String(s.student_number).padStart(6, "0")}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Middle: Reset request badge or enrolled status */}
+                            <div className="flex items-center gap-2 shrink-0">
+                              {s.has_pending_reset_request ? (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-tan/15 px-2.5 py-0.5 text-[10px] font-bold text-tan border border-tan/30 animate-pulse">
                                   <KeyRound className="h-2.5 w-2.5" />
                                   Reset Requested
                                 </span>
+                              ) : (
+                                <span className="hidden sm:inline-flex items-center gap-1 rounded-full bg-surface-subtle px-2.5 py-0.5 text-[10px] font-medium text-text-muted border border-border-default">
+                                  <span className="h-1.5 w-1.5 rounded-full bg-sage" />
+                                  Enrolled
+                                </span>
                               )}
                             </div>
-                            <div className="flex items-center gap-1">
+
+                            {/* Right: Actions */}
+                            <div className="flex items-center gap-1.5 shrink-0 justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-border-default/50">
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   openEditStudentModal(s);
                                 }}
-                                className="rounded-lg bg-surface-subtle p-1.5 text-text-muted hover:text-steel hover:bg-steel-ghost transition-colors cursor-pointer"
-                                title="Edit Student Name & Info"
+                                className="rounded-lg bg-surface-subtle p-2 text-text-muted hover:text-steel hover:bg-steel-ghost transition-colors cursor-pointer"
+                                title="Edit Student Info"
                               >
-                                <Pencil className="h-4 w-4" />
+                                <Pencil className="h-3.5 w-3.5" />
                               </button>
                               <button
                                 type="button"
@@ -1058,46 +1445,36 @@ export default function TeacherSectionsPage() {
                                   e.stopPropagation();
                                   setStudentToUnenroll(s);
                                 }}
-                                className="rounded-lg bg-surface-subtle p-1.5 text-text-muted hover:bg-burgundy-ghost hover:text-burgundy-light transition-colors cursor-pointer"
+                                className="rounded-lg bg-surface-subtle p-2 text-text-muted hover:bg-burgundy-ghost hover:text-burgundy-light transition-colors cursor-pointer"
                                 title="Remove from Section (Unenroll)"
                               >
-                                <UserX className="h-4 w-4" />
+                                <UserX className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openStudentDetail(s);
+                                }}
+                                className="flex items-center gap-1 rounded-lg bg-surface-subtle px-2.5 py-1.5 text-xs font-semibold text-steel-light hover:bg-steel-ghost hover:text-white transition-colors cursor-pointer"
+                              >
+                                <span>Student Info</span>
+                                <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
                               </button>
                             </div>
                           </div>
-
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-subtle text-sm font-bold text-text-primary border border-border-emphasis group-hover:border-steel/50 transition-colors">
-                              {s.user.first_name[0]?.toUpperCase()}{s.user.last_name[0]?.toUpperCase()}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <h3 className="font-bold text-sm text-text-primary truncate group-hover:text-tan transition-colors">
-                                {s.user.first_name} {s.user.last_name}
-                              </h3>
-                              <p className="font-mono text-xs text-text-muted truncate">
-                                @{s.user.username}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between pt-3 border-t border-border-default/60 text-[11px] text-text-muted group-hover:text-text-secondary transition-colors">
-                          <span>OMR: {String(s.student_number).padStart(6, "0")}</span>
-                          <span className="font-semibold text-steel-light group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                            Student Info &rarr;
-                          </span>
-                        </div>
+                        ))}
                       </div>
-                    ))}
-                    </div>
+                    )}
+
                     <Pagination
                       currentPage={rosterPage}
-                      totalPages={Math.ceil(students.length / rosterPageSize)}
-                      totalItems={students.length}
+                      totalPages={Math.max(1, Math.ceil(filteredRosterStudents.length / rosterPageSize))}
+                      totalItems={filteredRosterStudents.length}
                       pageSize={rosterPageSize}
                       onPageChange={setRosterPage}
                       onPageSizeChange={setRosterPageSize}
-                      pageSizeOptions={[9, 18, 36]}
+                      pageSizeOptions={[9, 15, 30, 50, 100]}
                       itemLabel="students in roster"
                     />
                   </div>
@@ -1608,7 +1985,7 @@ export default function TeacherSectionsPage() {
               </div>
             )}
 
-            {/* Tab 2: Student Directory (Card-based interactive grid) */}
+            {/* Tab 2: Student Directory (Card-based interactive grid, Table, List) */}
             {activeTab === "directory" && (
               <div className="space-y-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -1648,6 +2025,49 @@ export default function TeacherSectionsPage() {
                         Not in Roster {directoryLoading ? "..." : `(${allStudents.filter((s) => !s.section_id).length})`}
                       </button>
                     </div>
+
+                    {/* View Switcher: Cards | Table | List */}
+                    <div className="inline-flex rounded-xl bg-surface-base p-1 border border-border-default shadow-xs">
+                      <button
+                        type="button"
+                        onClick={() => handleDirectoryViewModeChange("grid")}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          directoryViewMode === "grid"
+                            ? "bg-steel text-white shadow-xs"
+                            : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
+                        }`}
+                        title="Card Grid View"
+                      >
+                        <LayoutGrid className="h-3.5 w-3.5" />
+                        <span>Cards</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDirectoryViewModeChange("table")}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          directoryViewMode === "table"
+                            ? "bg-steel text-white shadow-xs"
+                            : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
+                        }`}
+                        title="Table View"
+                      >
+                        <TableIcon className="h-3.5 w-3.5" />
+                        <span>Table</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDirectoryViewModeChange("list")}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          directoryViewMode === "list"
+                            ? "bg-steel text-white shadow-xs"
+                            : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
+                        }`}
+                        title="List View"
+                      >
+                        <List className="h-3.5 w-3.5" />
+                        <span>List</span>
+                      </button>
+                    </div>
                   </div>
 
                   <button
@@ -1666,18 +2086,32 @@ export default function TeacherSectionsPage() {
                 {/* Directory Content */}
                 <div>
                   {directoryLoading ? (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                      {[1, 2, 3, 4, 5, 6].map((i) => (
-                        <div key={i} className="animate-pulse rounded-2xl bg-surface-subtle p-5 border border-border-default space-y-3">
-                          <div className="flex justify-between items-center">
-                            <div className="h-4 w-28 bg-surface-muted rounded" />
-                            <div className="h-4 w-20 bg-surface-muted rounded-full" />
+                    directoryViewMode === "table" ? (
+                      <div className="rounded-2xl border border-border-default bg-surface-raised overflow-hidden p-4 space-y-3">
+                        {[1, 2, 3, 4, 5].map((i) => (
+                          <div key={i} className="animate-pulse h-10 bg-surface-subtle rounded-xl" />
+                        ))}
+                      </div>
+                    ) : directoryViewMode === "list" ? (
+                      <div className="space-y-2.5">
+                        {[1, 2, 3, 4].map((i) => (
+                          <div key={i} className="animate-pulse h-16 bg-surface-subtle rounded-xl border border-border-default" />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                        {[1, 2, 3, 4, 5, 6].map((i) => (
+                          <div key={i} className="animate-pulse rounded-2xl bg-surface-subtle p-5 border border-border-default space-y-3">
+                            <div className="flex justify-between items-center">
+                              <div className="h-4 w-28 bg-surface-muted rounded" />
+                              <div className="h-4 w-20 bg-surface-muted rounded-full" />
+                            </div>
+                            <div className="h-5 w-40 bg-surface-muted rounded" />
+                            <div className="h-3 w-24 bg-surface-muted rounded" />
                           </div>
-                          <div className="h-5 w-40 bg-surface-muted rounded" />
-                          <div className="h-3 w-24 bg-surface-muted rounded" />
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )
                   ) : filteredDirectoryStudents.length === 0 ? (
                     <div className="glass-card rounded-2xl p-12 text-center border border-border-default space-y-2">
                       <Users className="mx-auto h-10 w-10 text-text-faint" />
@@ -1690,78 +2124,280 @@ export default function TeacherSectionsPage() {
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                        {paginatedDirectoryStudents.map((s) => (
-                        <div
-                          key={s.id}
-                          onClick={() => openStudentDetail(s)}
-                          className="glass-card glass-card-hover rounded-2xl p-5 border border-border-default hover:border-steel/40 transition-all cursor-pointer flex flex-col justify-between group space-y-4 shadow-sm"
-                        >
-                          <div>
-                            <div className="flex items-center justify-between gap-2 mb-3">
-                              {/* Full Student ID & Alert Badge */}
-                              <div className="flex items-center gap-2">
-                                <span className="font-mono font-bold text-sm text-text-primary tracking-wide group-hover:text-steel-light transition-colors">
-                                  02000{String(s.student_number).padStart(6, "0")}
+                      {/* ── DIRECTORY VIEW 1: CARD GRID ── */}
+                      {directoryViewMode === "grid" && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                          {paginatedDirectoryStudents.map((s) => (
+                            <div
+                              key={s.id}
+                              onClick={() => openStudentDetail(s)}
+                              className="glass-card glass-card-hover rounded-2xl p-5 border border-border-default hover:border-steel/40 transition-all cursor-pointer flex flex-col justify-between group space-y-4 shadow-sm"
+                            >
+                              <div>
+                                <div className="flex items-center justify-between gap-2 mb-3">
+                                  {/* Full Student ID & Alert Badge */}
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-mono font-bold text-sm text-text-primary tracking-wide group-hover:text-steel-light transition-colors">
+                                      02000{String(s.student_number).padStart(6, "0")}
+                                    </span>
+                                    {s.has_pending_reset_request && (
+                                      <span className="inline-flex items-center gap-1 rounded-full bg-tan/15 px-2 py-0.5 text-[10px] font-bold text-tan border border-tan/30 animate-pulse">
+                                        <KeyRound className="h-2.5 w-2.5" />
+                                        Reset Requested
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Section Badge */}
+                                  {s.section ? (
+                                    <span className="inline-flex items-center rounded-full bg-steel/15 px-2.5 py-0.5 text-xs font-semibold text-steel-light border border-steel/30">
+                                      {s.section.name}
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center rounded-full bg-cream-ghost px-2.5 py-0.5 text-xs font-semibold text-cream border border-cream-border">
+                                      Not in Roster
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Student Name & Username */}
+                                <div className="flex items-center gap-3">
+                                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-subtle text-sm font-bold text-text-primary border border-border-emphasis group-hover:border-steel/50 transition-colors">
+                                    {s.user.first_name[0]?.toUpperCase()}{s.user.last_name[0]?.toUpperCase()}
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <h3 className="font-bold text-sm text-text-primary truncate group-hover:text-tan transition-colors">
+                                      {s.user.first_name} {s.user.last_name}
+                                    </h3>
+                                    <p className="font-mono text-xs text-text-muted truncate">
+                                      @{s.user.username}
+                                    </p>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Footer hint */}
+                              <div className="flex items-center justify-between pt-3 border-t border-border-default/60 text-[11px] text-text-muted group-hover:text-text-secondary transition-colors">
+                                <span>{s.section ? `${s.section.subject || "Enrolled"}` : "Click to enroll into class"}</span>
+                                <span className="font-semibold text-steel-light group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
+                                  View Info &rarr;
                                 </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* ── DIRECTORY VIEW 2: TABLE VIEW ── */}
+                      {directoryViewMode === "table" && (
+                        <div className="rounded-2xl border border-border-default bg-surface-raised shadow-xs overflow-hidden">
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs">
+                              <thead>
+                                <tr className="border-b border-border-default bg-surface-base/80 text-[11px] uppercase font-bold text-text-muted tracking-wider">
+                                  <th className="py-3.5 px-4">Student ID</th>
+                                  <th className="py-3.5 px-4">OMR Code</th>
+                                  <th className="py-3.5 px-4">Student Name</th>
+                                  <th className="py-3.5 px-4">Username</th>
+                                  <th className="py-3.5 px-4">Class Section</th>
+                                  <th className="py-3.5 px-4">Status</th>
+                                  <th className="py-3.5 px-4 text-right">Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-border-default/60">
+                                {paginatedDirectoryStudents.map((s) => (
+                                  <tr
+                                    key={s.id}
+                                    onClick={() => openStudentDetail(s)}
+                                    className="hover:bg-surface-subtle/70 transition-colors cursor-pointer group"
+                                  >
+                                    {/* ID */}
+                                    <td className="py-3.5 px-4 font-mono font-bold text-text-primary group-hover:text-steel transition-colors whitespace-nowrap">
+                                      02000{String(s.student_number).padStart(6, "0")}
+                                    </td>
+
+                                    {/* OMR */}
+                                    <td className="py-3.5 px-4 font-mono whitespace-nowrap">
+                                      <span className="rounded-md bg-surface-subtle px-2 py-0.5 border border-border-default text-[11px] text-text-secondary">
+                                        {String(s.student_number).padStart(6, "0")}
+                                      </span>
+                                    </td>
+
+                                    {/* Name */}
+                                    <td className="py-3.5 px-4 whitespace-nowrap">
+                                      <div className="flex items-center gap-2.5">
+                                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface-subtle border border-border-default text-[11px] font-bold text-text-primary group-hover:border-steel/50 transition-colors">
+                                          {s.user.first_name[0]?.toUpperCase()}{s.user.last_name[0]?.toUpperCase()}
+                                        </div>
+                                        <span className="font-bold text-text-primary group-hover:text-tan transition-colors">
+                                          {s.user.first_name} {s.user.last_name}
+                                        </span>
+                                      </div>
+                                    </td>
+
+                                    {/* Username */}
+                                    <td className="py-3.5 px-4 font-mono text-steel whitespace-nowrap">
+                                      @{s.user.username}
+                                    </td>
+
+                                    {/* Section */}
+                                    <td className="py-3.5 px-4 whitespace-nowrap">
+                                      {s.section ? (
+                                        <span className="inline-flex items-center rounded-full bg-steel/15 px-2.5 py-0.5 text-xs font-semibold text-steel-light border border-steel/30">
+                                          {s.section.name}
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center rounded-full bg-cream-ghost px-2.5 py-0.5 text-xs font-semibold text-cream border border-cream-border">
+                                          Not in Roster
+                                        </span>
+                                      )}
+                                    </td>
+
+                                    {/* Status */}
+                                    <td className="py-3.5 px-4 whitespace-nowrap">
+                                      {s.has_pending_reset_request ? (
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-tan/15 px-2.5 py-0.5 text-[10px] font-bold text-tan border border-tan/30 animate-pulse">
+                                          <KeyRound className="h-2.5 w-2.5" />
+                                          Reset Requested
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1.5 text-[11px] text-text-muted">
+                                          Active
+                                        </span>
+                                      )}
+                                    </td>
+
+                                    {/* Actions */}
+                                    <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                                      <div className="inline-flex items-center gap-1.5">
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            openEditStudentModal(s);
+                                          }}
+                                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-text-muted hover:text-steel hover:bg-steel-ghost border border-transparent hover:border-steel-border transition-colors cursor-pointer"
+                                          title="Edit Student Info"
+                                        >
+                                          <Pencil className="h-3.5 w-3.5" />
+                                          <span className="hidden sm:inline">Edit</span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            openStudentDetail(s);
+                                          }}
+                                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-steel-light hover:bg-steel-ghost border border-transparent hover:border-steel-border transition-colors cursor-pointer"
+                                          title="View Student Info"
+                                        >
+                                          <span>Manage &rarr;</span>
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── DIRECTORY VIEW 3: COMPACT LIST VIEW ── */}
+                      {directoryViewMode === "list" && (
+                        <div className="space-y-2">
+                          {paginatedDirectoryStudents.map((s) => (
+                            <div
+                              key={s.id}
+                              onClick={() => openStudentDetail(s)}
+                              className="glass-card glass-card-hover rounded-xl p-3 sm:px-4 sm:py-3 border border-border-default hover:border-steel/40 transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 group shadow-xs"
+                            >
+                              {/* Left: Avatar + Names */}
+                              <div className="flex items-center gap-3 min-w-0 flex-1">
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-subtle text-xs font-bold text-text-primary border border-border-emphasis group-hover:border-steel/50 transition-colors">
+                                  {s.user.first_name[0]?.toUpperCase()}{s.user.last_name[0]?.toUpperCase()}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <h3 className="font-bold text-sm text-text-primary truncate group-hover:text-tan transition-colors">
+                                      {s.user.first_name} {s.user.last_name}
+                                    </h3>
+                                    <span className="font-mono text-xs text-text-muted">
+                                      @{s.user.username}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-0.5 text-[11px] text-text-muted">
+                                    <span className="font-mono font-semibold text-text-secondary">
+                                      02000{String(s.student_number).padStart(6, "0")}
+                                    </span>
+                                    <span>•</span>
+                                    <span>OMR: {String(s.student_number).padStart(6, "0")}</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Section & Status */}
+                              <div className="flex items-center gap-2 shrink-0">
+                                {s.section ? (
+                                  <span className="inline-flex items-center rounded-full bg-steel/15 px-2.5 py-0.5 text-xs font-semibold text-steel-light border border-steel/30">
+                                    {s.section.name}
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center rounded-full bg-cream-ghost px-2.5 py-0.5 text-xs font-semibold text-cream border border-cream-border">
+                                    Not in Roster
+                                  </span>
+                                )}
+
                                 {s.has_pending_reset_request && (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-tan/15 px-2 py-0.5 text-[10px] font-bold text-tan border border-tan/30 animate-pulse">
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-tan/15 px-2.5 py-0.5 text-[10px] font-bold text-tan border border-tan/30 animate-pulse">
                                     <KeyRound className="h-2.5 w-2.5" />
-                                    Reset Requested
+                                    Reset
                                   </span>
                                 )}
                               </div>
 
-                              {/* Section Badge */}
-                              {s.section ? (
-                                <span className="inline-flex items-center rounded-full bg-steel/15 px-2.5 py-0.5 text-xs font-semibold text-steel-light border border-steel/30">
-                                  {s.section.name}
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center rounded-full bg-cream-ghost px-2.5 py-0.5 text-xs font-semibold text-cream border border-cream-border">
-                                  Not in Roster
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Student Name & Username */}
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-subtle text-sm font-bold text-text-primary border border-border-emphasis group-hover:border-steel/50 transition-colors">
-                                {s.user.first_name[0]?.toUpperCase()}{s.user.last_name[0]?.toUpperCase()}
+                              {/* Right: Actions */}
+                              <div className="flex items-center gap-1.5 shrink-0 justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-border-default/50">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openEditStudentModal(s);
+                                  }}
+                                  className="rounded-lg bg-surface-subtle p-2 text-text-muted hover:text-steel hover:bg-steel-ghost transition-colors cursor-pointer"
+                                  title="Edit Student Info"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openStudentDetail(s);
+                                  }}
+                                  className="flex items-center gap-1 rounded-lg bg-surface-subtle px-2.5 py-1.5 text-xs font-semibold text-steel-light hover:bg-steel-ghost hover:text-white transition-colors cursor-pointer"
+                                >
+                                  <span>Manage</span>
+                                  <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
+                                </button>
                               </div>
-                              <div className="min-w-0 flex-1">
-                                <h3 className="font-bold text-sm text-text-primary truncate group-hover:text-tan transition-colors">
-                                  {s.user.first_name} {s.user.last_name}
-                                </h3>
-                                <p className="font-mono text-xs text-text-muted truncate">
-                                  @{s.user.username}
-                                </p>
-                              </div>
                             </div>
-                          </div>
-
-                          {/* Footer hint */}
-                          <div className="flex items-center justify-between pt-3 border-t border-border-default/60 text-[11px] text-text-muted group-hover:text-text-secondary transition-colors">
-                            <span>{s.section ? `${s.section.subject || "Enrolled"}` : "Click to enroll into class"}</span>
-                            <span className="font-semibold text-steel-light group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
-                              View Info &rarr;
-                            </span>
-                          </div>
+                          ))}
                         </div>
-                      ))}
+                      )}
+
+                      <Pagination
+                        currentPage={dirPage}
+                        totalPages={Math.ceil(filteredDirectoryStudents.length / dirPageSize)}
+                        totalItems={filteredDirectoryStudents.length}
+                        pageSize={dirPageSize}
+                        onPageChange={setDirPage}
+                        onPageSizeChange={setDirPageSize}
+                        pageSizeOptions={[9, 18, 36]}
+                        itemLabel="registered students"
+                      />
                     </div>
-                    <Pagination
-                      currentPage={dirPage}
-                      totalPages={Math.ceil(filteredDirectoryStudents.length / dirPageSize)}
-                      totalItems={filteredDirectoryStudents.length}
-                      pageSize={dirPageSize}
-                      onPageChange={setDirPage}
-                      onPageSizeChange={setDirPageSize}
-                      pageSizeOptions={[9, 18, 36]}
-                      itemLabel="registered students"
-                    />
-                  </div>
-                )}
+                  )}
                 </div>
               </div>
             )}

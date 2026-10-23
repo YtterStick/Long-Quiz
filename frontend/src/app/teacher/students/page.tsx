@@ -14,6 +14,7 @@ import {
   FileSpreadsheet,
   LayoutGrid,
   Table as TableIcon,
+  List,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
@@ -78,8 +79,8 @@ export default function TeacherStudentsPage() {
   const [search, setSearch] = useState("");
   const [sectionFilter, setSectionFilter] = useState<string>("ALL");
 
-  // View mode: table vs grid
-  const [viewMode, setViewMode] = useState<"table" | "grid">("table");
+  // View mode: table vs grid vs list
+  const [viewMode, setViewMode] = useState<"table" | "grid" | "list">("table");
 
   // Pagination
   const [page, setPage] = useState(1);
@@ -553,7 +554,7 @@ export default function TeacherStudentsPage() {
               </select>
             </div>
 
-            {/* Table / Grid Switcher */}
+            {/* Table / Grid / List Switcher */}
             <div className="inline-flex rounded-xl bg-surface-base p-1 border border-border-default shadow-xs">
               <button
                 type="button"
@@ -580,6 +581,19 @@ export default function TeacherStudentsPage() {
               >
                 <LayoutGrid className="h-3.5 w-3.5" />
                 <span>Cards</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("list")}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  viewMode === "list"
+                    ? "bg-steel text-white shadow-xs"
+                    : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
+                }`}
+                title="List View"
+              >
+                <List className="h-3.5 w-3.5" />
+                <span>List</span>
               </button>
             </div>
           </div>
@@ -722,6 +736,86 @@ export default function TeacherStudentsPage() {
                 </tbody>
               </table>
             </div>
+          </div>
+        ) : viewMode === "list" ? (
+          /* ── COMPACT LIST VIEW ──────────────────────────────────── */
+          <div className="space-y-2">
+            {paginatedStudents.map((s) => (
+              <div
+                key={s.id}
+                onClick={() => openStudentDetail(s)}
+                className="rounded-xl p-3.5 sm:px-5 sm:py-3.5 border border-border-default bg-surface-raised hover:border-steel/60 hover:shadow-xs transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 group"
+              >
+                {/* Left: Avatar + Names */}
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-subtle text-xs font-bold text-text-primary border border-border-default group-hover:border-steel/50 transition-colors">
+                    {s.user.first_name[0]?.toUpperCase()}
+                    {s.user.last_name[0]?.toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-bold text-sm text-text-primary truncate group-hover:text-steel transition-colors">
+                        {s.user.first_name} {s.user.last_name}
+                      </h3>
+                      <span className="font-mono text-xs text-text-muted">@{s.user.username}</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5 text-[11px] text-text-muted">
+                      <span className="font-mono font-semibold text-text-secondary">
+                        02000{String(s.student_number).padStart(6, "0")}
+                      </span>
+                      <span>•</span>
+                      <span>OMR: {String(s.student_number).padStart(6, "0")}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section & Status */}
+                <div className="flex items-center gap-2 shrink-0">
+                  {s.section ? (
+                    <span className="inline-flex items-center rounded-full bg-steel-ghost px-2.5 py-0.5 text-[10px] font-bold text-steel border border-steel-border">
+                      {s.section.name}
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center rounded-full bg-surface-subtle px-2.5 py-0.5 text-[10px] font-semibold text-text-muted border border-border-default">
+                      Not in Roster
+                    </span>
+                  )}
+
+                  {s.has_pending_reset_request && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-tan/15 px-2 py-0.5 text-[10px] font-bold text-tan border border-tan/30 animate-pulse">
+                      <KeyRound className="h-2.5 w-2.5" />
+                      Reset
+                    </span>
+                  )}
+                </div>
+
+                {/* Right: Actions */}
+                <div className="flex items-center gap-2 shrink-0 justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-border-default/50">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openEditModal(s);
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold text-text-muted hover:text-steel hover:bg-steel-ghost border border-transparent hover:border-steel-border transition-colors cursor-pointer"
+                    title="Edit Student Info"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    <span>Edit</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openStudentDetail(s);
+                    }}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold text-steel hover:bg-steel-ghost border border-transparent hover:border-steel-border transition-colors cursor-pointer"
+                  >
+                    <span>Manage &rarr;</span>
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         ) : (
           /* ── GRID / CARD VIEW ───────────────────────────────────── */
