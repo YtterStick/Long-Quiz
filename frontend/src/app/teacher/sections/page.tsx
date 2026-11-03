@@ -864,16 +864,20 @@ export default function TeacherSectionsPage() {
   // Filter available students for enrolling into the current section
   const availableToEnroll = allStudents.filter((s) => {
     if (!selectedSection) return false;
+    // Don't show if already in current section's roster
+    if (students.some((st) => st.id === s.id)) return false;
     if (s.section_id === selectedSection.id) return false;
     if (!enrollSearch.trim()) return true;
     const term = enrollSearch.toLowerCase().trim();
     const fullName = `${s.user.first_name} ${s.user.last_name}`.toLowerCase();
     const idStr = `02000${String(s.student_number).padStart(6, "0")}`;
+    const fullId = (s.full_student_id || "").toLowerCase();
     const rawId = String(s.student_number);
     const userStr = s.user.username.toLowerCase();
     return (
       fullName.includes(term) ||
       idStr.includes(term) ||
+      fullId.includes(term) ||
       rawId.includes(term) ||
       userStr.includes(term)
     );
@@ -2697,7 +2701,7 @@ export default function TeacherSectionsPage() {
                   Enroll into {selectedSection.name}
                 </h2>
                 <p className="text-xs text-text-muted mt-0.5">
-                  Select a registered student from the application directory to enroll into this section.
+                  Student accounts are global across all subjects and sections. Select any registered student to enroll them into this class.
                 </p>
               </div>
               <button
@@ -2735,7 +2739,7 @@ export default function TeacherSectionsPage() {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-mono font-bold text-xs text-text-primary">
-                          02000{String(s.student_number).padStart(6, "0")}
+                          {s.full_student_id || `02000${String(s.student_number).padStart(6, "0")}`}
                         </span>
                         <span className="font-semibold text-xs text-text-primary">
                           {s.user.first_name} {s.user.last_name}
@@ -2745,7 +2749,7 @@ export default function TeacherSectionsPage() {
                         <span className="font-mono text-tan">@{s.user.username}</span>
                         <span>•</span>
                         <span>
-                          {s.section ? `In ${s.section.name}` : "Not in any class roster"}
+                          {s.section ? `Primary: ${s.section.name}${s.section.subject ? ` (${s.section.subject})` : ""}` : "Unassigned in Directory"}
                         </span>
                       </div>
                     </div>
@@ -2785,7 +2789,7 @@ export default function TeacherSectionsPage() {
           <div className="w-full max-w-md rounded-2xl border border-border-default bg-surface-overlay p-6 shadow-2xl">
             <h2 className="text-lg font-bold text-text-primary mb-2">Register Student</h2>
             <p className="text-xs text-text-muted mb-5">
-              Create a student account. Assign their student ID with static prefix <strong className="text-tan">02000</strong> and 6-digit OMR bubble digit.
+              Create a student account or enroll an existing global account. Assign their student ID with static prefix <strong className="text-tan">02000</strong> and 6-digit OMR bubble digit.
             </p>
 
             {newStudentCredentials ? (
@@ -2793,22 +2797,29 @@ export default function TeacherSectionsPage() {
                 <div className="rounded-xl bg-sage-ghost border border-sage-border p-4">
                   <div className="flex items-center gap-2 text-sage font-semibold text-sm mb-3">
                     <CheckCircle2 className="h-5 w-5" />
-                    Student Account Created!
+                    {newStudentCredentials.temp_password ? "Student Account Created!" : "Existing Global Account Enrolled!"}
                   </div>
                   <div className="space-y-2 text-xs font-mono bg-surface-base p-3 rounded-lg border border-border-default">
                     <p className="text-text-secondary">Name: <span className="text-text-primary font-semibold">{newStudentCredentials.name}</span></p>
                     <p className="text-text-secondary">Full Student ID: <span className="text-sage font-bold">{newStudentCredentials.full_student_id}</span></p>
                     <p className="text-text-secondary">Username: <span className="text-tan font-bold">@{newStudentCredentials.username}</span></p>
-                    <p className="text-text-secondary">Temp Password: <span className="text-cream font-bold">{newStudentCredentials.temp_password}</span></p>
+                    {newStudentCredentials.temp_password ? (
+                      <p className="text-text-secondary">Temp Password: <span className="text-cream font-bold">{newStudentCredentials.temp_password}</span></p>
+                    ) : (
+                      <p className="text-steel-light font-sans font-medium text-[11px] pt-1">
+                        ℹ This student already has an active account. Enrolled into this section successfully. Their existing password remains active.
+                      </p>
+                    )}
                   </div>
                 </div>
 
                 <div className="flex gap-2">
                   <button
                     onClick={() => {
-                      navigator.clipboard.writeText(
-                        `Student: ${newStudentCredentials.name}\nStudent ID: ${newStudentCredentials.full_student_id}\nUsername: ${newStudentCredentials.username}\nPassword: ${newStudentCredentials.temp_password}`
-                      );
+                      const text = newStudentCredentials.temp_password
+                        ? `Student: ${newStudentCredentials.name}\nStudent ID: ${newStudentCredentials.full_student_id}\nUsername: ${newStudentCredentials.username}\nPassword: ${newStudentCredentials.temp_password}`
+                        : `Student: ${newStudentCredentials.name}\nStudent ID: ${newStudentCredentials.full_student_id}\nUsername: ${newStudentCredentials.username}\nEnrolled into section. (Existing password preserved)`;
+                      navigator.clipboard.writeText(text);
                       setCopied(true);
                       setTimeout(() => setCopied(false), 2000);
                     }}

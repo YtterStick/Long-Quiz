@@ -3,6 +3,7 @@
 import logging
 import re
 import secrets
+import uuid
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -181,6 +182,24 @@ async def lifespan(app: FastAPI):
                 await conn.execute(text(
                     "ALTER TABLE exam_answer_keys ALTER COLUMN correct_option TYPE TEXT"
                 ))
+
+        # Backfill existing students into student_sections table
+        try:
+            res = await conn.execute(text("SELECT id, section_id FROM students WHERE section_id IS NOT NULL"))
+            rows = res.fetchall()
+            for st_id, sec_id in rows:
+                if "postgresql" in settings.DATABASE_URL:
+                    await conn.execute(
+                        text("INSERT INTO student_sections (id, student_id, section_id) VALUES (:id, :st_id, :sec_id) ON CONFLICT (student_id, section_id) DO NOTHING"),
+                        {"id": str(uuid.uuid4()), "st_id": st_id, "sec_id": sec_id}
+                    )
+                else:
+                    await conn.execute(
+                        text("INSERT OR IGNORE INTO student_sections (id, student_id, section_id) VALUES (:id, :st_id, :sec_id)"),
+                        {"id": str(uuid.uuid4()), "st_id": st_id, "sec_id": sec_id}
+                    )
+        except Exception as e:
+            logger.warning("Migration note for student_sections: %s", e)
 
         await _encrypt_existing_answer_keys(conn)
 

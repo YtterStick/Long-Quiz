@@ -1002,7 +1002,7 @@ export default function TeacherStudentsPage() {
                 <div className="rounded-2xl bg-sage-ghost/50 border border-sage-border p-4 space-y-3">
                   <div className="flex items-center gap-2 text-sage font-bold text-xs">
                     <CheckCircle2 className="h-4 w-4" />
-                    <span>Account Created Successfully!</span>
+                    <span>{singleSuccess.temp_password ? "Account Created Successfully!" : "Existing Global Account Enrolled!"}</span>
                   </div>
                   <div className="rounded-xl bg-surface-base p-3 space-y-1.5 text-xs font-mono border border-border-default">
                     <p className="text-text-secondary">
@@ -1014,9 +1014,15 @@ export default function TeacherStudentsPage() {
                     <p className="text-text-secondary">
                       Username: <span className="font-bold text-steel">@{singleSuccess.username}</span>
                     </p>
-                    <p className="text-text-secondary">
-                      Temp Password: <span className="font-bold text-amber-500">{singleSuccess.temp_password}</span>
-                    </p>
+                    {singleSuccess.temp_password ? (
+                      <p className="text-text-secondary">
+                        Temp Password: <span className="font-bold text-amber-500">{singleSuccess.temp_password}</span>
+                      </p>
+                    ) : (
+                      <p className="text-steel font-sans font-medium text-[11px] pt-1">
+                        ℹ Student already has an active account. Enrolled into class successfully with existing password preserved.
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -1024,9 +1030,10 @@ export default function TeacherStudentsPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      navigator.clipboard.writeText(
-                        `Student: ${singleSuccess.name}\nStudent ID: ${singleSuccess.full_student_id}\nUsername: ${singleSuccess.username}\nTemp Password: ${singleSuccess.temp_password}`
-                      );
+                      const text = singleSuccess.temp_password
+                        ? `Student: ${singleSuccess.name}\nStudent ID: ${singleSuccess.full_student_id}\nUsername: ${singleSuccess.username}\nTemp Password: ${singleSuccess.temp_password}`
+                        : `Student: ${singleSuccess.name}\nStudent ID: ${singleSuccess.full_student_id}\nUsername: ${singleSuccess.username}\nEnrolled into class. (Existing password preserved)`;
+                      navigator.clipboard.writeText(text);
                       setCopiedSingle(true);
                       setTimeout(() => setCopiedSingle(false), 2000);
                     }}

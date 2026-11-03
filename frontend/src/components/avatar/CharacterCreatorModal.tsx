@@ -32,6 +32,7 @@ import {
 } from "@/types/avatar";
 import { StudentAvatar } from "./StudentAvatar";
 import { SkeletonAvatarCreator } from "@/components/ui/Skeleton";
+import { checkSensitiveMotto } from "@/lib/content-filter";
 import {
   Scissors,
   Shuffle,
@@ -173,8 +174,12 @@ function HairPreviewSvg({ styleId, colorHex = "#374e63" }: { styleId: HairStyleI
       )}
 
       {styleId === "buzz" && (
-        <g fill={colorHex} opacity="0.85">
-          <path d="M 13 21 C 13 14, 27 14, 27 21 C 26 17, 23 15, 20 15 C 17 15, 14 17, 13 21 Z" />
+        <g>
+          <path
+            d="M 13 21 L 14 17.5 L 16.5 17.5 Q 20 16.5 23.5 17.5 L 26 17.5 L 27 21 C 28 17, 27 12, 20 11.5 C 13 12, 12 17, 13 21 Z"
+            fill={colorHex}
+          />
+          <path d="M 16 14 Q 20 13 24 14" stroke="#ffffff" strokeWidth="0.8" fill="none" opacity="0.35" strokeLinecap="round" />
         </g>
       )}
 
@@ -737,7 +742,13 @@ export function CharacterCreatorModal({
     setShowDiscardConfirm(false);
   };
 
+  const mottoCheck = useMemo(() => checkSensitiveMotto(config.bio || ""), [config.bio]);
+
   const handleSave = async () => {
+    if (!mottoCheck.isValid) {
+      setActiveTab("bio");
+      return;
+    }
     setSaving(true);
     try {
       await onSave({ ...config, gender: selectedGender });
@@ -1546,8 +1557,18 @@ export function CharacterCreatorModal({
                       value={config.bio || ""}
                       onChange={(e) => updateCurrentConfig({ ...config, bio: e.target.value })}
                       placeholder={role === "TEACHER" ? "e.g. Inspiring curiosity and academic excellence 💡" : "e.g. Aiming for 100% on every quiz! 🚀"}
-                      className="w-full rounded-2xl border border-border-default bg-surface-base px-4 py-3 text-sm text-text-primary placeholder-text-faint focus:border-steel focus:outline-none focus:ring-4 focus:ring-steel/10 transition-all font-medium"
+                      className={`w-full rounded-2xl border bg-surface-base px-4 py-3 text-sm text-text-primary placeholder-text-faint focus:outline-none transition-all font-medium ${
+                        !mottoCheck.isValid
+                          ? "border-burgundy-border focus:border-burgundy-light ring-4 ring-burgundy-light/10"
+                          : "border-border-default focus:border-steel focus:ring-4 focus:ring-steel/10"
+                      }`}
                     />
+                    {!mottoCheck.isValid && (
+                      <div className="flex items-center gap-2 mt-2 rounded-xl bg-burgundy-ghost border border-burgundy-border p-3 text-xs text-burgundy-light font-medium animate-in fade-in duration-150">
+                        <AlertCircle className="h-4 w-4 shrink-0" />
+                        <span>{mottoCheck.error}</span>
+                      </div>
+                    )}
                     <div className="flex items-center justify-between text-[10px] text-text-faint mt-1">
                       <span>Displays on your avatar profile speech bubble and hero</span>
                       <span>{(config.bio || "").length} / 140 characters</span>

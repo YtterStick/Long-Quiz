@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 from sqlalchemy import (
-    String, Integer, Boolean, DateTime, ForeignKey, Enum as SAEnum, Text, event
+    String, Integer, Boolean, DateTime, ForeignKey, Enum as SAEnum, Text, event, UniqueConstraint
 )
 from sqlalchemy.orm import DeclarativeBase, relationship, Mapped, mapped_column
 import enum
@@ -80,12 +80,30 @@ class Student(Base):
 
     user: Mapped[Optional["User"]] = relationship("User", back_populates="student_profile")
     section: Mapped[Optional["Section"]] = relationship("Section", back_populates="students")
+    student_sections: Mapped[List["StudentSection"]] = relationship("StudentSection", back_populates="student", cascade="all, delete-orphan")
     submissions: Mapped[List["ExamSubmission"]] = relationship("ExamSubmission", back_populates="student", cascade="all, delete-orphan")
     reset_requests: Mapped[List["PasswordResetRequest"]] = relationship("PasswordResetRequest", back_populates="student", cascade="all, delete-orphan")
 
     @property
     def full_student_id(self) -> str:
         return f"02000{self.student_number:06d}"
+
+
+
+class StudentSection(Base):
+    __tablename__ = "student_sections"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    student_id: Mapped[str] = mapped_column(String, ForeignKey("students.id", ondelete="CASCADE"), nullable=False, index=True)
+    section_id: Mapped[str] = mapped_column(String, ForeignKey("sections.id", ondelete="CASCADE"), nullable=False, index=True)
+    enrolled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        UniqueConstraint("student_id", "section_id", name="uq_student_section"),
+    )
+
+    student: Mapped[Optional["Student"]] = relationship("Student", back_populates="student_sections")
+    section: Mapped[Optional["Section"]] = relationship("Section", back_populates="section_enrollments")
 
 
 
@@ -100,6 +118,7 @@ class Section(Base):
 
     teacher: Mapped[Optional["Teacher"]] = relationship("Teacher", back_populates="sections")
     students: Mapped[List["Student"]] = relationship("Student", back_populates="section")
+    section_enrollments: Mapped[List["StudentSection"]] = relationship("StudentSection", back_populates="section", cascade="all, delete-orphan")
     section_exams: Mapped[List["SectionExam"]] = relationship("SectionExam", back_populates="section", cascade="all, delete-orphan")
 
 

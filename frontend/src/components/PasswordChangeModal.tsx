@@ -24,6 +24,7 @@ import {
   DEFAULT_AVATAR_CONFIG,
   DEFAULT_TEACHER_AVATAR_CONFIG,
 } from "@/types/avatar";
+import { checkSensitiveMotto } from "@/lib/content-filter";
 
 interface PasswordChangeModalProps {
   isOpen: boolean;
@@ -46,6 +47,7 @@ export function PasswordChangeModal({
   const [studyMotto, setStudyMotto] = useState<string>("");
   const [mottoLoading, setMottoLoading] = useState(false);
   const [mottoSaved, setMottoSaved] = useState(false);
+  const [mottoError, setMottoError] = useState<string | null>(null);
 
   // Password state
   const [currentPassword, setCurrentPassword] = useState("");
@@ -111,6 +113,12 @@ export function PasswordChangeModal({
   const handleSaveMotto = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+    setMottoError(null);
+    const check = checkSensitiveMotto(studyMotto);
+    if (!check.isValid) {
+      setMottoError(check.error || "Inappropriate words detected in motto.");
+      return;
+    }
     setMottoLoading(true);
     try {
       const defaultCfg = user.role === "TEACHER" ? DEFAULT_TEACHER_AVATAR_CONFIG : DEFAULT_AVATAR_CONFIG;
@@ -373,9 +381,16 @@ export function PasswordChangeModal({
                       type="text"
                       maxLength={120}
                       value={studyMotto}
-                      onChange={(e) => setStudyMotto(e.target.value)}
+                      onChange={(e) => {
+                        setStudyMotto(e.target.value);
+                        setMottoError(null);
+                      }}
                       placeholder="e.g. Aiming for 100% on every quiz! 🚀"
-                      className="flex-1 rounded-xl border border-border-default bg-surface-base px-3 py-2 text-xs font-medium text-text-primary placeholder-text-faint focus:border-steel focus:outline-none focus:ring-2 focus:ring-steel/10 transition-all"
+                      className={`flex-1 rounded-xl border bg-surface-base px-3 py-2 text-xs font-medium text-text-primary placeholder-text-faint focus:outline-none transition-all ${
+                        mottoError
+                          ? "border-burgundy-border focus:border-burgundy-light ring-2 ring-burgundy-light/10"
+                          : "border-border-default focus:border-steel focus:ring-2 focus:ring-steel/10"
+                      }`}
                     />
                     <button
                       type="submit"
@@ -394,6 +409,12 @@ export function PasswordChangeModal({
                       )}
                     </button>
                   </div>
+                  {mottoError && (
+                    <div className="flex items-center gap-1.5 p-2 rounded-xl bg-burgundy-ghost border border-burgundy-border text-[11px] font-medium text-burgundy-light animate-in fade-in duration-150">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      <span>{mottoError}</span>
+                    </div>
+                  )}
                   <span className="text-[10px] text-text-muted block">
                     Displays on your profile card, online exam lobbies, and hero badge.
                   </span>

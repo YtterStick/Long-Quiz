@@ -67,6 +67,9 @@ export function StudentAvatar({
   const isHead = variant === "head";
   const drawBackdrop = showBackdrop && !isHead;
   const glowId = `glow-${uid}`;
+  const studioLightId = `studio-light-${uid}`;
+  const hairBacklightId = `hair-backlight-${uid}`;
+  const buzzFadeGradId = `buzz-fade-${uid}`;
   const hairShineId = `hair-shine-${uid}`;
   const outfitGradId = `outfit-grad-${uid}`;
 
@@ -86,12 +89,34 @@ export function StudentAvatar({
         }`}
       >
         <defs>
+          {/* Studio Backdrop Light: Luminous overhead key light so dark hair clearly stands out */}
+          <radialGradient id={studioLightId} cx="50%" cy="38%" r="62%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.32" />
+            <stop offset="40%" stopColor={backdrop.ringColor} stopOpacity="0.22" />
+            <stop offset="75%" stopColor={backdrop.ringColor} stopOpacity="0.08" />
+            <stop offset="100%" stopColor="transparent" stopOpacity="0.0" />
+          </radialGradient>
+
+          {/* Dedicated Hair Rim-Light: Soft luminous aura behind head & hair */}
+          <radialGradient id={hairBacklightId} cx="50%" cy="36%" r="48%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.45" />
+            <stop offset="48%" stopColor="#ffffff" stopOpacity="0.18" />
+            <stop offset="100%" stopColor="#ffffff" stopOpacity="0.0" />
+          </radialGradient>
+
           {/* Backdrop radial glow */}
           <radialGradient id={glowId} cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor={backdrop.ringColor} stopOpacity="0.4" />
-            <stop offset="70%" stopColor={backdrop.ringColor} stopOpacity="0.1" />
+            <stop offset="0%" stopColor={backdrop.ringColor} stopOpacity="0.45" />
+            <stop offset="70%" stopColor={backdrop.ringColor} stopOpacity="0.15" />
             <stop offset="100%" stopColor={backdrop.ringColor} stopOpacity="0.0" />
           </radialGradient>
+
+          {/* Clean Buzz Cut Fade Gradient */}
+          <linearGradient id={buzzFadeGradId} x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor={hair.highlight} stopOpacity="0.95" />
+            <stop offset="60%" stopColor={hair.hex} stopOpacity="1" />
+            <stop offset="100%" stopColor={hair.hex} stopOpacity="0.85" />
+          </linearGradient>
 
           {/* Hair shine gradient */}
           <linearGradient id={hairShineId} x1="0%" y1="0%" x2="100%" y2="100%">
@@ -110,7 +135,11 @@ export function StudentAvatar({
         {drawBackdrop && (
           <g>
             <circle cx="100" cy="100" r="98" className="fill-surface-base" />
+            {/* Ambient Studio Key Light across upper canvas */}
+            <circle cx="100" cy="100" r="98" fill={`url(#${studioLightId})`} />
             <circle cx="100" cy="100" r="98" fill={`url(#${glowId})`} />
+            {/* Soft hair separation rim light */}
+            <ellipse cx="100" cy="72" rx="58" ry="48" fill={`url(#${hairBacklightId})`} />
 
             {config.backdrop === "chalkboard" && (
               <g opacity="0.35">
@@ -788,11 +817,46 @@ export function StudentAvatar({
 
           {config.hairStyle === "buzz" && (
             <g>
-              {/* Clean buzz cut outline */}
+              {/* Clean Barbershop Buzz Cut with Sharp Line-up & High Fade */}
+              {/* Solid base cap hugging cranial dome */}
               <path
-                d="M 68 84 C 68 56, 132 56, 132 84 C 130 74, 118 68, 100 68 C 82 68, 70 74, 68 84 Z"
-                fill={hair.hex}
-                opacity="0.85"
+                d="M 65 82 L 67 73 L 73 73 Q 100 70 127 73 L 133 73 L 135 82 C 138 72, 137 49, 100 48 C 63 49, 62 72, 65 82 Z"
+                fill={`url(#${buzzFadeGradId})`}
+              />
+              {/* Sharp Edge-up / Hairline contour */}
+              <path
+                d="M 67 73 L 73 73 Q 100 70 127 73 L 133 73"
+                stroke={hair.hex}
+                strokeWidth="1.8"
+                fill="none"
+                strokeLinecap="square"
+              />
+              {/* Temple box lines */}
+              <line x1="67" y1="73" x2="65" y2="82" stroke={hair.hex} strokeWidth="1.5" strokeLinecap="round" />
+              <line x1="133" y1="73" x2="135" y2="82" stroke={hair.hex} strokeWidth="1.5" strokeLinecap="round" />
+              {/* Subtle top crown highlight arch */}
+              <path
+                d="M 78 57 Q 100 52 122 57"
+                stroke={hair.highlight}
+                strokeWidth="2.5"
+                fill="none"
+                opacity="0.5"
+                strokeLinecap="round"
+              />
+              {/* Temple taper fade accents */}
+              <path
+                d="M 66 79 Q 67 74 71 74"
+                stroke={hair.highlight}
+                strokeWidth="1"
+                fill="none"
+                opacity="0.35"
+              />
+              <path
+                d="M 134 79 Q 133 74 129 74"
+                stroke={hair.highlight}
+                strokeWidth="1"
+                fill="none"
+                opacity="0.35"
               />
             </g>
           )}

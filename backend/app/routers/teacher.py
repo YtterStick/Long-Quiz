@@ -9,7 +9,7 @@ from app.database import get_db
 from app.models import (
     User, Teacher, Student, Section, Exam, ExamAnswerKey, ExamQuestion,
     ExamSubmission, SubmissionAnswer, Role, PasswordResetRequest, ResetRequestStatus,
-    SectionExam, ExamLobbyEntry, TeacherExamGenerationLog
+    SectionExam, ExamLobbyEntry, TeacherExamGenerationLog, StudentSection
 )
 from app.schemas import (
     SectionCreate, SectionUpdate, SectionOut,
@@ -40,6 +40,7 @@ router = APIRouter(prefix="/api/teacher", tags=["Teacher"])
 
 
 from pydantic import BaseModel
+from app.content_filter import validate_motto
 
 
 class TeacherProfileUpdateRequest(BaseModel):
@@ -84,7 +85,7 @@ async def update_teacher_profile(
     if payload.avatar_config is not None:
         teacher.avatar_config = payload.avatar_config
     if payload.bio is not None:
-        teacher.bio = payload.bio.strip()[:160]
+        teacher.bio = validate_motto(payload.bio)
     await db.commit()
     await db.refresh(teacher)
     return {
@@ -831,10 +832,20 @@ async def list_students(
     if not sec.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Section not found")
 
+    # Get student IDs enrolled via StudentSection association
+    sec_enrollments = await db.execute(
+        select(StudentSection.student_id).where(StudentSection.section_id == section_id)
+    )
+    enrolled_ids = set(sec_enrollments.scalars().all())
+
+    cond = Student.section_id == section_id
+    if enrolled_ids:
+        cond = or_(cond, Student.id.in_(enrolled_ids))
+
     result = await db.execute(
         select(Student)
         .options(selectinload(Student.user), selectinload(Student.section))
-        .where(Student.section_id == section_id)
+        .where(cond)
         .order_by(Student.student_number)
     )
     students = result.scalars().all()
@@ -869,18 +880,35 @@ async def add_student(
     if not sec.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Section not found")
 
-    # Determine student number (6-digit OMR ID) first so it can form the guaranteed unique username
+    # Determine student number (6-digit OMR ID)
     if body.student_number is not None and str(body.student_number).strip():
         try:
             student_number = clean_student_omr_number(body.student_number)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-        exists = await db.execute(select(Student).where(Student.student_number == student_number))
-        if exists.scalar_one_or_none():
-            raise HTTPException(
-                status_code=400,
-                detail=f"Student ID with OMR digit {student_number:06d} ({STATIC_STUDENT_PREFIX}{student_number:06d}) already exists."
+        exists = await db.execute(
+            select(Student)
+            .options(selectinload(Student.user), selectinload(Student.section))
+            .where(Student.student_number == student_number)
+        )
+        existing_student = exists.scalar_one_or_none()
+        if existing_student:
+            # Global student account already exists: seamlessly enroll into this section!
+            already_enrolled = await db.execute(
+                select(StudentSection.id).where(
+                    StudentSection.student_id == existing_student.id,
+                    StudentSection.section_id == section_id
+                )
             )
+            if not already_enrolled.scalar_one_or_none():
+                db.add(StudentSection(student_id=existing_student.id, section_id=section_id))
+            if not existing_student.section_id:
+                existing_student.section_id = section_id
+            await db.flush()
+
+            out = StudentOut.model_validate(existing_student)
+            out.temp_password = None
+            return out
     else:
         student_number = generate_student_number()
         while True:
@@ -920,6 +948,10 @@ async def add_student(
         section_id=section_id,
     )
     db.add(student)
+    await db.flush()
+
+    # Also record in student_sections association table
+    db.add(StudentSection(student_id=student.id, section_id=section_id))
     await db.flush()
 
     # Reload with user and section relationships
@@ -965,8 +997,32 @@ async def add_students_csv(
     for first_name, last_name, csv_id in rows:
         student_number = None
         if csv_id is not None and csv_id not in used_numbers:
-            exists = await db.execute(select(Student).where(Student.student_number == csv_id))
-            if not exists.scalar_one_or_none():
+            exists = await db.execute(
+                select(Student)
+                .options(selectinload(Student.user), selectinload(Student.section))
+                .where(Student.student_number == csv_id)
+            )
+            existing_student = exists.scalar_one_or_none()
+            if existing_student:
+                # Enroll existing student in this section
+                already_enrolled = await db.execute(
+                    select(StudentSection.id).where(
+                        StudentSection.student_id == existing_student.id,
+                        StudentSection.section_id == section_id
+                    )
+                )
+                if not already_enrolled.scalar_one_or_none():
+                    db.add(StudentSection(student_id=existing_student.id, section_id=section_id))
+                if not existing_student.section_id:
+                    existing_student.section_id = section_id
+                await db.flush()
+
+                out = StudentOut.model_validate(existing_student)
+                out.temp_password = None
+                created_students.append(out)
+                used_numbers.add(csv_id)
+                continue
+            else:
                 student_number = csv_id
                 used_numbers.add(csv_id)
 
@@ -1011,6 +1067,9 @@ async def add_students_csv(
         db.add(student)
         await db.flush()
 
+        db.add(StudentSection(student_id=student.id, section_id=section_id))
+        await db.flush()
+
         result = await db.execute(
             select(Student)
             .options(selectinload(Student.user), selectinload(Student.section))
@@ -1048,7 +1107,17 @@ async def enroll_student(
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
 
-    student.section_id = section_id
+    already = await db.execute(
+        select(StudentSection.id).where(
+            StudentSection.student_id == student.id,
+            StudentSection.section_id == section_id
+        )
+    )
+    if not already.scalar_one_or_none():
+        db.add(StudentSection(student_id=student.id, section_id=section_id))
+
+    if not student.section_id:
+        student.section_id = section_id
     await db.flush()
 
     result = await db.execute(
@@ -1069,7 +1138,7 @@ async def unenroll_student(
     """
     Remove/unenroll a student from a section roster.
     CRITICAL: Does NOT delete the student account or submissions.
-    Only sets student.section_id = None so their account, credentials, and grades remain safe.
+    Removes enrollment link and updates primary section if needed.
     """
     teacher = await _get_teacher(current_user, db)
     sec = await db.execute(
@@ -1079,13 +1148,29 @@ async def unenroll_student(
         raise HTTPException(status_code=404, detail="Section not found")
 
     result = await db.execute(
-        select(Student).where(Student.id == student_id, Student.section_id == section_id)
+        select(Student).where(Student.id == student_id)
     )
     student = result.scalar_one_or_none()
     if not student:
-        raise HTTPException(status_code=404, detail="Student not found in this section")
+        raise HTTPException(status_code=404, detail="Student not found")
 
-    student.section_id = None
+    await db.execute(
+        delete(StudentSection).where(
+            StudentSection.student_id == student_id,
+            StudentSection.section_id == section_id
+        )
+    )
+
+    if student.section_id == section_id:
+        other_sec = await db.execute(
+            select(StudentSection.section_id).where(
+                StudentSection.student_id == student_id,
+                StudentSection.section_id != section_id
+            )
+        )
+        next_sec_id = other_sec.scalars().first()
+        student.section_id = next_sec_id
+
     await db.flush()
     return {"message": "Student unenrolled from section successfully"}
 
@@ -2077,13 +2162,24 @@ async def scan_sheet(
         )
 
     # If a specific section was targeted, ensure student belongs to that section
-    if target_section and student.section_id != target_section.id:
-        current_sec_name = student.section.name if student.section else "No Section"
-        st_name = f"{student.user.first_name} {student.user.last_name}" if student.user else f"Student #{student.student_number}"
-        raise HTTPException(
-            status_code=400,
-            detail=f"Student {st_name} ({student.full_student_id}) belongs to section '{current_sec_name}', not '{target_section.name}'."
-        )
+    if target_section:
+        enrolled_in_target = (student.section_id == target_section.id)
+        if not enrolled_in_target:
+            sec_check = await db.execute(
+                select(StudentSection.id).where(
+                    StudentSection.student_id == student.id,
+                    StudentSection.section_id == target_section.id
+                )
+            )
+            enrolled_in_target = bool(sec_check.scalar_one_or_none())
+
+        if not enrolled_in_target:
+            current_sec_name = student.section.name if student.section else "No Section"
+            st_name = f"{student.user.first_name} {student.user.last_name}" if student.user else f"Student #{student.student_number}"
+            raise HTTPException(
+                status_code=400,
+                detail=f"Student {st_name} ({student.full_student_id}) is not enrolled in section '{target_section.name}' (current primary section: '{current_sec_name}')."
+            )
 
     # Upload image to Google Drive
     try:

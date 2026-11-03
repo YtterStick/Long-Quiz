@@ -236,6 +236,7 @@ export default function StudentDashboard() {
   const strikesRef = useRef(0);
   const awayRef = useRef(false);
   const autoSubmittingRef = useRef(false);
+  const alertTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [antiCheatAlert, setAntiCheatAlert] = useState<{
     message: string;
     type: "blur" | "fullscreen";
@@ -705,6 +706,20 @@ export default function StudentDashboard() {
 
     const MAX_STRIKES = 3;
 
+    const triggerSecurityWarning = (message: string, type: "blur" | "fullscreen" = "blur") => {
+      if (alertTimerRef.current) {
+        clearTimeout(alertTimerRef.current);
+        alertTimerRef.current = null;
+      }
+      setAntiCheatAlert({ message, type });
+      // If user is currently in fullscreen, automatically remove warning toast after 3.5s so it never gets buggy
+      if (typeof document !== "undefined" && document.fullscreenElement) {
+        alertTimerRef.current = setTimeout(() => {
+          setAntiCheatAlert(null);
+        }, 3500);
+      }
+    };
+
     const registerStrike = (reason: string) => {
       strikesRef.current += 1;
       setAntiCheatStrikes(strikesRef.current);
@@ -727,6 +742,10 @@ export default function StudentDashboard() {
 
     const onFullscreenChange = () => {
       if (!document.fullscreenElement) {
+        if (alertTimerRef.current) {
+          clearTimeout(alertTimerRef.current);
+          alertTimerRef.current = null;
+        }
         if (typeof navigator !== "undefined" && "keyboard" in navigator && typeof (navigator as any).keyboard?.unlock === "function") {
           try {
             (navigator as any).keyboard.unlock();
@@ -740,6 +759,12 @@ export default function StudentDashboard() {
         });
         registerStrike(`Maximum security violations reached (${MAX_STRIKES} strikes)`);
       } else {
+        // Clear alert and timer on fullscreen re-entry
+        if (alertTimerRef.current) {
+          clearTimeout(alertTimerRef.current);
+          alertTimerRef.current = null;
+        }
+        setAntiCheatAlert(null);
         // Re-lock keyboard on fullscreen re-entry
         if (typeof navigator !== "undefined" && "keyboard" in navigator && typeof (navigator as any).keyboard?.lock === "function") {
           (navigator as any).keyboard.lock(["Tab", "AltLeft", "AltRight", "Escape", "MetaLeft", "MetaRight"]).catch(() => {
@@ -764,16 +789,23 @@ export default function StudentDashboard() {
         }, 50);
       } catch {}
 
-      setAntiCheatAlert({
-        message: customReason || "Focus Lost! Alt-Tab or switching away from the exam window is prohibited and blocked.",
-        type: "blur",
-      });
+      triggerSecurityWarning(
+        customReason || "Focus Lost! Alt-Tab or switching away from the exam window is prohibited and blocked.",
+        "blur"
+      );
       registerStrike(`Maximum tab switch / focus loss violations reached (${MAX_STRIKES} strikes)`);
     };
 
     const onFocusRegained = () => {
       if (!document.hidden && document.hasFocus()) {
         awayRef.current = false;
+        // Auto-clear alert once focus is smoothly restored
+        if (typeof document !== "undefined" && document.fullscreenElement) {
+          if (alertTimerRef.current) clearTimeout(alertTimerRef.current);
+          alertTimerRef.current = setTimeout(() => {
+            setAntiCheatAlert(null);
+          }, 1000);
+        }
       }
     };
 
@@ -789,7 +821,7 @@ export default function StudentDashboard() {
       const isMeta = e.metaKey || e.key === "Meta" || e.key === "OS" || e.code?.startsWith("Meta");
       const isCtrl = e.ctrlKey || e.key === "Control";
 
-      // Block Alt+Tab or Alt held with Tab
+      // 1. Block Alt+Tab or Alt held with Tab
       if ((isAlt && isTab) || (e.altKey && isTab) || (isAlt && e.key === "Tab")) {
         e.preventDefault();
         e.stopPropagation();
@@ -798,15 +830,42 @@ export default function StudentDashboard() {
         return false;
       }
 
-      // Block Alt key alone or combined with navigation (Alt+Left/Right, Alt+F4)
-      if (isAlt && (e.key === "F4" || e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      // 2. Block Alt+F4 (Window close attempt)
+      if ((isAlt || e.altKey) && (e.key === "F4" || e.code === "F4" || e.keyCode === 115)) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        triggerSecurityWarning("Alt+F4 is strictly prohibited and blocked during the exam!");
+        registerStrike("Attempted to close exam window with Alt+F4");
+        return false;
+      }
+
+      // 3. Block Escape key from cancelling fullscreen
+      if (e.key === "Escape" || e.code === "Escape" || e.keyCode === 27) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        triggerSecurityWarning("Escape key is locked and blocked during the exam.");
+        registerStrike("Attempted to exit fullscreen with Escape key");
+        if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        }
+        return false;
+      }
+
+      // 4. Block Alt key alone or combined with navigation (Alt+Left/Right)
+      if (isAlt && (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.code === "ArrowLeft" || e.code === "ArrowRight")) {
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
         return false;
       }
+      if (isAlt) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
 
-      // Block Windows / Meta key (start menu popup)
+      // 5. Block Windows / Meta key (start menu popup)
       if (isMeta) {
         e.preventDefault();
         e.stopPropagation();
@@ -815,7 +874,7 @@ export default function StudentDashboard() {
         return false;
       }
 
-      // Block browser tab navigation / closing / opening
+      // 6. Block browser tab navigation / closing / opening
       if (
         isCtrl &&
         (isTab ||
@@ -832,7 +891,7 @@ export default function StudentDashboard() {
         return false;
       }
 
-      // Block Developer Tools (F12, Ctrl+Shift+I/J/C)
+      // 7. Block Developer Tools (F12, Ctrl+Shift+I/J/C)
       if (
         e.key === "F12" ||
         (isCtrl && e.shiftKey && (e.key === "I" || e.key === "i" || e.key === "J" || e.key === "j" || e.key === "C" || e.key === "c"))
@@ -841,12 +900,6 @@ export default function StudentDashboard() {
         e.stopPropagation();
         e.stopImmediatePropagation();
         return false;
-      }
-
-      // Suppress Escape key from canceling fullscreen
-      if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopPropagation();
       }
     };
 
@@ -871,6 +924,12 @@ export default function StudentDashboard() {
       e.stopPropagation();
     };
 
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "An examination is currently active. Are you sure you want to exit?";
+      return e.returnValue;
+    };
+
     document.addEventListener("fullscreenchange", onFullscreenChange);
     document.addEventListener("webkitfullscreenchange", onFullscreenChange);
     document.addEventListener("visibilitychange", onVisibilityChange);
@@ -882,6 +941,7 @@ export default function StudentDashboard() {
     document.addEventListener("copy", onClipboard, { capture: true });
     document.addEventListener("cut", onClipboard, { capture: true });
     document.addEventListener("paste", onClipboard, { capture: true });
+    window.addEventListener("beforeunload", onBeforeUnload);
 
     return () => {
       document.removeEventListener("fullscreenchange", onFullscreenChange);
@@ -895,6 +955,10 @@ export default function StudentDashboard() {
       document.removeEventListener("copy", onClipboard, { capture: true });
       document.removeEventListener("cut", onClipboard, { capture: true });
       document.removeEventListener("paste", onClipboard, { capture: true });
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      if (alertTimerRef.current) {
+        clearTimeout(alertTimerRef.current);
+      }
     };
   }, [isExamInProgress, isWaitingInLobby, activeTakingExam, lobbyExamId, takingAnswers]);
 
@@ -2404,55 +2468,103 @@ export default function StudentDashboard() {
 
       {/* 4. Modal: Anti-Cheat Violation Alert */}
       {antiCheatAlert && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 select-none">
-          <div className="w-full max-w-md rounded-2xl border border-burgundy-border bg-surface-overlay p-6 shadow-2xl text-center space-y-4 animate-in fade-in zoom-in-95">
-            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-burgundy-ghost text-burgundy-light border border-burgundy-border">
-              <ShieldAlert className="h-8 w-8" />
-            </div>
-            <h2 className="text-lg font-black text-burgundy-light">
-              Academic Integrity Warning
-            </h2>
-            <p className="text-xs text-text-secondary leading-relaxed">
-              {antiCheatAlert.message}
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-xl bg-burgundy-ghost/50 border border-burgundy-border p-3 text-xs font-mono font-bold text-burgundy-light">
-                Strikes: {antiCheatStrikes} / 3
+        antiCheatAlert.type === "fullscreen" && !Boolean(typeof document !== "undefined" && document.fullscreenElement) ? (
+          // Fullscreen exited: Required fullscreen re-entry modal
+          <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 select-none animate-in fade-in">
+            <div className="w-full max-w-md rounded-2xl border border-burgundy-border bg-surface-overlay p-6 shadow-2xl text-center space-y-4">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-burgundy-ghost text-burgundy-light border border-burgundy-border">
+                <ShieldAlert className="h-8 w-8" />
               </div>
-              <div className="rounded-xl bg-burgundy-ghost/50 border border-burgundy-border p-3 text-xs font-mono font-bold text-burgundy-light">
-                Alt-Tabs: {tabSwitchCount}
+              <h2 className="text-lg font-black text-burgundy-light">
+                Academic Integrity Warning
+              </h2>
+              <p className="text-xs text-text-secondary leading-relaxed">
+                {antiCheatAlert.message}
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-xl bg-burgundy-ghost/50 border border-burgundy-border p-3 text-xs font-mono font-bold text-burgundy-light">
+                  Strikes: {antiCheatStrikes} / 3
+                </div>
+                <div className="rounded-xl bg-burgundy-ghost/50 border border-burgundy-border p-3 text-xs font-mono font-bold text-burgundy-light">
+                  Alt-Tabs: {tabSwitchCount}
+                </div>
               </div>
-            </div>
-            <p className="text-[11px] text-text-muted">
-              Alt-Tab, window switching, or leaving full-screen is forbidden. 3 strikes will trigger automatic submission of your examination.
-            </p>
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  if (document.documentElement.requestFullscreen) {
-                    await document.documentElement.requestFullscreen();
-                  }
-                  if (typeof navigator !== "undefined" && "keyboard" in navigator && typeof (navigator as any).keyboard?.lock === "function") {
-                    try {
-                      await (navigator as any).keyboard.lock(["Tab", "AltLeft", "AltRight", "Escape", "MetaLeft", "MetaRight"]);
-                    } catch {
-                      try {
-                        await (navigator as any).keyboard.lock();
-                      } catch {}
+              <p className="text-[11px] text-text-muted">
+                Alt-Tab, window switching, or leaving full-screen is forbidden. 3 strikes will trigger automatic submission of your examination.
+              </p>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    if (document.documentElement.requestFullscreen) {
+                      await document.documentElement.requestFullscreen();
                     }
+                    if (typeof navigator !== "undefined" && "keyboard" in navigator && typeof (navigator as any).keyboard?.lock === "function") {
+                      try {
+                        await (navigator as any).keyboard.lock(["Tab", "AltLeft", "AltRight", "Escape", "MetaLeft", "MetaRight"]);
+                      } catch {
+                        try {
+                          await (navigator as any).keyboard.lock();
+                        } catch {}
+                      }
+                    }
+                  } catch (e) {
+                    console.warn("Fullscreen request error:", e);
                   }
-                } catch (e) {
-                  console.warn("Fullscreen request error:", e);
-                }
-                setAntiCheatAlert(null);
-              }}
-              className="w-full rounded-xl bg-burgundy-light text-white font-bold py-2.5 text-xs shadow-md cursor-pointer hover:opacity-95 transition-all"
-            >
-              Re-Enter Fullscreen & Resume Exam
-            </button>
+                  if (alertTimerRef.current) {
+                    clearTimeout(alertTimerRef.current);
+                    alertTimerRef.current = null;
+                  }
+                  setAntiCheatAlert(null);
+                }}
+                className="w-full rounded-xl bg-burgundy-light text-white font-bold py-2.5 text-xs shadow-md cursor-pointer hover:opacity-95 transition-all"
+              >
+                Re-Enter Fullscreen & Resume Exam
+              </button>
+            </div>
           </div>
-        </div>
+        ) : (
+          // In-exam security warning toast/banner (Alt-Tab, Alt+F4, ESC attempted while in fullscreen)
+          // Automatically removed after 3.5s so it never gets buggy!
+          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-60 w-[92%] max-w-lg select-none pointer-events-auto animate-in slide-in-from-top-4 fade-in duration-200">
+            <div className="rounded-2xl border-2 border-burgundy-light bg-surface-overlay/95 backdrop-blur-xl p-4 shadow-2xl shadow-burgundy/20 flex items-start gap-3.5">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-burgundy-ghost text-burgundy-light border border-burgundy-border">
+                <ShieldAlert className="h-5 w-5 animate-pulse" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-burgundy-light">
+                    Proctoring Violation Warning
+                  </h3>
+                  <span className="text-[10px] font-mono font-bold text-burgundy-light bg-burgundy-ghost px-2 py-0.5 rounded-full border border-burgundy-border">
+                    Strikes: {antiCheatStrikes} / 3
+                  </span>
+                </div>
+                <p className="text-xs font-semibold text-text-primary mt-1">
+                  {antiCheatAlert.message}
+                </p>
+                <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-border-default/60 text-[10px] text-text-muted">
+                  <span>Alt-Tab, ESC, and Alt+F4 are locked and prohibited.</span>
+                  <span className="italic text-text-faint">Auto-dismissing...</span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (alertTimerRef.current) {
+                    clearTimeout(alertTimerRef.current);
+                    alertTimerRef.current = null;
+                  }
+                  setAntiCheatAlert(null);
+                }}
+                className="p-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-subtle transition-colors cursor-pointer shrink-0"
+                title="Dismiss warning"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        )
       )}
 
       {/* Confirmation Modal when submitting incomplete exam */}

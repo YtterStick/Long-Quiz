@@ -12,7 +12,7 @@ from app.database import get_db
 from app.models import (
     User, Student, Section, ExamSubmission, Exam, ExamAnswerKey, ExamQuestion,
     Role, Teacher, SubmissionAnswer, SectionExam, ExamLobbyEntry,
-    Friendship, FriendshipStatus, FriendSharedDeck, CustomStudentDeck
+    Friendship, FriendshipStatus, FriendSharedDeck, CustomStudentDeck, StudentSection
 )
 from app.schemas import (
     GradeItem, SubmissionAnswerOut, AnswerKeyOut, QuestionOut, ExamOut,
@@ -26,6 +26,8 @@ class GenerateReviewerTextRequest(BaseModel):
     raw_text: str
     title: Optional[str] = None
 
+
+from app.content_filter import validate_motto
 
 class StudentProfileUpdateRequest(BaseModel):
     avatar_config: Optional[str] = None
@@ -79,7 +81,7 @@ async def update_student_profile(
     if payload.avatar_config is not None:
         student.avatar_config = payload.avatar_config
     if payload.bio is not None:
-        student.bio = payload.bio.strip()[:160]
+        student.bio = validate_motto(payload.bio)
     student.is_profile_setup = True
     await db.commit()
     await db.refresh(student)
@@ -1696,14 +1698,15 @@ async def get_student_notifications(
             },
         })
 
-    # 3. Active Online Exams available for this student's section
+    # 3. Active Online Exams available across this student's enrolled sections
     exam_online_map = {}
-    if student.section_id:
+    enrolled_sec_ids = await _get_student_enrolled_section_ids(student, db)
+    if enrolled_sec_ids:
         se_res = await db.execute(
             select(SectionExam)
             .options(selectinload(SectionExam.exam))
             .where(
-                SectionExam.section_id == student.section_id,
+                SectionExam.section_id.in_(enrolled_sec_ids),
                 SectionExam.is_online_active == True,
             )
             .order_by(SectionExam.created_at.desc())
