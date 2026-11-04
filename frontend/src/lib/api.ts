@@ -1502,6 +1502,9 @@ export interface GeneratedReviewerDeck {
   flashcards: ReviewerFlashcard[];
   quiz_cards: ReviewerQuizCard[];
   source_word_count: number;
+  source_text?: string;
+  file_name?: string;
+  file_preview_url?: string;
   cached?: boolean;
   quota_used?: number;
   quota_remaining?: number;

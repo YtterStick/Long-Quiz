@@ -976,6 +976,8 @@ async def generate_reviewer_from_text(
         cached_deck.usage_count += 1
         await db.commit()
         deck_data = json.loads(cached_deck.deck_data)
+        if not deck_data.get("source_text"):
+            deck_data["source_text"] = distilled or payload.raw_text
         deck_data["cached"] = True
         deck_data["quota_used"] = used
         deck_data["quota_remaining"] = max(0, MAX_MONTHLY_HANDOUT_GENERATIONS - used)
@@ -991,6 +993,7 @@ async def generate_reviewer_from_text(
     # 3. Generate New Deck with Smart Distillation
     try:
         result = parse_and_generate_reviewer(distilled or payload.raw_text, custom_title=payload.title)
+        result["source_text"] = distilled or payload.raw_text
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to generate reviewer: {str(e)}")
 
@@ -1073,6 +1076,10 @@ async def generate_reviewer_from_file(
         cached_deck.usage_count += 1
         await db.commit()
         deck_data = json.loads(cached_deck.deck_data)
+        if not deck_data.get("source_text"):
+            deck_data["source_text"] = extracted_text
+        if not deck_data.get("file_name") and file.filename:
+            deck_data["file_name"] = file.filename
         deck_data["cached"] = True
         deck_data["quota_used"] = used
         deck_data["quota_remaining"] = max(0, MAX_MONTHLY_HANDOUT_GENERATIONS - used)
@@ -1091,6 +1098,8 @@ async def generate_reviewer_from_file(
     # 3. Generate New Deck
     try:
         result = parse_and_generate_reviewer(extracted_text, custom_title=clean_file_title)
+        result["source_text"] = extracted_text
+        result["file_name"] = file.filename
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to generate reviewer from file: {str(e)}")
 

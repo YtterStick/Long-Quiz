@@ -37,7 +37,12 @@ import {
   ChevronDown,
   ChevronLeft,
   Timer,
+  Eye,
+  Send,
+  ExternalLink,
+  Lock,
 } from "lucide-react";
+import { ExamIcon } from "@/components/ui/ExamIcon";
 import { SkeletonDeckGenerating } from "@/components/ui/Skeleton";
 import {
   student as studentApi,
@@ -139,6 +144,8 @@ export function StudentHandoutReviewer() {
     if (activeDeck?.title !== deck.title) {
       setActiveTab("pointers");
       setMasteredCards(new Set());
+      setCardAttempts({});
+      setCardInput("");
       setCollapsedTopics(new Set());
       setCurrentCardIndex(0);
       setIsFlipped(false);
@@ -151,10 +158,26 @@ export function StudentHandoutReviewer() {
     scrollToTop();
   };
 
-  // Flashcards state
+  // Flashcards state (Active-Recall Quiz Mode)
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [masteredCards, setMasteredCards] = useState<Set<string>>(new Set());
+  const [cardInput, setCardInput] = useState("");
+  const [cardAttempts, setCardAttempts] = useState<
+    Record<string, { answer: string; matched: boolean }>
+  >({});
+  const [cardPromptMode, setCardPromptMode] = useState<"definition_first" | "term_first">("definition_first");
+  const cardInputRef = useRef<HTMLInputElement>(null);
+
+  // Uploaded Handout Viewer state
+  const [uploadedFileUrl, setUploadedFileUrl] = useState<string | null>(null);
+  const [uploadedFileText, setUploadedFileText] = useState<string | null>(null);
+  const [handoutViewerOpen, setHandoutViewerOpen] = useState(false);
+  const [handoutViewTab, setHandoutViewTab] = useState<"pdf" | "text">("pdf");
+  const [handoutSearch, setHandoutSearch] = useState("");
+
+  // Generation loading animation step
+  const [loadingStep, setLoadingStep] = useState(0);
 
   // Quiz state
   const [currentQuizIndex, setCurrentQuizIndex] = useState(0);
@@ -350,6 +373,31 @@ export function StudentHandoutReviewer() {
     selectedFolderId,
   ]);
 
+  // Warn if student refreshes or closes tab while generating reviewer
+  useEffect(() => {
+    if (!loading) {
+      setLoadingStep(0);
+      return;
+    }
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue =
+        "Your AI study reviewer is currently generating. Refreshing or leaving this page will cancel it.";
+      return e.returnValue;
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    const interval = setInterval(() => {
+      setLoadingStep((prev) => (prev + 1) % 4);
+    }, 2400);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      clearInterval(interval);
+    };
+  }, [loading]);
+
   const saveDeckToStorage = (deck: GeneratedReviewerDeck, folderId?: string) => {
     try {
       const existing = savedDecks.filter((d) => d.title !== deck.title);
@@ -437,6 +485,13 @@ export function StudentHandoutReviewer() {
   };
 
   const confirmRemoveFile = () => {
+    if (uploadedFileUrl) {
+      try {
+        URL.revokeObjectURL(uploadedFileUrl);
+      } catch {}
+    }
+    setUploadedFileUrl(null);
+    setUploadedFileText(null);
     setSelectedFile(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -448,6 +503,24 @@ export function StudentHandoutReviewer() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
+      if (uploadedFileUrl) {
+        try {
+          URL.revokeObjectURL(uploadedFileUrl);
+        } catch {}
+      }
+      const previewUrl = URL.createObjectURL(file);
+      setUploadedFileUrl(previewUrl);
+      if (
+        file.name.toLowerCase().endsWith(".txt") ||
+        file.name.toLowerCase().endsWith(".md")
+      ) {
+        file
+          .text()
+          .then((txt) => setUploadedFileText(txt))
+          .catch(() => setUploadedFileText(null));
+      } else {
+        setUploadedFileText(null);
+      }
       setSelectedFile(file);
       setError(null);
       if (!deckTitle) {
@@ -473,6 +546,13 @@ export function StudentHandoutReviewer() {
           formData.append("title", deckTitle.trim());
         }
         result = await studentApi.generateReviewerFromFile(formData);
+        result.file_name = result.file_name || selectedFile.name;
+        if (uploadedFileUrl) {
+          result.file_preview_url = uploadedFileUrl;
+        }
+        if (!result.source_text && uploadedFileText) {
+          result.source_text = uploadedFileText;
+        }
       } else {
         if (!rawText.trim() || rawText.trim().length < 30) {
           throw new Error("Please paste at least a few sentences of lecture notes.");
@@ -481,6 +561,7 @@ export function StudentHandoutReviewer() {
           raw_text: rawText.trim(),
           title: deckTitle.trim() || undefined,
         });
+        result.source_text = result.source_text || rawText.trim();
       }
 
       setActiveDeck(result);
@@ -495,6 +576,8 @@ export function StudentHandoutReviewer() {
       setCurrentCardIndex(0);
       setIsFlipped(false);
       setMasteredCards(new Set());
+      setCardAttempts({});
+      setCardInput("");
       setCurrentQuizIndex(0);
       setSelectedAnswers({});
       setQuizFinished(false);
@@ -538,27 +621,124 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
     }
   };
 
-  // Flashcard Helpers
+  // Flashcard Helpers (Quiz-style Active Recall to Reveal Back)
   const currentCard = activeDeck?.flashcards[currentCardIndex];
-  const toggleMastery = (cardId: string) => {
+  const currentCardAttempt = currentCard ? cardAttempts[currentCard.id] : undefined;
+
+  const evaluateCardAnswer = (
+    userRaw: string,
+    targetAnswer: string,
+    altTarget?: string
+  ): boolean => {
+    const clean = (s: string) =>
+      s
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const u = clean(userRaw);
+    const t = clean(targetAnswer);
+    const alt = altTarget ? clean(altTarget) : "";
+    if (!u || u.length < 2) return false;
+    if (u === t || (alt && u === alt)) return true;
+    if (t.includes(u) && u.length >= Math.min(4, t.length)) return true;
+    if (u.includes(t) && t.length >= 3) return true;
+    if (alt && ((alt.includes(u) && u.length >= 4) || (u.includes(alt) && alt.length >= 3))) {
+      return true;
+    }
+
+    const stopWords = new Set([
+      "the", "and", "for", "that", "with", "from", "this", "are", "was", "were",
+      "into", "such", "have", "has", "had", "not", "but", "can", "will", "its",
+      "which", "their", "used", "using", "also", "more", "than", "when", "where",
+    ]);
+    const targetWords = (t + " " + alt)
+      .split(" ")
+      .filter((w) => w.length >= 3 && !stopWords.has(w));
+    const userWords = new Set(u.split(" ").filter((w) => w.length >= 3));
+    if (targetWords.length === 0) return u.length >= 2;
+
+    let hits = 0;
+    for (const tw of targetWords) {
+      if (userWords.has(tw)) hits++;
+    }
+    return hits >= 1 && (hits >= 2 || hits / Math.min(targetWords.length, 4) >= 0.35);
+  };
+
+  const handleCardAnswerSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!currentCard || !cardInput.trim()) return;
+
+    const expectedBack =
+      cardPromptMode === "definition_first" ? currentCard.front : currentCard.back;
+    const altSide =
+      cardPromptMode === "definition_first" ? currentCard.back : currentCard.front;
+
+    const matched = evaluateCardAnswer(cardInput, expectedBack, altSide);
+    setCardAttempts((prev) => ({
+      ...prev,
+      [currentCard.id]: { answer: cardInput.trim(), matched },
+    }));
+    if (matched) {
+      setMasteredCards((prev) => {
+        const next = new Set(prev);
+        next.add(currentCard.id);
+        return next;
+      });
+    }
+    setIsFlipped(true);
+  };
+
+  const markCardCorrectOverride = (cardId: string) => {
+    setCardAttempts((prev) => {
+      const existing = prev[cardId];
+      if (!existing) return prev;
+      return { ...prev, [cardId]: { ...existing, matched: true } };
+    });
     setMasteredCards((prev) => {
       const next = new Set(prev);
-      if (next.has(cardId)) next.delete(cardId);
-      else next.add(cardId);
+      next.add(cardId);
       return next;
     });
   };
 
+  const resetCardAttempt = (cardId: string) => {
+    setCardAttempts((prev) => {
+      const next = { ...prev };
+      delete next[cardId];
+      return next;
+    });
+    setMasteredCards((prev) => {
+      const next = new Set(prev);
+      next.delete(cardId);
+      return next;
+    });
+    setCardInput("");
+    setIsFlipped(false);
+    setTimeout(() => cardInputRef.current?.focus(), 60);
+  };
+
   const nextCard = () => {
     if (!activeDeck) return;
-    setIsFlipped(false);
-    setCurrentCardIndex((prev) => (prev + 1) % activeDeck.flashcards.length);
+    const nextIdx = (currentCardIndex + 1) % activeDeck.flashcards.length;
+    const nextCardObj = activeDeck.flashcards[nextIdx];
+    const nextAttempt = nextCardObj ? cardAttempts[nextCardObj.id] : undefined;
+    setCurrentCardIndex(nextIdx);
+    setIsFlipped(Boolean(nextAttempt));
+    setCardInput(nextAttempt?.answer || "");
   };
 
   const prevCard = () => {
     if (!activeDeck) return;
-    setIsFlipped(false);
-    setCurrentCardIndex((prev) => (prev - 1 + activeDeck.flashcards.length) % activeDeck.flashcards.length);
+    const prevIdx =
+      (currentCardIndex - 1 + activeDeck.flashcards.length) %
+      activeDeck.flashcards.length;
+    const prevCardObj = activeDeck.flashcards[prevIdx];
+    const prevAttempt = prevCardObj ? cardAttempts[prevCardObj.id] : undefined;
+    setCurrentCardIndex(prevIdx);
+    setIsFlipped(Boolean(prevAttempt));
+    setCardInput(prevAttempt?.answer || "");
   };
 
   const shuffleCards = () => {
@@ -567,6 +747,7 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
     setActiveDeck({ ...activeDeck, flashcards: shuffled });
     setCurrentCardIndex(0);
     setIsFlipped(false);
+    setCardInput("");
   };
 
   // Quiz Helpers
@@ -699,7 +880,30 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
                 <ChevronLeft className="h-5 w-5" />
                 My decks
               </button>
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {(activeDeck.file_preview_url ||
+                  activeDeck.source_text ||
+                  uploadedFileUrl ||
+                  uploadedFileText) && (
+                  <button
+                    id="reviewer-view-handout"
+                    type="button"
+                    onClick={() => {
+                      const hasPdf =
+                        Boolean(activeDeck.file_preview_url || uploadedFileUrl) &&
+                        ((activeDeck.file_name || selectedFile?.name || "")
+                          .toLowerCase()
+                          .endsWith(".pdf") ||
+                          selectedFile?.type === "application/pdf");
+                      setHandoutViewTab(hasPdf ? "pdf" : "text");
+                      setHandoutViewerOpen(true);
+                    }}
+                    className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-tan-border bg-tan-ghost px-3 text-sm font-semibold text-tan hover:brightness-105 transition cursor-pointer"
+                  >
+                    <Eye className="h-4 w-4" />
+                    View Handout
+                  </button>
+                )}
                 <button
                   id="reviewer-edit-deck"
                   type="button"
@@ -906,7 +1110,7 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
             </div>
           )}
 
-          {/* ── TAB 2: FLASHCARDS ───────────────────────────────── */}
+          {/* ── TAB 2: FLASHCARDS (ACTIVE-RECALL QUIZ MODE) ───────── */}
           {activeTab === "flashcards" && (
             <div className="space-y-4 rv-fade">
               {!currentCard ? (
@@ -916,19 +1120,35 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
                 </div>
               ) : (
                 <>
-                  {/* Progress */}
+                  {/* Progress & Prompt Direction */}
                   <div className="rounded-2xl border border-border-default bg-surface-raised p-4 shadow-sm space-y-3">
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-sm font-semibold text-text-primary">
                         Card {currentCardIndex + 1}
                         <span className="font-normal text-text-muted"> of {flashTotal}</span>
                       </p>
-                      <div className="flex items-center gap-3">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="inline-flex items-center gap-1 text-sm font-semibold text-sage">
                           <CheckCircle2 className="h-4 w-4" />
-                          {masteredCards.size}
-                          <span className="hidden sm:inline font-normal">mastered</span>
+                          {masteredCards.size}/{flashTotal}
+                          <span className="hidden sm:inline font-normal">correct</span>
                         </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCardPromptMode((prev) =>
+                              prev === "definition_first" ? "term_first" : "definition_first"
+                            );
+                            setIsFlipped(Boolean(currentCardAttempt));
+                          }}
+                          className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-border-default bg-surface-base px-2.5 text-xs font-semibold text-text-secondary hover:bg-surface-subtle hover:text-text-primary transition cursor-pointer"
+                          title="Switch what is shown on the front of the card"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5 text-steel" />
+                          {cardPromptMode === "definition_first"
+                            ? "Prompt: Definition → Answer Term"
+                            : "Prompt: Term → Answer Meaning"}
+                        </button>
                         <button
                           id="reviewer-shuffle-cards"
                           type="button"
@@ -948,21 +1168,38 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
                     </div>
                   </div>
 
-                  {/* Flip Card */}
+                  {/* Flip Card (Locked until answered) */}
                   <div
                     id="reviewer-flashcard"
                     role="button"
                     tabIndex={0}
-                    aria-label={isFlipped ? "Show term" : "Reveal answer"}
-                    onClick={() => setIsFlipped(!isFlipped)}
+                    aria-label={
+                      currentCardAttempt
+                        ? isFlipped
+                          ? "Show prompt"
+                          : "Show answer"
+                        : "Enter your answer below to reveal the back of the card"
+                    }
+                    onClick={() => {
+                      if (!currentCardAttempt) {
+                        cardInputRef.current?.focus();
+                        showToast("Type your answer below to unlock and reveal the back of the card!");
+                        return;
+                      }
+                      setIsFlipped(!isFlipped);
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === " " || e.key === "Enter") {
                         e.preventDefault();
+                        if (!currentCardAttempt) {
+                          cardInputRef.current?.focus();
+                          return;
+                        }
                         setIsFlipped(!isFlipped);
                       } else if (e.key === "ArrowRight") nextCard();
                       else if (e.key === "ArrowLeft") prevCard();
                     }}
-                    className="relative h-88 sm:h-104 w-full cursor-pointer select-none perspective-1000 outline-none focus-visible:ring-2 focus-visible:ring-steel rounded-3xl"
+                    className="relative h-88 sm:h-96 w-full cursor-pointer select-none perspective-1000 outline-none focus-visible:ring-2 focus-visible:ring-steel rounded-3xl"
                   >
                     <div
                       className="relative h-full w-full rounded-3xl transition-transform duration-500 shadow-lg"
@@ -984,16 +1221,34 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
                           ) : (
                             <span />
                           )}
-                          <span className="text-xs font-semibold uppercase tracking-wider text-text-faint">Term</span>
+                          <span className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-text-faint">
+                            {!currentCardAttempt && <Lock className="h-3.5 w-3.5 text-tan" />}
+                            {cardPromptMode === "definition_first" ? "Clue / Definition" : "Term"}
+                          </span>
                         </div>
                         <div className="flex flex-1 items-center justify-center overflow-y-auto py-4">
-                          <h3 className="text-center text-2xl sm:text-3xl font-black leading-tight tracking-tight text-text-primary wrap-break-word">
-                            {currentCard.front}
-                          </h3>
+                          {cardPromptMode === "definition_first" ? (
+                            <p className="text-center text-lg sm:text-xl font-bold leading-relaxed text-text-primary wrap-break-word max-w-2xl">
+                              {currentCard.back}
+                            </p>
+                          ) : (
+                            <h3 className="text-center text-2xl sm:text-3xl font-black leading-tight tracking-tight text-text-primary wrap-break-word">
+                              {currentCard.front}
+                            </h3>
+                          )}
                         </div>
-                        <p className="flex items-center justify-center gap-1.5 text-sm font-medium text-text-muted">
-                          <RotateCcw className="h-4 w-4" />
-                          Tap card to reveal answer
+                        <p className="flex items-center justify-center gap-1.5 text-xs sm:text-sm font-medium text-text-muted">
+                          {currentCardAttempt ? (
+                            <>
+                              <RotateCcw className="h-4 w-4 text-steel" />
+                              Tap card to flip to answer
+                            </>
+                          ) : (
+                            <>
+                              <Lock className="h-3.5 w-3.5 text-tan" />
+                              Submit your answer below to reveal the back
+                            </>
+                          )}
                         </p>
                       </div>
 
@@ -1008,16 +1263,27 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
                       >
                         <div className="flex items-center justify-between gap-2">
                           <span className="rounded-full bg-tan-ghost border border-tan-border px-3 py-1 text-xs font-semibold text-tan">
-                            Answer
+                            Revealed Back
                           </span>
                           <span className="max-w-[60%] truncate text-xs font-semibold text-text-muted">
-                            {currentCard.front}
+                            {cardPromptMode === "definition_first" ? "Exact Term" : currentCard.front}
                           </span>
                         </div>
-                        <div className="flex flex-1 items-center overflow-y-auto py-4">
-                          <p className="w-full text-base sm:text-lg font-medium leading-relaxed text-text-primary">
-                            {currentCard.back}
-                          </p>
+                        <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto py-4 text-center space-y-2">
+                          {cardPromptMode === "definition_first" ? (
+                            <>
+                              <h3 className="text-2xl sm:text-3xl font-black text-sage wrap-break-word">
+                                {currentCard.front}
+                              </h3>
+                              <p className="max-w-xl text-sm text-text-secondary leading-relaxed">
+                                {currentCard.back}
+                              </p>
+                            </>
+                          ) : (
+                            <p className="w-full text-base sm:text-lg font-medium leading-relaxed text-text-primary">
+                              {currentCard.back}
+                            </p>
+                          )}
                         </div>
                         <p className="flex items-center justify-center gap-1.5 text-sm font-medium text-text-muted">
                           <RotateCcw className="h-4 w-4" />
@@ -1027,39 +1293,114 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
                     </div>
                   </div>
 
-                  {/* Controls */}
-                  <div className="flex items-center gap-2">
+                  {/* Active-Recall Answer Input / Result Box (Replaces "I know this") */}
+                  {!currentCardAttempt ? (
+                    <form
+                      onSubmit={handleCardAnswerSubmit}
+                      className="rounded-2xl border border-border-default bg-surface-raised p-3.5 sm:p-4 shadow-sm space-y-2.5"
+                    >
+                      <label
+                        htmlFor="reviewer-card-answer-input"
+                        className="block text-xs font-bold uppercase tracking-wider text-text-secondary"
+                      >
+                        {cardPromptMode === "definition_first"
+                          ? "What term or concept matches this definition?"
+                          : "Type the meaning or key concept to reveal the back:"}
+                      </label>
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                        <input
+                          ref={cardInputRef}
+                          id="reviewer-card-answer-input"
+                          type="text"
+                          value={cardInput}
+                          onChange={(e) => setCardInput(e.target.value)}
+                          placeholder={
+                            cardPromptMode === "definition_first"
+                              ? "Type the term / answer here..."
+                              : "Type key words or explanation..."
+                          }
+                          className="flex-1 rounded-xl border border-border-default bg-surface-base px-4 py-3 text-[15px] text-text-primary placeholder:text-text-faint focus:border-steel focus:outline-none transition"
+                        />
+                        <button
+                          id="reviewer-submit-card-answer"
+                          type="submit"
+                          disabled={!cardInput.trim()}
+                          className="rv-btn-primary inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-5 text-sm font-bold shadow-md transition active:scale-[0.98] disabled:opacity-45 disabled:cursor-not-allowed cursor-pointer"
+                        >
+                          <Send className="h-4 w-4" />
+                          Submit &amp; Reveal
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div
+                      className={`rounded-2xl border p-4 shadow-sm space-y-3 rv-fade ${
+                        currentCardAttempt.matched
+                          ? "border-sage-border bg-sage-ghost"
+                          : "border-tan-border bg-tan-ghost"
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <span
+                            className={`inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider ${
+                              currentCardAttempt.matched ? "text-sage" : "text-tan"
+                            }`}
+                          >
+                            <CheckCircle2 className="h-4 w-4" />
+                            {currentCardAttempt.matched
+                              ? "Correct! Back of card unlocked"
+                              : "Back of card revealed — compare your answer"}
+                          </span>
+                          <p className="mt-1 text-sm text-text-primary">
+                            <span className="font-semibold text-text-secondary">Your answer: </span>
+                            <span className="font-bold">&ldquo;{currentCardAttempt.answer}&rdquo;</span>
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {!currentCardAttempt.matched && (
+                            <button
+                              type="button"
+                              onClick={() => markCardCorrectOverride(currentCard.id)}
+                              className="inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-sage px-3 text-xs font-bold text-white shadow-xs hover:brightness-105 transition cursor-pointer"
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              My answer was right
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => resetCardAttempt(currentCard.id)}
+                            className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-border-default bg-surface-raised px-3 text-xs font-semibold text-text-secondary hover:text-text-primary transition cursor-pointer"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            Try again
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Navigation Controls */}
+                  <div className="flex items-center justify-between gap-2">
                     <button
                       id="reviewer-prev-card"
                       type="button"
                       onClick={prevCard}
                       aria-label="Previous card"
-                      className="flex h-12 w-12 sm:w-auto sm:px-5 shrink-0 items-center justify-center gap-1.5 rounded-2xl border border-border-default bg-surface-raised text-sm font-semibold text-text-secondary hover:bg-surface-subtle hover:text-text-primary transition active:scale-95 cursor-pointer"
+                      className="flex h-12 flex-1 sm:flex-initial sm:px-6 items-center justify-center gap-1.5 rounded-2xl border border-border-default bg-surface-raised text-sm font-semibold text-text-secondary hover:bg-surface-subtle hover:text-text-primary transition active:scale-95 cursor-pointer"
                     >
                       <ArrowLeft className="h-5 w-5" />
-                      <span className="hidden sm:inline">Previous</span>
-                    </button>
-                    <button
-                      id="reviewer-toggle-mastered"
-                      type="button"
-                      onClick={() => toggleMastery(currentCard.id)}
-                      className={`flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl text-sm font-semibold transition active:scale-[0.98] cursor-pointer ${
-                        masteredCards.has(currentCard.id)
-                          ? "bg-sage text-white shadow-md"
-                          : "border border-border-default bg-surface-raised text-text-primary hover:bg-surface-subtle"
-                      }`}
-                    >
-                      <CheckCircle2 className="h-5 w-5" />
-                      {masteredCards.has(currentCard.id) ? "Mastered" : "I know this"}
+                      <span>Previous</span>
                     </button>
                     <button
                       id="reviewer-next-card"
                       type="button"
                       onClick={nextCard}
                       aria-label="Next card"
-                      className="rv-btn-primary flex h-12 w-12 sm:w-auto sm:px-5 shrink-0 items-center justify-center gap-1.5 rounded-2xl text-sm font-semibold shadow-md active:scale-95 cursor-pointer"
+                      className="rv-btn-primary flex h-12 flex-1 sm:flex-initial sm:px-6 items-center justify-center gap-1.5 rounded-2xl text-sm font-semibold shadow-md active:scale-95 cursor-pointer"
                     >
-                      <span className="hidden sm:inline">Next</span>
+                      <span>Next Card</span>
                       <ArrowRight className="h-5 w-5" />
                     </button>
                   </div>
@@ -1431,7 +1772,7 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
                     className="hidden"
                   />
                   {selectedFile ? (
-                    <div className="flex items-center gap-3 rounded-2xl border border-border-default bg-surface-base p-3.5">
+                    <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border-default bg-surface-base p-3.5">
                       <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-steel-ghost border border-steel-border text-steel">
                         <FileText className="h-5 w-5" />
                       </div>
@@ -1445,6 +1786,23 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
                           </span>
                         </p>
                       </div>
+                      {(uploadedFileUrl || uploadedFileText) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const isPdf =
+                              selectedFile.name.toLowerCase().endsWith(".pdf") ||
+                              selectedFile.type === "application/pdf";
+                            setHandoutViewTab(isPdf ? "pdf" : "text");
+                            setHandoutViewerOpen(true);
+                          }}
+                          className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-tan-border bg-tan-ghost px-3 text-sm font-semibold text-tan hover:brightness-105 transition cursor-pointer"
+                          title="Preview uploaded handout"
+                        >
+                          <Eye className="h-4 w-4" />
+                          <span>Check Handout</span>
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
@@ -2131,6 +2489,240 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
         }}
         onCancel={() => setDeleteFolderTarget(null)}
       />
+
+      {/* Full-Screen Non-Clickable Loading Overlay with Animated Evalo Logo */}
+      {loading &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            role="alertdialog"
+            aria-busy="true"
+            aria-live="assertive"
+            aria-label="Generating study reviewer"
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 backdrop-blur-md p-4 select-none cursor-wait pointer-events-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="relative w-full max-w-md rounded-3xl border border-border-default bg-surface-raised p-6 sm:p-8 text-center shadow-2xl space-y-6 animate-in fade-in zoom-in-95 duration-200">
+              {/* Animated Evalo Logo Orbit */}
+              <div className="relative mx-auto flex h-28 w-28 items-center justify-center">
+                {/* Outer glowing pulse */}
+                <span className="absolute inset-0 rounded-full bg-steel/20 blur-xl animate-pulse" />
+                {/* Outer spinning ring */}
+                <span
+                  className="absolute inset-1 rounded-full border-[3px] border-dashed border-steel/60 animate-spin"
+                  style={{ animationDuration: "6s" }}
+                />
+                {/* Inner reverse spinning ring */}
+                <span
+                  className="absolute inset-3.5 rounded-full border-2 border-t-tan border-r-sage border-b-transparent border-l-transparent animate-spin"
+                  style={{ animationDuration: "2.2s", animationDirection: "reverse" }}
+                />
+                {/* Core emblem container */}
+                <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-surface-base border border-border-default shadow-lg animate-bounce" style={{ animationDuration: "2s" }}>
+                  <ExamIcon className="h-11 w-11" />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-steel-ghost border border-steel-border px-3 py-1 text-xs font-bold uppercase tracking-wider text-steel">
+                  <Sparkles className="h-3.5 w-3.5 animate-pulse" />
+                  Evalo AI Reviewer Engine
+                </span>
+                <h3 className="text-xl font-black text-text-primary">
+                  Generating Your Study Reviewer…
+                </h3>
+                <p className="text-sm font-medium text-text-secondary min-h-5">
+                  {loadingStep === 0 && "Reading & distilling your uploaded handout..."}
+                  {loadingStep === 1 && "Extracting all topics, definitions & key pointers..."}
+                  {loadingStep === 2 && "Building active-recall cards & practice quiz..."}
+                  {loadingStep === 3 && "Finalizing your complete study reviewer..."}
+                </p>
+              </div>
+
+              {/* Animated step indicator bars */}
+              <div className="grid grid-cols-4 gap-2">
+                {[0, 1, 2, 3].map((step) => (
+                  <div
+                    key={step}
+                    className={`h-1.5 rounded-full transition-all duration-500 ${
+                      step <= loadingStep ? "bg-steel shadow-xs" : "bg-surface-muted"
+                    }`}
+                  />
+                ))}
+              </div>
+
+              {/* Warning against refreshing */}
+              <div className="flex items-start gap-2.5 rounded-2xl border border-tan-border bg-tan-ghost p-3.5 text-left">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-tan" />
+                <div className="text-xs leading-relaxed text-text-primary">
+                  <strong className="font-bold text-tan block">
+                    Do not refresh or close this tab
+                  </strong>
+                  Refreshing or leaving the browser right now will cancel your reviewer generation.
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* Uploaded Handout Viewer Modal */}
+      {handoutViewerOpen &&
+        typeof document !== "undefined" &&
+        createPortal(
+          (() => {
+            const pdfUrl = activeDeck?.file_preview_url || uploadedFileUrl;
+            const fileName =
+              activeDeck?.file_name ||
+              selectedFile?.name ||
+              activeDeck?.title ||
+              "Uploaded Handout";
+            const isPdfAvailable =
+              Boolean(pdfUrl) &&
+              (fileName.toLowerCase().endsWith(".pdf") ||
+                selectedFile?.type === "application/pdf");
+            const fullSourceText =
+              activeDeck?.source_text || uploadedFileText || rawText || "";
+            const searchClean = handoutSearch.trim().toLowerCase();
+            const filteredLines = fullSourceText
+              ? fullSourceText
+                  .split("\n")
+                  .filter((line) =>
+                    searchClean ? line.toLowerCase().includes(searchClean) : true
+                  )
+              : [];
+
+            return (
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-xs p-3 sm:p-5 animate-fadeIn"
+                onClick={(e) => {
+                  if (e.target === e.currentTarget) setHandoutViewerOpen(false);
+                }}
+              >
+                <div
+                  className="relative flex flex-col w-full max-w-4xl max-h-[90vh] rounded-3xl border border-border-default bg-surface-raised shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Modal Header */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-default p-4 sm:px-6">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-tan-ghost border border-tan-border text-tan">
+                        <FileText className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="truncate text-base font-bold text-text-primary">
+                          {fileName}
+                        </h3>
+                        <p className="text-xs text-text-muted">
+                          Uploaded Handout Reference Viewer
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {isPdfAvailable && fullSourceText && (
+                        <div className="flex rounded-xl bg-surface-subtle p-1 border border-border-default">
+                          <button
+                            type="button"
+                            onClick={() => setHandoutViewTab("pdf")}
+                            className={`rounded-lg px-3 py-1 text-xs font-bold transition cursor-pointer ${
+                              handoutViewTab === "pdf"
+                                ? "bg-surface-raised text-text-primary shadow-xs"
+                                : "text-text-muted hover:text-text-primary"
+                            }`}
+                          >
+                            PDF Document
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setHandoutViewTab("text")}
+                            className={`rounded-lg px-3 py-1 text-xs font-bold transition cursor-pointer ${
+                              handoutViewTab === "text"
+                                ? "bg-surface-raised text-text-primary shadow-xs"
+                                : "text-text-muted hover:text-text-primary"
+                            }`}
+                          >
+                            Extracted Text
+                          </button>
+                        </div>
+                      )}
+                      {pdfUrl && (
+                        <a
+                          href={pdfUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-border-default bg-surface-base px-3 text-xs font-semibold text-text-secondary hover:text-text-primary transition"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          <span className="hidden sm:inline">Open in tab</span>
+                        </a>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setHandoutViewerOpen(false)}
+                        aria-label="Close handout viewer"
+                        className="flex h-9 w-9 items-center justify-center rounded-xl text-text-muted hover:bg-surface-subtle hover:text-text-primary transition cursor-pointer"
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Modal Body */}
+                  <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+                    {isPdfAvailable && handoutViewTab === "pdf" && pdfUrl ? (
+                      <iframe
+                        src={pdfUrl}
+                        title={fileName}
+                        className="w-full h-[68vh] rounded-2xl border border-border-default bg-surface-base"
+                      />
+                    ) : fullSourceText ? (
+                      <div className="space-y-3">
+                        <div className="relative">
+                          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-faint" />
+                          <input
+                            type="search"
+                            value={handoutSearch}
+                            onChange={(e) => setHandoutSearch(e.target.value)}
+                            placeholder="Search inside your uploaded handout..."
+                            className="w-full rounded-xl border border-border-default bg-surface-base py-2.5 pl-10 pr-4 text-sm text-text-primary placeholder:text-text-faint focus:border-steel focus:outline-none transition"
+                          />
+                        </div>
+                        <div className="max-h-[58vh] overflow-y-auto rounded-2xl border border-border-default bg-surface-base p-4 sm:p-5 space-y-2 text-sm leading-relaxed text-text-primary font-sans whitespace-pre-wrap">
+                          {filteredLines.length > 0 ? (
+                            filteredLines.map((line, i) => (
+                              <p
+                                key={i}
+                                className={
+                                  line.trim().length > 0 &&
+                                  line.trim().length < 70 &&
+                                  !line.trim().endsWith(".")
+                                    ? "font-bold text-steel pt-2"
+                                    : "text-text-secondary"
+                                }
+                              >
+                                {line}
+                              </p>
+                            ))
+                          ) : (
+                            <p className="text-center text-text-muted py-8">
+                              No lines in the handout match &ldquo;{handoutSearch}&rdquo;.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="py-12 text-center text-sm text-text-muted">
+                        No handout content is attached to this deck.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })(),
+          document.body
+        )}
     </div>
   );
 }
