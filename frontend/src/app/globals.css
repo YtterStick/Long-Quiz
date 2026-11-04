@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 /* ─────────────────────────────────────────────────────────────
    LongQuiz Design System — Cool Tone Palette (Light & Dark)
@@ -9,7 +10,7 @@
    • #703B3B (Rich Burgundy Wine)
    ───────────────────────────────────────────────────────────── */
 
-@theme {
+@theme inline {
   --color-surface-base: var(--color-surface-base);
   --color-surface-raised: var(--color-surface-raised);
   --color-surface-overlay: var(--color-surface-overlay);
@@ -58,12 +59,14 @@
 
 @layer base {
   :root {
+    color-scheme: light;
+
     /* Surface palette — Cool Tone Light (Crisp, Clean Slate-tinted) */
     --color-surface-base: #f0f4f8;
     --color-surface-raised: #ffffff;
-    --color-surface-overlay: #e8f0f6;
-    --color-surface-subtle: #dce7f0;
-    --color-surface-muted: #cad8e4;
+    --color-surface-overlay: #ffffff;
+    --color-surface-subtle: #e4edf5;
+    --color-surface-muted: #d5e2ee;
 
     /* Border palette — Gentle Cool Slate (No harsh contrast) */
     --color-border-default: #d3dfeb;
@@ -117,6 +120,8 @@
   }
 
   .dark {
+    color-scheme: dark;
+
     /* Surface palette — Cool Tone Dark (Deep Midnight Slate, NOT pitch black, NO white borders) */
     --color-surface-base: #0d141b;
     --color-surface-raised: #141d26;
@@ -176,53 +181,55 @@
   }
 }
 
-/* Explicit Utility Classes to ensure 100% compatibility across Tailwind v4 build */
-.bg-surface-base { background-color: var(--color-surface-base); }
-.bg-surface-raised { background-color: var(--color-surface-raised); }
-.bg-surface-overlay { background-color: var(--color-surface-overlay); }
-.bg-surface-subtle { background-color: var(--color-surface-subtle); }
-.bg-surface-muted { background-color: var(--color-surface-muted); }
+/* Explicit Utility Classes inside @layer utilities to ensure 100% compatibility across Tailwind v4 build without overriding variants */
+@layer utilities {
+  .bg-surface-base { background-color: var(--color-surface-base); }
+  .bg-surface-raised { background-color: var(--color-surface-raised); }
+  .bg-surface-overlay { background-color: var(--color-surface-overlay); }
+  .bg-surface-subtle { background-color: var(--color-surface-subtle); }
+  .bg-surface-muted { background-color: var(--color-surface-muted); }
 
-.border-border-default { border-color: var(--color-border-default) !important; }
-.border-border-subtle { border-color: var(--color-border-subtle) !important; }
-.border-border-emphasis { border-color: var(--color-border-emphasis) !important; }
+  .border-border-default { border-color: var(--color-border-default); }
+  .border-border-subtle { border-color: var(--color-border-subtle); }
+  .border-border-emphasis { border-color: var(--color-border-emphasis); }
 
-.text-text-primary { color: var(--color-text-primary); }
-.text-text-secondary { color: var(--color-text-secondary); }
-.text-text-muted { color: var(--color-text-muted); }
-.text-text-faint { color: var(--color-text-faint); }
+  .text-text-primary { color: var(--color-text-primary); }
+  .text-text-secondary { color: var(--color-text-secondary); }
+  .text-text-muted { color: var(--color-text-muted); }
+  .text-text-faint { color: var(--color-text-faint); }
 
-.text-steel { color: var(--color-steel); }
-.text-steel-light { color: var(--color-steel-light); }
-.text-steel-dim { color: var(--color-steel-dim); }
-.bg-steel { background-color: var(--color-steel); }
-.bg-steel-ghost { background-color: var(--color-steel-ghost); }
-.border-steel { border-color: var(--color-steel); }
-.border-steel-border { border-color: var(--color-steel-border); }
+  .text-steel { color: var(--color-steel); }
+  .text-steel-light { color: var(--color-steel-light); }
+  .text-steel-dim { color: var(--color-steel-dim); }
+  .bg-steel { background-color: var(--color-steel); }
+  .bg-steel-ghost { background-color: var(--color-steel-ghost); }
+  .border-steel { border-color: var(--color-steel); }
+  .border-steel-border { border-color: var(--color-steel-border); }
 
-.text-cream { color: var(--color-cream); }
-.text-cream-light { color: var(--color-cream-light); }
-.bg-cream { background-color: var(--color-cream); }
-.bg-cream-ghost { background-color: var(--color-cream-ghost); }
-.border-cream-border { border-color: var(--color-cream-border); }
+  .text-cream { color: var(--color-cream); }
+  .text-cream-light { color: var(--color-cream-light); }
+  .bg-cream { background-color: var(--color-cream); }
+  .bg-cream-ghost { background-color: var(--color-cream-ghost); }
+  .border-cream-border { border-color: var(--color-cream-border); }
 
-.text-tan { color: var(--color-tan); }
-.text-tan-light { color: var(--color-tan-light); }
-.bg-tan { background-color: var(--color-tan); }
-.bg-tan-ghost { background-color: var(--color-tan-ghost); }
-.border-tan-border { border-color: var(--color-tan-border); }
+  .text-tan { color: var(--color-tan); }
+  .text-tan-light { color: var(--color-tan-light); }
+  .bg-tan { background-color: var(--color-tan); }
+  .bg-tan-ghost { background-color: var(--color-tan-ghost); }
+  .border-tan-border { border-color: var(--color-tan-border); }
 
-.text-burgundy { color: var(--color-burgundy); }
-.text-burgundy-light { color: var(--color-burgundy-light); }
-.bg-burgundy { background-color: var(--color-burgundy); }
-.bg-burgundy-ghost { background-color: var(--color-burgundy-ghost); }
-.border-burgundy-border { border-color: var(--color-burgundy-border); }
+  .text-burgundy { color: var(--color-burgundy); }
+  .text-burgundy-light { color: var(--color-burgundy-light); }
+  .bg-burgundy { background-color: var(--color-burgundy); }
+  .bg-burgundy-ghost { background-color: var(--color-burgundy-ghost); }
+  .border-burgundy-border { border-color: var(--color-burgundy-border); }
 
-.text-sage { color: var(--color-sage); }
-.text-sage-light { color: var(--color-sage-light); }
-.bg-sage { background-color: var(--color-sage); }
-.bg-sage-ghost { background-color: var(--color-sage-ghost); }
-.border-sage-border { border-color: var(--color-sage-border); }
+  .text-sage { color: var(--color-sage); }
+  .text-sage-light { color: var(--color-sage-light); }
+  .bg-sage { background-color: var(--color-sage); }
+  .bg-sage-ghost { background-color: var(--color-sage-ghost); }
+  .border-sage-border { border-color: var(--color-sage-border); }
+}
 
 body {
   background-color: var(--color-surface-base);
@@ -440,8 +447,8 @@ select:disabled {
 .dark .rv-btn-primary { color: #0d141b; }
 
 .rv-chip-active {
-  background-color: var(--color-text-primary);
-  color: var(--color-surface-raised);
+  background-color: var(--color-steel);
+  color: #ffffff;
 }
 
 .rv-progress {

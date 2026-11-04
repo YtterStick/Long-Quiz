@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/Navbar";
@@ -195,6 +195,55 @@ export default function AdminDashboard() {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const adminHydratedRef = useRef(false);
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const raw = sessionStorage.getItem("evalo_admin_dashboard_state");
+      const parsed = raw ? JSON.parse(raw) : {};
+      const tabParam = params.get("tab") || parsed.activeTab;
+      if (tabParam === "teachers" || tabParam === "students") {
+        setActiveTab(tabParam);
+      }
+      if (typeof parsed.selectedSectionFilter === "string") {
+        setSelectedSectionFilter(parsed.selectedSectionFilter);
+      }
+      if (typeof parsed.searchTerm === "string") {
+        setSearchTerm(parsed.searchTerm);
+      }
+      if (typeof parsed.studentPage === "number" && parsed.studentPage > 0) {
+        setStudentPage(parsed.studentPage);
+      }
+      if (typeof parsed.teacherPage === "number" && parsed.teacherPage > 0) {
+        setTeacherPage(parsed.teacherPage);
+      }
+    } catch {
+      // Ignore
+    }
+    adminHydratedRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!adminHydratedRef.current || typeof window === "undefined") return;
+    try {
+      sessionStorage.setItem(
+        "evalo_admin_dashboard_state",
+        JSON.stringify({
+          activeTab,
+          selectedSectionFilter,
+          searchTerm,
+          studentPage,
+          teacherPage,
+        })
+      );
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", activeTab);
+      window.history.replaceState({}, "", url.toString());
+    } catch {
+      // Ignore
+    }
+  }, [activeTab, selectedSectionFilter, searchTerm, studentPage, teacherPage]);
 
   useEffect(() => {
     if (!authLoading && (!user || user.role !== "ADMIN")) {
@@ -524,12 +573,14 @@ export default function AdminDashboard() {
     return matchesSearch && matchesSection;
   });
 
-  // Reset pagination when search or filters change
+  // Reset pagination when search or filters change (after initial hydration)
   useEffect(() => {
+    if (!adminHydratedRef.current) return;
     setStudentPage(1);
   }, [searchTerm, selectedSectionFilter, studentPageSize]);
 
   useEffect(() => {
+    if (!adminHydratedRef.current) return;
     setTeacherPage(1);
   }, [searchTerm, teacherPageSize]);
 

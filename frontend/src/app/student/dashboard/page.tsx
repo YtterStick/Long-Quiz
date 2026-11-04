@@ -392,22 +392,63 @@ export default function StudentDashboard() {
     }
   };
 
+  const studentDashHydratedRef = useRef(false);
+  const examSessionRestoredRef = useRef(false);
+
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const tabParam = params.get("tab");
-      if (tabParam === "available" || tabParam === "grades" || tabParam === "reviewers" || tabParam === "friends" || tabParam === "dashboard") {
-        if (tabParam === "reviewers" && window.innerWidth < 768) {
-          router.replace("/student/reviewer");
-          return;
+      try {
+        const raw = sessionStorage.getItem("evalo_student_dashboard_state");
+        const parsed = raw ? JSON.parse(raw) : {};
+        const params = new URLSearchParams(window.location.search);
+        const tabParam = params.get("tab") || parsed.activeTab;
+
+        if (
+          tabParam === "available" ||
+          tabParam === "grades" ||
+          tabParam === "reviewers" ||
+          tabParam === "friends" ||
+          tabParam === "dashboard"
+        ) {
+          if (tabParam === "reviewers" && window.innerWidth < 768) {
+            router.replace("/student/reviewer");
+            return;
+          }
+          setActiveTab(tabParam);
+          window.dispatchEvent(new CustomEvent("studentTabChange", { detail: tabParam }));
+          const url = new URL(window.location.href);
+          if (tabParam === "dashboard") {
+            url.searchParams.delete("tab");
+          } else {
+            url.searchParams.set("tab", tabParam);
+          }
+          window.history.replaceState({}, "", url.toString());
+          if (tabParam === "reviewers") {
+            loadPublicReviewers();
+          }
+        } else {
+          setActiveTab("dashboard");
         }
-        setActiveTab(tabParam);
-        if (tabParam === "reviewers") {
-          loadPublicReviewers();
+
+        if (parsed.reviewerSectionMode === "ai_handout" || parsed.reviewerSectionMode === "public_exams") {
+          setReviewerSectionMode(parsed.reviewerSectionMode);
+          if (parsed.reviewerSectionMode === "public_exams") {
+            loadPublicReviewers();
+          }
         }
-      } else {
-        setActiveTab("dashboard");
+        if (typeof parsed.expandedExamIndex === "number" || parsed.expandedExamIndex === null) {
+          setExpandedExamIndex(parsed.expandedExamIndex);
+        }
+        if (typeof parsed.expandedReviewerIndex === "number" || parsed.expandedReviewerIndex === null) {
+          setExpandedReviewerIndex(parsed.expandedReviewerIndex);
+        }
+        if (typeof parsed.examsPage === "number" && parsed.examsPage > 0) setExamsPage(parsed.examsPage);
+        if (typeof parsed.gradesPage === "number" && parsed.gradesPage > 0) setGradesPage(parsed.gradesPage);
+        if (typeof parsed.reviewersPage === "number" && parsed.reviewersPage > 0) setReviewersPage(parsed.reviewersPage);
+      } catch {
+        // Ignore
       }
+      studentDashHydratedRef.current = true;
     }
 
     const handleTabChange = (e: Event) => {
@@ -426,6 +467,140 @@ export default function StudentDashboard() {
     window.addEventListener("studentTabChange", handleTabChange);
     return () => window.removeEventListener("studentTabChange", handleTabChange);
   }, [router]);
+
+  // Persist student dashboard tab, pagination, and expanded state across refreshes
+  useEffect(() => {
+    if (!studentDashHydratedRef.current || typeof window === "undefined") return;
+    try {
+      sessionStorage.setItem(
+        "evalo_student_dashboard_state",
+        JSON.stringify({
+          activeTab,
+          reviewerSectionMode,
+          expandedExamIndex,
+          expandedReviewerIndex,
+          examsPage,
+          gradesPage,
+          reviewersPage,
+        })
+      );
+    } catch {
+      // Ignore
+    }
+  }, [
+    activeTab,
+    reviewerSectionMode,
+    expandedExamIndex,
+    expandedReviewerIndex,
+    examsPage,
+    gradesPage,
+    reviewersPage,
+  ]);
+
+  // Restore active exam or lobby session if the student refreshes mid-lobby or mid-exam
+  useEffect(() => {
+    if (!user || user.role !== "STUDENT" || user.must_change_password || examSessionRestoredRef.current) return;
+    examSessionRestoredRef.current = true;
+
+    const rawExam = typeof window !== "undefined" ? sessionStorage.getItem("evalo_student_active_exam") : null;
+    if (!rawExam) return;
+
+    (async () => {
+      try {
+        const saved = JSON.parse(rawExam);
+        if (!saved?.examId) return;
+
+        if (saved.mode === "taking") {
+          const detail = await studentApi.getExamForTaking(saved.examId);
+          setLobbyExamId(saved.examId);
+          setActiveTakingExam(detail);
+          if (saved.answers && typeof saved.answers === "object") {
+            setTakingAnswers(saved.answers);
+          }
+          if (detail.has_time_limit) {
+            const initialSecs =
+              detail.time_remaining_seconds !== null && detail.time_remaining_seconds !== undefined
+                ? detail.time_remaining_seconds
+                : detail.time_limit_minutes
+                ? detail.time_limit_minutes * 60
+                : 3600;
+            setTimeRemaining(initialSecs);
+          } else {
+            setTimeRemaining(null);
+          }
+          setIsWaitingInLobby(false);
+          setExamLobbyOpen(false);
+          setIsExamInProgress(true);
+        } else if (saved.mode === "lobby") {
+          const res = await studentApi.pingLobby(saved.examId, {
+            is_fullscreen: Boolean(document.fullscreenElement),
+            is_focused: document.hasFocus(),
+          });
+          if (res.status === "WAITING") {
+            setLobbyExamId(saved.examId);
+            setLobbyExamInfo({
+              title: res.title,
+              total_questions: res.total_questions,
+              teacher_name: res.teacher_name,
+            });
+            setExamLobbyOpen(true);
+            setIsWaitingInLobby(Boolean(saved.isWaiting));
+          } else if (res.status === "STARTED") {
+            const detail = await studentApi.getExamForTaking(saved.examId);
+            setLobbyExamId(saved.examId);
+            setActiveTakingExam(detail);
+            if (detail.has_time_limit) {
+              const initialSecs =
+                detail.time_remaining_seconds !== null && detail.time_remaining_seconds !== undefined
+                  ? detail.time_remaining_seconds
+                  : detail.time_limit_minutes
+                  ? detail.time_limit_minutes * 60
+                  : 3600;
+              setTimeRemaining(initialSecs);
+            }
+            setIsWaitingInLobby(false);
+            setExamLobbyOpen(false);
+            setIsExamInProgress(true);
+          } else {
+            sessionStorage.removeItem("evalo_student_active_exam");
+          }
+        }
+      } catch {
+        sessionStorage.removeItem("evalo_student_active_exam");
+      }
+    })();
+  }, [user]);
+
+  // Continuously sync active exam / lobby progress to sessionStorage
+  useEffect(() => {
+    if (!examSessionRestoredRef.current || typeof window === "undefined") return;
+    try {
+      if (isExamInProgress && activeTakingExam) {
+        sessionStorage.setItem(
+          "evalo_student_active_exam",
+          JSON.stringify({
+            mode: "taking",
+            examId: activeTakingExam.id,
+            answers: takingAnswers,
+          })
+        );
+      } else if ((examLobbyOpen || isWaitingInLobby) && lobbyExamId) {
+        sessionStorage.setItem(
+          "evalo_student_active_exam",
+          JSON.stringify({
+            mode: "lobby",
+            examId: lobbyExamId,
+            isWaiting: isWaitingInLobby,
+            info: lobbyExamInfo,
+          })
+        );
+      } else {
+        sessionStorage.removeItem("evalo_student_active_exam");
+      }
+    } catch {
+      // Ignore
+    }
+  }, [isExamInProgress, activeTakingExam, takingAnswers, examLobbyOpen, isWaitingInLobby, lobbyExamId, lobbyExamInfo]);
 
   const handleTabSelect = (tab: "dashboard" | "available" | "grades" | "reviewers" | "friends") => {
     if (tab === "reviewers" && typeof window !== "undefined" && window.innerWidth < 768) {
@@ -2275,7 +2450,7 @@ export default function StudentDashboard() {
 
       {/* 2. Modal: Exam Lobby (Desktop Fullscreen & Anti-Cheat Preparation) */}
       {examLobbyOpen && lobbyExamInfo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/90 backdrop-blur-md p-4">
           <div className="w-full max-w-xl rounded-2xl border border-border-default bg-surface-overlay p-6 sm:p-8 shadow-2xl space-y-5 animate-in fade-in zoom-in-95">
             {!isWaitingInLobby ? (
               /* Step 1: Pre-Lobby Honor Code & Fullscreen Entry */
@@ -2420,7 +2595,7 @@ export default function StudentDashboard() {
 
       {/* 3. Modal: Active Proctored Online Exam */}
       {isExamInProgress && activeTakingExam && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md p-2 sm:p-4 select-none">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-base/95 dark:bg-black/95 backdrop-blur-md p-2 sm:p-4 select-none">
           <div className={`w-full max-w-4xl h-[96vh] flex flex-col rounded-2xl border border-border-default bg-surface-overlay shadow-2xl overflow-hidden transition-all duration-200 ${!isFullscreenActive ? "filter blur-xl opacity-20 pointer-events-none select-none" : ""}`}>
             {/* Modal Header with Fullscreen Indicator */}
             <div className="flex items-center justify-between px-6 py-3.5 border-b border-border-default bg-surface-base shrink-0">
@@ -2626,7 +2801,7 @@ export default function StudentDashboard() {
       {/* 4. Mandatory Fullscreen Lock Screen */}
       {/* If exam is in progress or student is in lobby, and browser is NOT in fullscreen, HARD BLOCK THE ENTIRE UI */}
       {(isExamInProgress || isWaitingInLobby) && !isFullscreenActive && (
-        <div className="fixed inset-0 z-70 flex items-center justify-center bg-black/95 backdrop-blur-xl p-4 select-none animate-in fade-in">
+        <div className="fixed inset-0 z-70 flex items-center justify-center bg-surface-base/95 dark:bg-black/95 backdrop-blur-xl p-4 select-none animate-in fade-in">
           <div className="w-full max-w-md rounded-2xl border border-burgundy-border bg-surface-overlay p-6 shadow-2xl text-center space-y-4">
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-burgundy-ghost text-burgundy-light border border-burgundy-border">
               <ShieldAlert className="h-8 w-8" />

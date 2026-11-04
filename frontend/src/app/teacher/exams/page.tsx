@@ -88,9 +88,35 @@ export default function TeacherExamsPage() {
   // Pagination State
   const [examPage, setExamPage] = useState(1);
   const [examPageSize, setExamPageSize] = useState(9);
+  const examsHydratedRef = useRef(false);
+  const pendingExamRestoreRef = useRef<{ editingExamId?: string | null; builderTab?: "keys" | "questions"; examPage?: number }>({});
 
-  // Reset page when switching public/private filter
   useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("evalo_teacher_exams_state");
+      const parsed = raw ? JSON.parse(raw) : {};
+      if (typeof parsed.includePublic === "boolean") {
+        setIncludePublic(parsed.includePublic);
+      }
+      if (typeof parsed.examPageSize === "number" && parsed.examPageSize > 0) {
+        setExamPageSize(parsed.examPageSize);
+      }
+      if (typeof parsed.examPage === "number" && parsed.examPage > 0) {
+        setExamPage(parsed.examPage);
+      }
+      pendingExamRestoreRef.current = {
+        editingExamId: parsed.editingExamId || null,
+        builderTab: parsed.builderTab === "questions" ? "questions" : "keys",
+        examPage: typeof parsed.examPage === "number" ? parsed.examPage : 1,
+      };
+    } catch {
+      // Ignore
+    }
+  }, []);
+
+  // Reset page when switching public/private filter (after initial hydration)
+  useEffect(() => {
+    if (!examsHydratedRef.current) return;
     setExamPage(1);
   }, [includePublic, examPageSize]);
 
@@ -329,10 +355,25 @@ export default function TeacherExamsPage() {
       teacherApi
         .listExams(includePublic)
         .then((data) => {
-          if (!ignore) setExams(data);
+          if (ignore) return;
+          setExams(data);
+          if (!examsHydratedRef.current) {
+            const restore = pendingExamRestoreRef.current;
+            if (restore.examPage && restore.examPage > 1) {
+              setExamPage(restore.examPage);
+            }
+            if (restore.editingExamId) {
+              const matched = data.find((e) => e.id === restore.editingExamId);
+              if (matched) {
+                openEditBuilder(matched, restore.builderTab || "keys");
+              }
+            }
+            examsHydratedRef.current = true;
+          }
         })
         .catch((err: unknown) => {
           if (!ignore) setError(err instanceof Error ? err.message : "Failed to load exams");
+          examsHydratedRef.current = true;
         })
         .finally(() => {
           if (!ignore) setLoading(false);
@@ -342,6 +383,24 @@ export default function TeacherExamsPage() {
       ignore = true;
     };
   }, [user, includePublic]);
+
+  useEffect(() => {
+    if (!examsHydratedRef.current || typeof window === "undefined") return;
+    try {
+      sessionStorage.setItem(
+        "evalo_teacher_exams_state",
+        JSON.stringify({
+          includePublic,
+          examPage,
+          examPageSize,
+          editingExamId: isBuilderOpen && editingExam ? editingExam.id : null,
+          builderTab,
+        })
+      );
+    } catch {
+      // Ignore
+    }
+  }, [includePublic, examPage, examPageSize, isBuilderOpen, editingExam, builderTab]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -1126,7 +1185,7 @@ export default function TeacherExamsPage() {
                           type="button"
                           key={opt}
                           onClick={() => handleQuickFillAll(opt)}
-                          className="h-6 px-2 rounded-lg bg-surface-overlay text-text-secondary font-bold hover:bg-steel hover:text-text-primary transition-colors"
+                          className="h-6 px-2 rounded-lg bg-surface-overlay text-text-secondary font-bold hover:bg-steel hover:text-white transition-colors"
                         >
                           {opt}
                         </button>
@@ -1500,7 +1559,7 @@ export default function TeacherExamsPage() {
               <button
                 onClick={openPreview}
                 disabled={previewLoading}
-                className="flex items-center justify-center gap-2 rounded-xl bg-steel px-5 py-2.5 text-xs font-bold text-text-primary hover:bg-steel-light transition-colors shrink-0 sm:self-center disabled:opacity-60"
+                className="flex items-center justify-center gap-2 rounded-xl bg-steel px-5 py-2.5 text-xs font-bold text-white hover:bg-steel-light transition-colors shrink-0 sm:self-center disabled:opacity-60"
               >
                 {previewLoading ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -2119,7 +2178,7 @@ export default function TeacherExamsPage() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={downloadFromPreview}
-                  className="flex items-center gap-1.5 rounded-xl bg-steel px-4 py-1.5 text-xs font-bold text-text-primary hover:bg-steel-light transition-colors"
+                  className="flex items-center gap-1.5 rounded-xl bg-steel px-4 py-1.5 text-xs font-bold text-white hover:bg-steel-light transition-colors"
                 >
                   <FileDown className="h-3.5 w-3.5" />
                   Download PDF
@@ -2376,7 +2435,7 @@ Constructor: Special method called when an object is instantiated to initialize 
                         onClick={() => setAiQuestionCount(n)}
                         className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
                           aiQuestionCount === n
-                            ? "bg-steel text-text-primary font-bold shadow-sm"
+                            ? "bg-steel text-white font-bold shadow-sm"
                             : "bg-surface-subtle text-text-secondary hover:bg-surface-muted"
                         }`}
                       >

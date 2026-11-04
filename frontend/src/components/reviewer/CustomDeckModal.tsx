@@ -269,21 +269,21 @@ export function CustomDeckModal({
       }}
     >
       <div
-        className="relative w-full max-w-3xl max-h-[90vh] rounded-3xl bg-surface-raised dark:bg-[#141d26] border border-border-default shadow-2xl p-5 sm:p-7 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+        className="relative w-full max-w-3xl max-h-[90vh] rounded-3xl bg-surface-raised border border-border-default shadow-2xl p-5 sm:p-7 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
 
         {/* Modal Header */}
-        <div className="flex items-center justify-between pb-3.5 border-b border-border-default dark:border-slate-800 shrink-0">
+        <div className="flex items-center justify-between pb-3.5 border-b border-border-default shrink-0">
           <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-steel-ghost text-steel border border-steel-border">
               <Layers className="h-5 w-5" />
             </div>
             <div className="min-w-0">
-              <h3 className="text-base sm:text-lg font-bold text-text-primary dark:text-slate-100 truncate">
+              <h3 className="text-base sm:text-lg font-bold text-text-primary truncate">
                 {isEditing ? "Edit Study Deck" : "Create Custom Flashcards"}
               </h3>
-              <p className="text-xs text-text-muted dark:text-slate-400 line-clamp-1">
+              <p className="text-xs text-text-muted line-clamp-1">
                 {isEditing
                   ? "Customize cards and study pointers in your deck"
                   : "Add custom flashcards and key study pointers from your notes"}
@@ -300,7 +300,7 @@ export function CustomDeckModal({
 
         {/* Error Notification */}
         {error && (
-          <div className="mt-3 p-3 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800 text-xs flex items-center gap-2 shrink-0">
+          <div className="mt-3 p-3 rounded-xl bg-burgundy-ghost text-burgundy-light border border-burgundy-border text-xs flex items-center gap-2 shrink-0">
             <AlertCircle className="h-4 w-4 shrink-0" />
             <span>{error}</span>
           </div>
@@ -310,7 +310,7 @@ export function CustomDeckModal({
         <div className="mt-4 flex-1 min-h-0 overflow-y-auto space-y-4 pr-1.5">
           {/* Deck Title */}
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-text-secondary dark:text-slate-300 mb-1">
+            <label className="block text-xs font-bold uppercase tracking-wider text-text-secondary mb-1">
               Deck Title *
             </label>
             <input
@@ -318,12 +318,12 @@ export function CustomDeckModal({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Data Structures & Algorithms Midterm Deck"
-              className="w-full px-3.5 py-2.5 bg-surface-base dark:bg-slate-800/60 border border-border-default dark:border-slate-700 rounded-xl text-sm font-semibold text-text-primary dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-steel/30"
+              className="w-full px-3.5 py-2.5 bg-surface-base border border-border-default rounded-xl text-sm font-semibold text-text-primary placeholder:text-text-faint focus:outline-none focus:ring-2 focus:ring-steel/30"
             />
           </div>
 
           {/* Tab Selector */}
-          <div className="flex items-center gap-2 border-b border-border-default dark:border-slate-800 pb-2">
+          <div className="flex items-center gap-2 border-b border-border-default pb-2">
             <button
               type="button"
               onClick={() => setActiveModalTab("flashcards")}
@@ -354,7 +354,7 @@ export function CustomDeckModal({
           {activeModalTab === "flashcards" && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-text-secondary dark:text-slate-400">
+                <span className="text-xs font-bold text-text-secondary">
                   Card Items (Front Question &amp; Back Answer)
                 </span>
                 <button
@@ -370,7 +370,7 @@ export function CustomDeckModal({
               {cards.map((card, idx) => (
                 <div
                   key={card.id || idx}
-                  className="p-4 rounded-2xl border border-border-default dark:border-slate-800 bg-surface-base dark:bg-slate-800/40 space-y-3 relative group"
+                  className="p-4 rounded-2xl border border-border-default bg-surface-base space-y-3 relative group"
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-mono font-bold text-steel">
@@ -382,13 +382,13 @@ export function CustomDeckModal({
                         value={card.category || ""}
                         onChange={(e) => handleUpdateCard(idx, "category", e.target.value)}
                         placeholder="Tag (e.g. Definition, Law)"
-                        className="px-2 py-0.5 text-[11px] bg-surface-raised dark:bg-slate-700/50 border border-border-default dark:border-slate-600 rounded-md text-text-secondary"
+                        className="px-2 py-0.5 text-[11px] bg-surface-raised border border-border-default rounded-md text-text-secondary"
                       />
                       {cards.length > 1 && (
                         <button
                           type="button"
                           onClick={() => handleRemoveCard(idx)}
-                          className="p-1 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 transition"
+                          className="p-1 text-text-muted hover:text-burgundy-light rounded-lg hover:bg-burgundy-ghost transition"
                           title="Delete card"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -407,7 +407,7 @@ export function CustomDeckModal({
                         value={card.front}
                         onChange={(e) => handleUpdateCard(idx, "front", e.target.value)}
                         placeholder="What is..."
-                        className="w-full p-2.5 bg-surface-raised dark:bg-slate-900 border border-border-default dark:border-slate-700 rounded-xl text-xs text-text-primary dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-steel resize-none"
+                        className="w-full p-2.5 bg-surface-raised border border-border-default rounded-xl text-xs text-text-primary placeholder:text-text-faint focus:outline-none focus:ring-1 focus:ring-steel resize-none"
                       />
                     </div>
                     <div>
@@ -419,7 +419,7 @@ export function CustomDeckModal({
                         value={card.back}
                         onChange={(e) => handleUpdateCard(idx, "back", e.target.value)}
                         placeholder="The answer or explanation is..."
-                        className="w-full p-2.5 bg-surface-raised dark:bg-slate-900 border border-border-default dark:border-slate-700 rounded-xl text-xs text-text-primary dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-steel resize-none"
+                        className="w-full p-2.5 bg-surface-raised border border-border-default rounded-xl text-xs text-text-primary placeholder:text-text-faint focus:outline-none focus:ring-1 focus:ring-steel resize-none"
                       />
                     </div>
                   </div>
@@ -431,8 +431,8 @@ export function CustomDeckModal({
           {/* TAB 2: POINTERS & TERMS BUILDER */}
           {activeModalTab === "pointers" && (
             <div className="space-y-4">
-              <div className="p-3.5 bg-surface-base dark:bg-slate-800/40 rounded-2xl border border-border-default dark:border-slate-800 space-y-2">
-                <label className="block text-xs font-bold text-text-secondary dark:text-slate-300">
+              <div className="p-3.5 bg-surface-base rounded-2xl border border-border-default space-y-2">
+                <label className="block text-xs font-bold text-text-secondary">
                   Topic Category &amp; Summary
                 </label>
                 <input
@@ -440,21 +440,21 @@ export function CustomDeckModal({
                   value={topicName}
                   onChange={(e) => setTopicName(e.target.value)}
                   placeholder="Topic / Unit Name (e.g. Chapter 4: Object-Oriented Principles)"
-                  className="w-full px-3 py-2 bg-surface-raised dark:bg-slate-900 border border-border-default dark:border-slate-700 rounded-xl text-xs text-text-primary dark:text-slate-100"
+                  className="w-full px-3 py-2 bg-surface-raised border border-border-default rounded-xl text-xs text-text-primary"
                 />
                 <input
                   type="text"
                   value={topicDescription}
                   onChange={(e) => setTopicDescription(e.target.value)}
                   placeholder="Short description or learning goal"
-                  className="w-full px-3 py-2 bg-surface-raised dark:bg-slate-900 border border-border-default dark:border-slate-700 rounded-xl text-xs text-text-primary dark:text-slate-100"
+                  className="w-full px-3 py-2 bg-surface-raised border border-border-default rounded-xl text-xs text-text-primary"
                 />
               </div>
 
               {/* Key Terms */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-text-secondary dark:text-slate-400">
+                  <span className="text-xs font-bold text-text-secondary">
                     Key Definitions ({keyTerms.length})
                   </span>
                   <button
@@ -472,19 +472,19 @@ export function CustomDeckModal({
                       value={t.term}
                       onChange={(e) => handleUpdateTerm(idx, "term", e.target.value)}
                       placeholder="Term (e.g. Encapsulation)"
-                      className="w-1/3 px-3 py-2 bg-surface-base dark:bg-slate-800/60 border border-border-default dark:border-slate-700 rounded-xl text-xs font-semibold text-steel"
+                      className="w-1/3 px-3 py-2 bg-surface-base border border-border-default rounded-xl text-xs font-semibold text-steel"
                     />
                     <input
                       type="text"
                       value={t.definition}
                       onChange={(e) => handleUpdateTerm(idx, "definition", e.target.value)}
                       placeholder="Definition..."
-                      className="flex-1 px-3 py-2 bg-surface-base dark:bg-slate-800/60 border border-border-default dark:border-slate-700 rounded-xl text-xs text-text-primary"
+                      className="flex-1 px-3 py-2 bg-surface-base border border-border-default rounded-xl text-xs text-text-primary"
                     />
                     <button
                       type="button"
                       onClick={() => handleRemoveTerm(idx)}
-                      className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg"
+                      className="p-1.5 text-text-muted hover:text-burgundy-light rounded-lg"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -495,7 +495,7 @@ export function CustomDeckModal({
               {/* Bullet Points */}
               <div className="space-y-2 pt-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-text-secondary dark:text-slate-400">
+                  <span className="text-xs font-bold text-text-secondary">
                     Exam Bullet Points ({bulletPoints.length})
                   </span>
                   <button
@@ -513,12 +513,12 @@ export function CustomDeckModal({
                       value={b}
                       onChange={(e) => handleUpdateBullet(idx, e.target.value)}
                       placeholder="Key takeaway or tip..."
-                      className="flex-1 px-3 py-2 bg-surface-base dark:bg-slate-800/60 border border-border-default dark:border-slate-700 rounded-xl text-xs text-text-primary"
+                      className="flex-1 px-3 py-2 bg-surface-base border border-border-default rounded-xl text-xs text-text-primary"
                     />
                     <button
                       type="button"
                       onClick={() => handleRemoveBullet(idx)}
-                      className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg"
+                      className="p-1.5 text-text-muted hover:text-burgundy-light rounded-lg"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -530,7 +530,7 @@ export function CustomDeckModal({
         </div>
 
         {/* Modal Footer */}
-        <div className="mt-4 sm:mt-5 pt-3.5 sm:pt-4 border-t border-border-default dark:border-slate-800 flex items-center justify-between shrink-0">
+        <div className="mt-4 sm:mt-5 pt-3.5 sm:pt-4 border-t border-border-default flex items-center justify-between shrink-0">
           <span className="text-xs text-text-muted">
             {cards.length} cards • {keyTerms.length + bulletPoints.length} pointers
           </span>

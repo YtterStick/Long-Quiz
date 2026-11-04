@@ -237,11 +237,13 @@ export function StudentHandoutReviewer() {
     }
   };
 
+  const reviewerSessionHydratedRef = useRef(false);
+
   useEffect(() => {
     fetchQuotaAndShared();
   }, []);
 
-  // Load saved decks and folders on mount
+  // Load saved decks, folders, and active study session on mount
   useEffect(() => {
     try {
       const storedFolders = localStorage.getItem(FOLDERS_STORAGE_KEY);
@@ -279,7 +281,73 @@ export function StudentHandoutReviewer() {
     } catch (e) {
       console.error("Failed to load saved decks:", e);
     }
+
+    try {
+      const rawSession = sessionStorage.getItem("evalo_student_reviewer_session");
+      if (rawSession) {
+        const parsedSession = JSON.parse(rawSession);
+        if (parsedSession.view === "study" && parsedSession.activeDeck) {
+          setActiveDeck(parsedSession.activeDeck);
+          setView("study");
+          if (
+            parsedSession.activeTab === "pointers" ||
+            parsedSession.activeTab === "flashcards" ||
+            parsedSession.activeTab === "quiz"
+          ) {
+            setActiveTab(parsedSession.activeTab);
+          }
+          if (typeof parsedSession.currentCardIndex === "number") {
+            setCurrentCardIndex(parsedSession.currentCardIndex);
+          }
+          if (typeof parsedSession.currentQuizIndex === "number") {
+            setCurrentQuizIndex(parsedSession.currentQuizIndex);
+          }
+          if (parsedSession.selectedAnswers && typeof parsedSession.selectedAnswers === "object") {
+            setSelectedAnswers(parsedSession.selectedAnswers);
+          }
+          if (typeof parsedSession.quizFinished === "boolean") {
+            setQuizFinished(parsedSession.quizFinished);
+          }
+        }
+        if (typeof parsedSession.selectedFolderId === "string") {
+          setSelectedFolderId(parsedSession.selectedFolderId);
+        }
+      }
+    } catch {
+      // Ignore
+    }
+    reviewerSessionHydratedRef.current = true;
   }, []);
+
+  useEffect(() => {
+    if (!reviewerSessionHydratedRef.current || typeof window === "undefined") return;
+    try {
+      sessionStorage.setItem(
+        "evalo_student_reviewer_session",
+        JSON.stringify({
+          view,
+          activeDeck: view === "study" ? activeDeck : null,
+          activeTab,
+          currentCardIndex,
+          currentQuizIndex,
+          selectedAnswers,
+          quizFinished,
+          selectedFolderId,
+        })
+      );
+    } catch {
+      // Ignore
+    }
+  }, [
+    view,
+    activeDeck,
+    activeTab,
+    currentCardIndex,
+    currentQuizIndex,
+    selectedAnswers,
+    quizFinished,
+    selectedFolderId,
+  ]);
 
   const saveDeckToStorage = (deck: GeneratedReviewerDeck, folderId?: string) => {
     try {
@@ -1570,7 +1638,7 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
                       onClick={() => setSelectedFolderId(folder.id)}
                       className={`inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border px-4 text-sm font-semibold transition cursor-pointer ${
                         isSelected
-                          ? "border-transparent bg-text-primary text-surface-raised rv-chip-active"
+                          ? "border-transparent bg-steel text-white shadow-xs rv-chip-active"
                           : "border-border-default bg-surface-base text-text-secondary hover:text-text-primary"
                       }`}
                     >
@@ -1847,8 +1915,8 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
 
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-24 left-4 right-4 sm:left-auto sm:bottom-6 sm:right-6 z-50 flex items-center gap-2.5 px-4 py-3 bg-slate-900/95 text-white text-sm font-medium rounded-2xl shadow-xl backdrop-blur border border-slate-700 rv-fade">
-          <CheckCircle2 className="w-4 h-4 text-emerald-400 dark:text-emerald-600 shrink-0" />
+        <div className="fixed bottom-24 left-4 right-4 sm:left-auto sm:bottom-6 sm:right-6 z-50 flex items-center gap-2.5 px-4 py-3 bg-surface-raised/95 text-text-primary text-sm font-semibold rounded-2xl shadow-xl backdrop-blur border border-border-emphasis rv-fade">
+          <CheckCircle2 className="w-4 h-4 text-sage shrink-0" />
           <span>{toastMessage}</span>
         </div>
       )}
@@ -1913,7 +1981,7 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
           }}
         >
           <div
-            className="relative w-full max-sm:rounded-3xl max-h-[90vh] sm:max-w-sm sm:rounded-3xl bg-surface-raised dark:bg-[#141d26] border border-border-default shadow-2xl p-5 sm:p-6 space-y-4 overflow-y-auto animate-in fade-in zoom-in-95 duration-200"
+            className="relative w-full max-sm:rounded-3xl max-h-[90vh] sm:max-w-sm sm:rounded-3xl bg-surface-raised border border-border-default shadow-2xl p-5 sm:p-6 space-y-4 overflow-y-auto animate-in fade-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between pb-3 border-b border-border-default">
@@ -2014,7 +2082,7 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
           }}
         >
           <div
-            className="relative w-full max-sm:rounded-3xl max-h-[90vh] sm:max-w-sm sm:rounded-3xl bg-surface-raised dark:bg-[#141d26] border border-border-default shadow-2xl p-5 sm:p-6 space-y-4 overflow-y-auto animate-in fade-in zoom-in-95 duration-200"
+            className="relative w-full max-sm:rounded-3xl max-h-[90vh] sm:max-w-sm sm:rounded-3xl bg-surface-raised border border-border-default shadow-2xl p-5 sm:p-6 space-y-4 overflow-y-auto animate-in fade-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between pb-3 border-b border-border-default">

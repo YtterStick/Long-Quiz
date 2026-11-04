@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/Navbar";
@@ -151,6 +151,37 @@ export default function TeacherStudentsPage() {
   const [submittingEdit, setSubmittingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
 
+  const navHydratedRef = useRef(false);
+  const pendingRestoreStudentIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    try {
+      const savedView = localStorage.getItem("evalo_students_view_mode");
+      if (savedView === "table" || savedView === "grid" || savedView === "list") {
+        setViewMode(savedView);
+      }
+      const rawState = sessionStorage.getItem("evalo_teacher_students_state");
+      const parsed = rawState ? JSON.parse(rawState) : {};
+      if (typeof parsed.sectionFilter === "string" && parsed.sectionFilter) {
+        setSectionFilter(parsed.sectionFilter);
+      }
+      if (typeof parsed.search === "string") {
+        setSearch(parsed.search);
+      }
+      if (typeof parsed.pageSize === "number" && [5, 10, 20, 50].includes(parsed.pageSize)) {
+        setPageSize(parsed.pageSize);
+      }
+      if (typeof parsed.page === "number" && parsed.page > 0) {
+        setPage(parsed.page);
+      }
+      if (typeof parsed.selectedStudentDetailId === "string") {
+        pendingRestoreStudentIdRef.current = parsed.selectedStudentDetailId;
+      }
+    } catch {
+      // Ignore
+    }
+  }, []);
+
   useEffect(() => {
     if (!authLoading && (!user || user.role !== "TEACHER")) {
       router.push("/");
@@ -165,9 +196,19 @@ export default function TeacherStudentsPage() {
         teacherApi.listAllStudents(),
       ]);
       setSections(allSecs);
-      setStudents(allSts as StudentItem[]);
+      const typedStudents = allSts as StudentItem[];
+      setStudents(typedStudents);
+      if (pendingRestoreStudentIdRef.current) {
+        const matched = typedStudents.find((s) => s.id === pendingRestoreStudentIdRef.current);
+        if (matched) {
+          setSelectedStudentDetail(matched);
+        }
+        pendingRestoreStudentIdRef.current = null;
+      }
+      navHydratedRef.current = true;
     } catch (err: unknown) {
       console.error("Failed to load students directory:", err);
+      navHydratedRef.current = true;
     } finally {
       setLoading(false);
     }
@@ -178,6 +219,25 @@ export default function TeacherStudentsPage() {
       loadData();
     }
   }, [user]);
+
+  useEffect(() => {
+    if (!navHydratedRef.current || typeof window === "undefined") return;
+    try {
+      localStorage.setItem("evalo_students_view_mode", viewMode);
+      sessionStorage.setItem(
+        "evalo_teacher_students_state",
+        JSON.stringify({
+          sectionFilter,
+          search,
+          page,
+          pageSize,
+          selectedStudentDetailId: selectedStudentDetail?.id || null,
+        })
+      );
+    } catch {
+      // Ignore
+    }
+  }, [viewMode, sectionFilter, search, page, pageSize, selectedStudentDetail]);
 
   // Filtering
   const filteredStudents = useMemo(() => {
@@ -212,8 +272,9 @@ export default function TeacherStudentsPage() {
     });
   }, [students, sectionFilter, search]);
 
-  // Reset pagination when filter/search changes
+  // Reset pagination when filter/search changes (after initial hydration)
   useEffect(() => {
+    if (!navHydratedRef.current) return;
     setPage(1);
   }, [search, sectionFilter, pageSize]);
 

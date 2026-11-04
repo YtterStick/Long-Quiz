@@ -269,7 +269,7 @@ export function ShareDeckModal({
       }}
     >
       <div
-        className="relative w-full max-w-lg max-h-[90vh] rounded-3xl bg-[#ffffff] dark:bg-[#141d26] border border-border-default shadow-2xl p-5 sm:p-7 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+        className="relative w-full max-w-lg max-h-[90vh] rounded-3xl bg-surface-raised border border-border-default shadow-2xl p-5 sm:p-7 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
 
@@ -303,7 +303,7 @@ export function ShareDeckModal({
             onClick={() => setMode("links")}
             className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
               mode === "links"
-                ? "bg-surface-raised dark:bg-[#1b2632] text-text-primary shadow-xs border border-border-default"
+                ? "bg-surface-overlay text-text-primary shadow-xs border border-border-default"
                 : "text-text-muted hover:text-text-primary hover:bg-surface-subtle/50"
             }`}
           >
@@ -315,7 +315,7 @@ export function ShareDeckModal({
             onClick={() => setMode("friends")}
             className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer ${
               mode === "friends"
-                ? "bg-surface-raised dark:bg-[#1b2632] text-text-primary shadow-xs border border-border-default"
+                ? "bg-surface-overlay text-text-primary shadow-xs border border-border-default"
                 : "text-text-muted hover:text-text-primary hover:bg-surface-subtle/50"
             }`}
           >

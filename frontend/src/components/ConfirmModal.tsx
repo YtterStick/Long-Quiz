@@ -71,7 +71,7 @@ export function ConfirmModal({
       }}
     >
       <div
-        className="w-full max-w-sm rounded-3xl border border-border-default bg-[#ffffff] dark:bg-[#141d26] p-6 shadow-2xl space-y-4"
+        className="w-full max-w-sm rounded-3xl border border-border-default bg-surface-raised p-6 shadow-2xl space-y-4"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-3.5">

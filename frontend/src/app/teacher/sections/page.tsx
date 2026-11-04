@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/Navbar";
@@ -160,6 +160,17 @@ export default function TeacherSectionsPage() {
   const [rosterSearch, setRosterSearch] = useState("");
   const [directoryViewMode, setDirectoryViewMode] = useState<"grid" | "table" | "list">("grid");
 
+  // Persistence ref to restore exact user position across browser refreshes
+  const navHydratedRef = useRef(false);
+  const pendingRestoreRef = useRef<{
+    sectionId?: string | null;
+    studentId?: string | null;
+    monitorExamId?: string | null;
+    rosterPage?: number;
+    secExamsPage?: number;
+    dirPage?: number;
+  }>({});
+
   useEffect(() => {
     try {
       const savedRoster = localStorage.getItem("evalo_roster_view");
@@ -169,6 +180,43 @@ export default function TeacherSectionsPage() {
       const savedDir = localStorage.getItem("evalo_dir_view");
       if (savedDir === "grid" || savedDir === "table" || savedDir === "list") {
         setDirectoryViewMode(savedDir);
+      }
+
+      const params = new URLSearchParams(window.location.search);
+      const rawState = sessionStorage.getItem("evalo_teacher_sections_state");
+      const parsed = rawState ? JSON.parse(rawState) : {};
+
+      const tabParam = params.get("tab") || parsed.activeTab;
+      if (tabParam === "sections" || tabParam === "directory") {
+        setActiveTab(tabParam);
+      }
+      const subTabParam = params.get("subtab") || parsed.sectionViewTab;
+      if (subTabParam === "students" || subTabParam === "exams") {
+        setSectionViewTab(subTabParam);
+      }
+      if (parsed.directoryFilter === "all" || parsed.directoryFilter === "unassigned") {
+        setDirectoryFilter(parsed.directoryFilter);
+      }
+      if (typeof parsed.directorySearch === "string") {
+        setDirectorySearch(parsed.directorySearch);
+      }
+      if (typeof parsed.rosterSearch === "string") {
+        setRosterSearch(parsed.rosterSearch);
+      }
+      if (typeof parsed.sectionsPage === "number" && parsed.sectionsPage > 0) {
+        setSectionsPage(parsed.sectionsPage);
+      }
+
+      pendingRestoreRef.current = {
+        sectionId: params.get("section") || parsed.selectedSectionId || null,
+        studentId: params.get("student") || parsed.selectedStudentDetailId || null,
+        monitorExamId: params.get("monitor") || parsed.monitoringExamId || null,
+        rosterPage: typeof parsed.rosterPage === "number" ? parsed.rosterPage : 1,
+        secExamsPage: typeof parsed.secExamsPage === "number" ? parsed.secExamsPage : 1,
+        dirPage: typeof parsed.dirPage === "number" ? parsed.dirPage : 1,
+      };
+      if (pendingRestoreRef.current.dirPage && pendingRestoreRef.current.dirPage > 1) {
+        setDirPage(pendingRestoreRef.current.dirPage);
       }
     } catch {
       // Ignore
@@ -322,14 +370,63 @@ export default function TeacherSectionsPage() {
       setLoading(true);
       setDirectoryLoading(true);
       Promise.all([teacherApi.listSections(), teacherApi.listAllStudents()])
-        .then(([sectionsData, studentsData]) => {
-          if (!ignore) {
-            setSections(sectionsData);
-            setAllStudents(studentsData as StudentItem[]);
+        .then(async ([sectionsData, studentsData]) => {
+          if (ignore) return;
+          setSections(sectionsData);
+          const typedStudents = studentsData as StudentItem[];
+          setAllStudents(typedStudents);
+
+          const restore = pendingRestoreRef.current;
+          if (restore.studentId) {
+            const matchedSt = typedStudents.find((s) => s.id === restore.studentId);
+            if (matchedSt) {
+              setSelectedStudentDetail(matchedSt);
+            }
           }
+
+          if (restore.sectionId) {
+            const matchedSec = sectionsData.find((s) => s.id === restore.sectionId);
+            if (matchedSec) {
+              setSelectedSection(matchedSec);
+              setStudentsLoading(true);
+              setSectionExamsLoading(true);
+              try {
+                const [secStudents, secExams] = await Promise.all([
+                  teacherApi.listStudents(matchedSec.id),
+                  teacherApi.listSectionExams(matchedSec.id),
+                ]);
+                if (!ignore) {
+                  setStudents(secStudents as StudentItem[]);
+                  const typedExams = secExams as SectionExamItem[];
+                  setSectionExams(typedExams);
+                  if (restore.rosterPage && restore.rosterPage > 1) {
+                    setRosterPage(restore.rosterPage);
+                  }
+                  if (restore.secExamsPage && restore.secExamsPage > 1) {
+                    setSecExamsPage(restore.secExamsPage);
+                  }
+                  if (restore.monitorExamId) {
+                    const matchedSe = typedExams.find((se) => se.exam_id === restore.monitorExamId);
+                    if (matchedSe) {
+                      setMonitoringSectionExam(matchedSe);
+                    }
+                  }
+                }
+              } catch (err) {
+                console.error("Failed to restore section data:", err);
+              } finally {
+                if (!ignore) {
+                  setStudentsLoading(false);
+                  setSectionExamsLoading(false);
+                }
+              }
+            }
+          }
+          navHydratedRef.current = true;
         })
         .catch((err: unknown) => {
           if (!ignore) setError(err instanceof Error ? err.message : "Failed to load sections");
+          navHydratedRef.current = true;
         })
         .finally(() => {
           if (!ignore) {
@@ -342,6 +439,69 @@ export default function TeacherSectionsPage() {
       ignore = true;
     };
   }, [user]);
+
+  // Continuously persist teacher sections navigation state so browser refresh stays in place
+  useEffect(() => {
+    if (!navHydratedRef.current || typeof window === "undefined") return;
+    try {
+      const statePayload = {
+        activeTab,
+        selectedSectionId: selectedSection?.id || null,
+        sectionViewTab,
+        selectedStudentDetailId: selectedStudentDetail?.id || null,
+        monitoringExamId: monitoringSectionExam?.exam_id || null,
+        directoryFilter,
+        directorySearch,
+        rosterSearch,
+        sectionsPage,
+        rosterPage,
+        dirPage,
+        secExamsPage,
+      };
+      sessionStorage.setItem("evalo_teacher_sections_state", JSON.stringify(statePayload));
+
+      const url = new URL(window.location.href);
+      if (selectedSection) {
+        url.searchParams.set("section", selectedSection.id);
+        url.searchParams.set("subtab", sectionViewTab);
+        url.searchParams.delete("tab");
+      } else {
+        url.searchParams.delete("section");
+        url.searchParams.delete("subtab");
+        if (activeTab === "directory") {
+          url.searchParams.set("tab", "directory");
+        } else {
+          url.searchParams.delete("tab");
+        }
+      }
+      if (selectedStudentDetail) {
+        url.searchParams.set("student", selectedStudentDetail.id);
+      } else {
+        url.searchParams.delete("student");
+      }
+      if (monitoringSectionExam) {
+        url.searchParams.set("monitor", monitoringSectionExam.exam_id);
+      } else {
+        url.searchParams.delete("monitor");
+      }
+      window.history.replaceState({}, "", url.toString());
+    } catch {
+      // Ignore storage errors
+    }
+  }, [
+    activeTab,
+    selectedSection,
+    sectionViewTab,
+    selectedStudentDetail,
+    monitoringSectionExam,
+    directoryFilter,
+    directorySearch,
+    rosterSearch,
+    sectionsPage,
+    rosterPage,
+    dirPage,
+    secExamsPage,
+  ]);
 
   const loadStudents = async (sectionId: string) => {
     setStudentsLoading(true);
@@ -815,8 +975,9 @@ export default function TeacherSectionsPage() {
     );
   });
 
-  // Reset pagination when search / active section changes
+  // Reset pagination when search / active section changes (after initial hydration)
   useEffect(() => {
+    if (!navHydratedRef.current) return;
     setDirPage(1);
   }, [directorySearch, directoryFilter, dirPageSize]);
 
@@ -839,10 +1000,12 @@ export default function TeacherSectionsPage() {
   }, [students, rosterSearch]);
 
   useEffect(() => {
+    if (!navHydratedRef.current) return;
     setRosterPage(1);
   }, [selectedSection, rosterSearch, rosterPageSize]);
 
   useEffect(() => {
+    if (!navHydratedRef.current) return;
     setSecExamsPage(1);
   }, [selectedSection, secExamsPageSize]);
 
@@ -1018,13 +1181,13 @@ export default function TeacherSectionsPage() {
                 onClick={() => setSectionViewTab("students")}
                 className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-all cursor-pointer ${
                   sectionViewTab === "students"
-                    ? "bg-steel text-text-primary shadow-sm"
+                    ? "bg-steel text-white shadow-sm"
                     : "text-text-muted hover:text-text-primary bg-surface-subtle border border-border-emphasis"
                 }`}
               >
                 <Users className="h-4 w-4" />
                 <span>Enrolled Students</span>
-                <span className="rounded-full bg-surface-base px-2 py-0.5 text-[10px] font-bold">
+                <span className="rounded-full bg-surface-base text-text-primary px-2 py-0.5 text-[10px] font-bold">
                   {students.length}
                 </span>
               </button>
@@ -1033,13 +1196,13 @@ export default function TeacherSectionsPage() {
                 onClick={() => setSectionViewTab("exams")}
                 className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-semibold transition-all cursor-pointer ${
                   sectionViewTab === "exams"
-                    ? "bg-steel text-text-primary shadow-sm"
+                    ? "bg-steel text-white shadow-sm"
                     : "text-text-muted hover:text-text-primary bg-surface-subtle border border-border-emphasis"
                 }`}
               >
                 <FileCheck className="h-4 w-4" />
                 <span>Class Exams & Quizzes</span>
-                <span className="rounded-full bg-surface-base px-2 py-0.5 text-[10px] font-bold">
+                <span className="rounded-full bg-surface-base text-text-primary px-2 py-0.5 text-[10px] font-bold">
                   {sectionExams.length}
                 </span>
               </button>
@@ -1582,7 +1745,7 @@ export default function TeacherSectionsPage() {
                                 <div
                                   className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
                                     se.is_online_active
-                                      ? "bg-steel text-text-primary shadow-sm"
+                                      ? "bg-steel text-white shadow-sm"
                                       : "bg-surface-subtle text-text-muted border border-border-emphasis"
                                   }`}
                                 >
@@ -1650,7 +1813,7 @@ export default function TeacherSectionsPage() {
                                 <div
                                   className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
                                     se.is_grades_released
-                                      ? "bg-sage text-text-primary shadow-sm"
+                                      ? "bg-sage text-white shadow-sm"
                                       : "bg-surface-subtle text-text-muted border border-border-emphasis"
                                   }`}
                                 >
@@ -1849,13 +2012,13 @@ export default function TeacherSectionsPage() {
                   onClick={() => setActiveTab("sections")}
                   className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition-all cursor-pointer ${
                     activeTab === "sections"
-                      ? "bg-steel text-text-primary shadow-sm"
+                      ? "bg-steel text-white shadow-sm"
                       : "text-text-muted hover:text-text-primary"
                   }`}
                 >
                   <School className="h-4 w-4" />
                   <span>Class Sections</span>
-                  <span className="rounded-full bg-surface-base px-2 py-0.5 text-[10px] font-bold">
+                  <span className="rounded-full bg-surface-base text-text-primary px-2 py-0.5 text-[10px] font-bold">
                     {sections.length}
                   </span>
                 </button>
@@ -1863,13 +2026,13 @@ export default function TeacherSectionsPage() {
                   onClick={() => setActiveTab("directory")}
                   className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-semibold transition-all cursor-pointer ${
                     activeTab === "directory"
-                      ? "bg-steel text-text-primary shadow-sm"
+                      ? "bg-steel text-white shadow-sm"
                       : "text-text-muted hover:text-text-primary"
                   }`}
                 >
                   <Users className="h-4 w-4" />
                   <span>Student Directory</span>
-                  <span className="rounded-full bg-surface-base px-2 py-0.5 text-[10px] font-bold">
+                  <span className="rounded-full bg-surface-base text-text-primary px-2 py-0.5 text-[10px] font-bold">
                     {allStudents.length}
                   </span>
                 </button>
@@ -2017,7 +2180,7 @@ export default function TeacherSectionsPage() {
                         onClick={() => setDirectoryFilter("all")}
                         className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
                           directoryFilter === "all"
-                            ? "bg-steel text-text-primary"
+                            ? "bg-steel text-white"
                             : "text-text-muted hover:text-text-primary"
                         }`}
                       >
@@ -2027,7 +2190,7 @@ export default function TeacherSectionsPage() {
                         onClick={() => setDirectoryFilter("unassigned")}
                         className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
                           directoryFilter === "unassigned"
-                            ? "bg-steel text-text-primary"
+                            ? "bg-steel text-white"
                             : "text-text-muted hover:text-text-primary"
                         }`}
                       >

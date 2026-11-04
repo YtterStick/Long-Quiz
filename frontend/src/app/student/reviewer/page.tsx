@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
@@ -56,6 +56,46 @@ export default function StudentReviewerPage() {
   // Pagination
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(6);
+  const reviewerPageHydratedRef = useRef(false);
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("evalo_student_reviewer_page_state");
+      const parsed = raw ? JSON.parse(raw) : {};
+      if (parsed.mode === "ai_handout" || parsed.mode === "public_exams") {
+        setMode(parsed.mode);
+      }
+      if (typeof parsed.expandedReviewerIndex === "number" || parsed.expandedReviewerIndex === null) {
+        setExpandedReviewerIndex(parsed.expandedReviewerIndex);
+      }
+      if (typeof parsed.searchQuery === "string") {
+        setSearchQuery(parsed.searchQuery);
+      }
+      if (typeof parsed.page === "number" && parsed.page > 0) {
+        setPage(parsed.page);
+      }
+    } catch {
+      // Ignore
+    }
+    reviewerPageHydratedRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!reviewerPageHydratedRef.current || typeof window === "undefined") return;
+    try {
+      sessionStorage.setItem(
+        "evalo_student_reviewer_page_state",
+        JSON.stringify({
+          mode,
+          expandedReviewerIndex,
+          searchQuery,
+          page,
+        })
+      );
+    } catch {
+      // Ignore
+    }
+  }, [mode, expandedReviewerIndex, searchQuery, page]);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -100,6 +140,7 @@ export default function StudentReviewerPage() {
   }, [publicReviewers, searchQuery]);
 
   useEffect(() => {
+    if (!reviewerPageHydratedRef.current) return;
     setPage(1);
   }, [searchQuery, pageSize]);
 

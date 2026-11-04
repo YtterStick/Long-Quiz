@@ -97,7 +97,7 @@ export function GlobalLoadingBar() {
 
       {showSlowNetworkBadge && (
         <div className="fixed top-3 right-4 z-9999 pointer-events-none animate-in fade-in slide-in-from-top-2 duration-200">
-          <div className="flex items-center gap-2 rounded-full border border-steel/30 bg-[#141d26]/90 backdrop-blur-md px-3.5 py-1.5 text-[11px] font-semibold text-text-primary shadow-xl">
+          <div className="flex items-center gap-2 rounded-full border border-border-emphasis bg-surface-raised/95 backdrop-blur-md px-3.5 py-1.5 text-[11px] font-semibold text-text-primary shadow-xl">
             <Loader2 className="h-3.5 w-3.5 animate-spin text-steel" />
             <span className="text-text-secondary">Syncing with server...</span>
           </div>

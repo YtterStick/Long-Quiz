@@ -161,7 +161,7 @@ export function SectionGradebookModal({
       }}
     >
       <div
-        className="relative w-full max-w-5xl max-h-[94vh] rounded-3xl bg-[#ffffff] dark:bg-[#141d26] border border-border-default shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+        className="relative w-full max-w-5xl max-h-[94vh] rounded-3xl bg-surface-raised border border-border-default shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* ── Top Header ─────────────────────────────────────────────── */}
@@ -308,7 +308,7 @@ export function SectionGradebookModal({
                 onClick={() => setStatusFilter("GRADED")}
                 className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
                   statusFilter === "GRADED"
-                    ? "bg-sage text-black font-bold shadow-xs"
+                    ? "bg-sage text-white font-bold shadow-xs"
                     : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
                 }`}
               >

@@ -151,6 +151,27 @@ export default function TeacherScanPage() {
   const [published, setPublished] = useState(false);
 
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const scanHydratedRef = useRef(false);
+  const pendingScanStateRef = useRef<{ sectionId?: string; examId?: string }>({});
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("evalo_teacher_scan_state");
+      const parsed = raw ? JSON.parse(raw) : {};
+      if (parsed.statusFilter === "ALL" || parsed.statusFilter === "GRADED" || parsed.statusFilter === "ABSENT") {
+        setStatusFilter(parsed.statusFilter);
+      }
+      if (typeof parsed.searchQuery === "string") {
+        setSearchQuery(parsed.searchQuery);
+      }
+      pendingScanStateRef.current = {
+        sectionId: parsed.selectedSectionId || "",
+        examId: parsed.selectedExamId || "",
+      };
+    } catch {
+      // Ignore
+    }
+  }, []);
 
   useEffect(() => {
     if (!authLoading && (!user || user.role !== "TEACHER")) {
@@ -169,10 +190,14 @@ export default function TeacherScanPage() {
           setSections(secList);
 
           if (secList.length > 0) {
-            setSelectedSectionId(secList[0].id);
+            const savedSecId = pendingScanStateRef.current.sectionId;
+            const match = savedSecId ? secList.find((s) => s.id === savedSecId) : null;
+            setSelectedSectionId(match ? match.id : secList[0].id);
           }
+          scanHydratedRef.current = true;
         } catch (err) {
           console.error("Failed to load initial sections:", err);
+          scanHydratedRef.current = true;
         } finally {
           if (isMounted) setInitialLoading(false);
         }
@@ -183,6 +208,23 @@ export default function TeacherScanPage() {
       };
     }
   }, [user]);
+
+  useEffect(() => {
+    if (!scanHydratedRef.current || typeof window === "undefined") return;
+    try {
+      sessionStorage.setItem(
+        "evalo_teacher_scan_state",
+        JSON.stringify({
+          selectedSectionId,
+          selectedExamId,
+          statusFilter,
+          searchQuery,
+        })
+      );
+    } catch {
+      // Ignore
+    }
+  }, [selectedSectionId, selectedExamId, statusFilter, searchQuery]);
 
   // When selectedSectionId changes, load section exams and all exams
   useEffect(() => {
@@ -225,8 +267,11 @@ export default function TeacherScanPage() {
         setExams(finalExamList);
 
         if (finalExamList.length > 0) {
-          // If previous exam is still in the list, keep it; otherwise pick the first
-          if (!finalExamList.some((e) => e.id === selectedExamId)) {
+          const savedExamId = pendingScanStateRef.current.examId;
+          if (savedExamId && finalExamList.some((e) => e.id === savedExamId)) {
+            setSelectedExamId(savedExamId);
+            pendingScanStateRef.current.examId = "";
+          } else if (!finalExamList.some((e) => e.id === selectedExamId)) {
             setSelectedExamId(finalExamList[0].id);
           }
         } else {
@@ -683,7 +728,7 @@ export default function TeacherScanPage() {
                       <button
                         type="button"
                         onClick={captureWebcam}
-                        className="mt-2 w-full flex items-center justify-center gap-2 rounded-xl bg-steel py-3 text-sm font-semibold text-text-primary hover:bg-steel-light transition-all"
+                        className="mt-2 w-full flex items-center justify-center gap-2 rounded-xl bg-steel py-3 text-sm font-semibold text-white hover:bg-steel-light transition-all"
                       >
                         <Camera className="h-4 w-4" />
                         Capture Image
@@ -1017,7 +1062,7 @@ export default function TeacherScanPage() {
                 onClick={() => setStatusFilter("ALL")}
                 className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
                   statusFilter === "ALL"
-                    ? "bg-steel text-text-primary shadow-sm"
+                    ? "bg-steel text-white shadow-sm"
                     : "text-text-muted hover:text-text-primary"
                 }`}
               >
@@ -1028,7 +1073,7 @@ export default function TeacherScanPage() {
                 onClick={() => setStatusFilter("GRADED")}
                 className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
                   statusFilter === "GRADED"
-                    ? "bg-sage text-black font-bold shadow-sm"
+                    ? "bg-sage text-white font-bold shadow-sm"
                     : "text-text-muted hover:text-text-primary"
                 }`}
               >
@@ -1039,7 +1084,7 @@ export default function TeacherScanPage() {
                 onClick={() => setStatusFilter("ABSENT")}
                 className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
                   statusFilter === "ABSENT"
-                    ? "bg-burgundy text-text-primary font-bold shadow-sm"
+                    ? "bg-burgundy text-white font-bold shadow-sm"
                     : "text-text-muted hover:text-text-primary"
                 }`}
               >
