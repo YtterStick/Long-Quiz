@@ -12,7 +12,7 @@ from app.models import (
     SectionExam, ExamLobbyEntry, TeacherExamGenerationLog, StudentSection
 )
 from app.schemas import (
-    SectionCreate, SectionUpdate, SectionOut,
+    SectionCreate, SectionUpdate, SectionOut, SectionBriefOut,
     StudentCreate, StudentUpdate, StudentOut, StudentBulkCreateResponse, StudentBatchCreate, EnrollStudent,
     PasswordResetRequestOut, StudentResetPasswordResponse,
     ExamCreate, ExamUpdate, ExamOut, AnswerKeyItem,
@@ -55,6 +55,90 @@ async def _get_teacher(user: User, db: AsyncSession) -> Teacher:
     if not teacher:
         raise HTTPException(status_code=404, detail="Teacher profile not found")
     return teacher
+
+
+async def _get_section_student_ids(section_id: str, db: AsyncSession) -> list[str]:
+    """Return all unique student IDs enrolled in `section_id` via StudentSection or primary section_id."""
+    ids: set[str] = set()
+    p_res = await db.execute(select(Student.id).where(Student.section_id == section_id))
+    ids.update(p_res.scalars().all())
+    a_res = await db.execute(
+        select(StudentSection.student_id).where(StudentSection.section_id == section_id)
+    )
+    ids.update(a_res.scalars().all())
+    return list(ids)
+
+
+async def _serialize_students_for_teacher(
+    students: Sequence[Student],
+    teacher_id: str,
+    db: AsyncSession,
+    pending_ids: Optional[set[str]] = None,
+) -> list[StudentOut]:
+    """
+    Serialize students with course memberships strictly scoped to the current teacher (like Microsoft Teams).
+    Never exposes another teacher's section/subject on a student's global profile.
+    """
+    if not students:
+        return []
+
+    sec_res = await db.execute(
+        select(Section).where(Section.teacher_id == teacher_id).order_by(Section.created_at.desc())
+    )
+    teacher_sections = {sec.id: sec for sec in sec_res.scalars().all()}
+    teacher_sec_ids = list(teacher_sections.keys())
+
+    student_ids = [s.id for s in students]
+    enrolled_map: dict[str, list[Section]] = {sid: [] for sid in student_ids}
+    seen_pairs: set[tuple[str, str]] = set()
+
+    if teacher_sec_ids and student_ids:
+        assoc_res = await db.execute(
+            select(StudentSection.student_id, StudentSection.section_id).where(
+                StudentSection.student_id.in_(student_ids),
+                StudentSection.section_id.in_(teacher_sec_ids),
+            )
+        )
+        for st_id, sec_id in assoc_res.all():
+            sec = teacher_sections.get(sec_id)
+            if sec and (st_id, sec_id) not in seen_pairs:
+                seen_pairs.add((st_id, sec_id))
+                enrolled_map.setdefault(st_id, []).append(sec)
+
+    for s in students:
+        if s.section_id and s.section_id in teacher_sections and (s.id, s.section_id) not in seen_pairs:
+            seen_pairs.add((s.id, s.section_id))
+            enrolled_map.setdefault(s.id, []).append(teacher_sections[s.section_id])
+
+    out: list[StudentOut] = []
+    for s in students:
+        s_out = StudentOut.model_validate(s)
+        s_out.full_student_id = format_full_student_id(s.student_number)
+        if pending_ids is not None:
+            s_out.has_pending_reset_request = s.id in pending_ids
+
+        my_secs = enrolled_map.get(s.id, [])
+        s_out.enrolled_sections = [
+            SectionBriefOut(id=sec.id, name=sec.name, subject=sec.subject)
+            for sec in my_secs
+        ]
+        if my_secs:
+            first_sec = my_secs[0]
+            s_out.section_id = first_sec.id
+            s_out.section = SectionOut(
+                id=first_sec.id,
+                name=first_sec.name,
+                subject=first_sec.subject,
+                teacher_id=first_sec.teacher_id,
+                created_at=first_sec.created_at,
+                student_count=0,
+            )
+        else:
+            s_out.section_id = None
+            s_out.section = None
+
+        out.append(s_out)
+    return out
 
 
 @router.get("/profile")
@@ -106,18 +190,26 @@ async def get_dashboard(
 ):
     teacher = await _get_teacher(current_user, db)
 
-    sections = await db.execute(select(func.count(Section.id)).where(Section.teacher_id == teacher.id))
-    students = await db.execute(
-        select(func.count(Student.id)).join(Section).where(Section.teacher_id == teacher.id)
-    )
+    sec_ids_res = await db.execute(select(Section.id).where(Section.teacher_id == teacher.id))
+    teacher_sec_ids = list(sec_ids_res.scalars().all())
+
+    unique_student_ids: set[str] = set()
+    if teacher_sec_ids:
+        p_res = await db.execute(select(Student.id).where(Student.section_id.in_(teacher_sec_ids)))
+        unique_student_ids.update(p_res.scalars().all())
+        a_res = await db.execute(
+            select(StudentSection.student_id).where(StudentSection.section_id.in_(teacher_sec_ids))
+        )
+        unique_student_ids.update(a_res.scalars().all())
+
     exams = await db.execute(select(func.count(Exam.id)).where(Exam.teacher_id == teacher.id))
     subs = await db.execute(
         select(func.count(ExamSubmission.id)).join(Exam).where(Exam.teacher_id == teacher.id)
     )
 
     return TeacherDashboardStats(
-        total_sections=sections.scalar_one(),
-        total_students=students.scalar_one(),
+        total_sections=len(teacher_sec_ids),
+        total_students=len(unique_student_ids),
         total_exams=exams.scalar_one(),
         total_submissions=subs.scalar_one(),
     )
@@ -203,13 +295,11 @@ async def update_section(
         section.subject = body.subject
     await db.flush()
 
-    count_result = await db.execute(
-        select(func.count(Student.id)).where(Student.section_id == section.id)
-    )
+    member_ids = await _get_section_student_ids(section.id, db)
     return SectionOut(
         id=section.id, name=section.name, subject=section.subject,
         teacher_id=section.teacher_id, created_at=section.created_at,
-        student_count=count_result.scalar_one(),
+        student_count=len(member_ids),
     )
 
 
@@ -227,7 +317,10 @@ async def delete_section(
     if not section:
         raise HTTPException(status_code=404, detail="Section not found")
 
-    # Unassign all students in this section so their accounts and submissions are preserved
+    # Remove enrollment links for this section and unassign primary section_id if needed
+    await db.execute(
+        delete(StudentSection).where(StudentSection.section_id == section_id)
+    )
     await db.execute(
         update(Student).where(Student.section_id == section_id).values(section_id=None)
     )
@@ -263,22 +356,20 @@ async def list_section_exams(
     )
     section_exams = result.scalars().all()
 
-    # Get student IDs in this section
-    # Single aggregate query for all exams (avoids N+1 round trips)
-    stats_res = await db.execute(
-        select(
-            ExamSubmission.exam_id,
-            func.count(ExamSubmission.id),
-            func.avg(ExamSubmission.total_score),
-        )
-        .where(
-            ExamSubmission.student_id.in_(
-                select(Student.id).where(Student.section_id == section_id)
+    # Get student IDs in this section (primary + StudentSection association)
+    sec_student_ids = await _get_section_student_ids(section_id, db)
+    stats = {}
+    if sec_student_ids:
+        stats_res = await db.execute(
+            select(
+                ExamSubmission.exam_id,
+                func.count(ExamSubmission.id),
+                func.avg(ExamSubmission.total_score),
             )
+            .where(ExamSubmission.student_id.in_(sec_student_ids))
+            .group_by(ExamSubmission.exam_id)
         )
-        .group_by(ExamSubmission.exam_id)
-    )
-    stats = {row[0]: (row[1], row[2]) for row in stats_res.all()}
+        stats = {row[0]: (row[1], row[2]) for row in stats_res.all()}
 
     out = []
     for se in section_exams:
@@ -536,10 +627,7 @@ async def toggle_section_exam_grades(
         se.is_grades_released = not se.is_grades_released
 
     # Update all submissions of students in this section for this exam
-    students_res = await db.execute(
-        select(Student.id).where(Student.section_id == section_id)
-    )
-    section_student_ids = list(students_res.scalars().all())
+    section_student_ids = await _get_section_student_ids(section_id, db)
 
     if section_student_ids:
         await db.execute(
@@ -580,14 +668,13 @@ async def list_all_students(
     """
     List all students registered in the application.
     Supports searching by name, username, or student number.
-    Can filter by unassigned_only=True, with optional pagination.
+    Course memberships are strictly scoped to the current teacher (Microsoft Teams model).
     """
+    teacher = await _get_teacher(current_user, db)
     stmt = (
         select(Student)
         .options(joinedload(Student.user), joinedload(Student.section))
     )
-    if unassigned_only:
-        stmt = stmt.where(Student.section_id.is_(None))
     if search:
         s = f"%{search.strip()}%"
         stmt = stmt.join(User, Student.user_id == User.id).where(
@@ -599,7 +686,7 @@ async def list_all_students(
             )
         )
     stmt = stmt.order_by(Student.student_number)
-    if page is not None and page_size is not None and page > 0 and page_size > 0:
+    if not unassigned_only and page is not None and page_size is not None and page > 0 and page_size > 0:
         stmt = stmt.offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(stmt)
     students = result.scalars().unique().all()
@@ -612,11 +699,12 @@ async def list_all_students(
     )
     pending_ids = set(pending_res.scalars().all())
 
-    out: list[StudentOut] = []
-    for s in students:
-        s_out = StudentOut.model_validate(s)
-        s_out.has_pending_reset_request = s.id in pending_ids
-        out.append(s_out)
+    out = await _serialize_students_for_teacher(students, teacher.id, db, pending_ids)
+    if unassigned_only:
+        out = [st for st in out if len(st.enrolled_sections) == 0]
+        if page is not None and page_size is not None and page > 0 and page_size > 0:
+            start = (page - 1) * page_size
+            out = out[start : start + page_size]
     return out
 
 
@@ -671,7 +759,7 @@ async def create_student(
                     .where(Student.id == existing_student.id)
                 )
                 existing_student = result.scalar_one()
-                out = StudentOut.model_validate(existing_student)
+                out = (await _serialize_students_for_teacher([existing_student], teacher.id, db))[0]
                 out.temp_password = None
                 return out
             raise HTTPException(
@@ -728,7 +816,7 @@ async def create_student(
         .where(Student.id == student.id)
     )
     student_out = result.scalar_one()
-    out = StudentOut.model_validate(student_out)
+    out = (await _serialize_students_for_teacher([student_out], teacher.id, db))[0]
     out.temp_password = temp_password
     return out
 
@@ -934,12 +1022,7 @@ async def list_students(
     )
     pending_ids = set(pending_res.scalars().all())
 
-    out: list[StudentOut] = []
-    for s in students:
-        s_out = StudentOut.model_validate(s)
-        s_out.has_pending_reset_request = s.id in pending_ids
-        out.append(s_out)
-    return out
+    return await _serialize_students_for_teacher(students, teacher.id, db, pending_ids)
 
 
 @router.post("/sections/{section_id}/students", response_model=StudentOut)
@@ -982,7 +1065,7 @@ async def add_student(
                 existing_student.section_id = section_id
             await db.flush()
 
-            out = StudentOut.model_validate(existing_student)
+            out = (await _serialize_students_for_teacher([existing_student], teacher.id, db))[0]
             out.temp_password = None
             return out
     else:
@@ -1037,7 +1120,7 @@ async def add_student(
         .where(Student.id == student.id)
     )
     student_out = result.scalar_one()
-    out = StudentOut.model_validate(student_out)
+    out = (await _serialize_students_for_teacher([student_out], teacher.id, db))[0]
     out.temp_password = temp_password
     return out
 
@@ -1201,7 +1284,8 @@ async def enroll_student(
         .options(selectinload(Student.user), selectinload(Student.section))
         .where(Student.id == student.id)
     )
-    return result.scalar_one()
+    student_result = result.scalar_one()
+    return (await _serialize_students_for_teacher([student_result], teacher.id, db))[0]
 
 
 @router.delete("/sections/{section_id}/students/{student_id}")
@@ -1292,17 +1376,26 @@ async def update_student(
                 )
             student.student_number = new_num
 
+    teacher = await _get_teacher(current_user, db)
     if body.section_id is not None:
         if body.section_id == "" or body.section_id == "none":
-            student.section_id = None
+            pass
         else:
-            teacher = await _get_teacher(current_user, db)
             sec_res = await db.execute(
                 select(Section).where(Section.id == body.section_id, Section.teacher_id == teacher.id)
             )
             if not sec_res.scalar_one_or_none():
                 raise HTTPException(status_code=404, detail="Section not found or not owned by teacher")
-            student.section_id = body.section_id
+            already = await db.execute(
+                select(StudentSection.id).where(
+                    StudentSection.student_id == student.id,
+                    StudentSection.section_id == body.section_id,
+                )
+            )
+            if not already.scalar_one_or_none():
+                db.add(StudentSection(student_id=student.id, section_id=body.section_id))
+            if not student.section_id:
+                student.section_id = body.section_id
 
     await db.flush()
 
@@ -1312,9 +1405,7 @@ async def update_student(
         .where(Student.id == student.id)
     )
     st = res.scalar_one()
-    out = StudentOut.model_validate(st)
-    out.full_student_id = format_full_student_id(st.student_number)
-    return out
+    return (await _serialize_students_for_teacher([st], teacher.id, db))[0]
 
 
 @router.delete("/students/{student_id}")
@@ -1353,11 +1444,24 @@ async def list_password_reset_requests(
     """
     teacher = await _get_teacher(current_user, db)
 
-    # Get teacher's section IDs
+    # Get teacher's sections
     sec_res = await db.execute(
-        select(Section.id).where(Section.teacher_id == teacher.id)
+        select(Section).where(Section.teacher_id == teacher.id)
     )
-    teacher_sec_ids = set(sec_res.scalars().all())
+    teacher_sections = {sec.id: sec for sec in sec_res.scalars().all()}
+    teacher_sec_ids = set(teacher_sections.keys())
+
+    # Get student->teacher_section map from StudentSection
+    student_sec_map: dict[str, Section] = {}
+    if teacher_sec_ids:
+        assoc_res = await db.execute(
+            select(StudentSection.student_id, StudentSection.section_id).where(
+                StudentSection.section_id.in_(teacher_sec_ids)
+            )
+        )
+        for st_id, sec_id in assoc_res.all():
+            if st_id not in student_sec_map and sec_id in teacher_sections:
+                student_sec_map[st_id] = teacher_sections[sec_id]
 
     stmt = (
         select(PasswordResetRequest)
@@ -1376,8 +1480,12 @@ async def list_password_reset_requests(
         st = req.student
         if not st or not st.user:
             continue
-        # Show requests if student is in this teacher's section OR if student is unassigned
-        if st.section_id is not None and len(teacher_sec_ids) > 0 and st.section_id not in teacher_sec_ids:
+        my_sec = student_sec_map.get(st.id)
+        if not my_sec and st.section_id in teacher_sections:
+            my_sec = teacher_sections[st.section_id]
+
+        # Show requests if student is in this teacher's course OR if student is unassigned globally
+        if not my_sec and st.section_id is not None and len(teacher_sec_ids) > 0:
             continue
 
         out.append(PasswordResetRequestOut(
@@ -1390,8 +1498,8 @@ async def list_password_reset_requests(
             student_username=st.user.username,
             student_number=st.student_number,
             full_student_id=f"02000{st.student_number:06d}",
-            section_name=st.section.name if st.section else None,
-            section_subject=st.section.subject if st.section else None,
+            section_name=my_sec.name if my_sec else None,
+            section_subject=my_sec.subject if my_sec else None,
         ))
     return out
 
@@ -2364,14 +2472,17 @@ async def get_section_exam_gradebook(
     if not exam:
         raise HTTPException(status_code=404, detail="Exam not found")
 
-    # Fetch all students in this section
-    students_res = await db.execute(
-        select(Student)
-        .options(selectinload(Student.user))
-        .where(Student.section_id == section_id)
-        .order_by(Student.student_number.asc())
-    )
-    students = students_res.scalars().all()
+    # Fetch all students in this section (primary + StudentSection association)
+    sec_student_ids = await _get_section_student_ids(section_id, db)
+    students = []
+    if sec_student_ids:
+        students_res = await db.execute(
+            select(Student)
+            .options(selectinload(Student.user))
+            .where(Student.id.in_(sec_student_ids))
+            .order_by(Student.student_number.asc())
+        )
+        students = students_res.scalars().all()
 
     # Fetch all submissions for this exam from students in this section
     student_ids = [s.id for s in students]
@@ -2487,13 +2598,16 @@ async def export_section_exam_excel(
         raise HTTPException(status_code=404, detail="Exam not found")
 
     # Fetch students & submissions
-    students_res = await db.execute(
-        select(Student)
-        .options(selectinload(Student.user))
-        .where(Student.section_id == section_id)
-        .order_by(Student.student_number.asc())
-    )
-    students = students_res.scalars().all()
+    sec_student_ids = await _get_section_student_ids(section_id, db)
+    students = []
+    if sec_student_ids:
+        students_res = await db.execute(
+            select(Student)
+            .options(selectinload(Student.user))
+            .where(Student.id.in_(sec_student_ids))
+            .order_by(Student.student_number.asc())
+        )
+        students = students_res.scalars().all()
 
     student_ids = [s.id for s in students]
     submissions_map = {}
@@ -2853,16 +2967,19 @@ async def get_section_gradebook(
     if not sec.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Section not found")
 
-    result = await db.execute(
-        select(Student)
-        .options(
-            selectinload(Student.user),
-            selectinload(Student.submissions).selectinload(ExamSubmission.exam),
+    sec_student_ids = await _get_section_student_ids(section_id, db)
+    students = []
+    if sec_student_ids:
+        result = await db.execute(
+            select(Student)
+            .options(
+                selectinload(Student.user),
+                selectinload(Student.submissions).selectinload(ExamSubmission.exam),
+            )
+            .where(Student.id.in_(sec_student_ids))
+            .order_by(Student.student_number)
         )
-        .where(Student.section_id == section_id)
-        .order_by(Student.student_number)
-    )
-    students = result.scalars().all()
+        students = result.scalars().all()
 
     gradebook = []
     for student in students:

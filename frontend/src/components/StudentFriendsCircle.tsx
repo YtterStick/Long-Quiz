@@ -245,7 +245,7 @@ export function StudentFriendsCircle({ onOpenReviewerWithDeck }: StudentFriendsC
                           {st.full_name}
                         </p>
                         <p className="text-xs text-text-muted font-mono truncate">
-                          ID: {st.full_student_id} {st.section_name ? `• ${st.section_name}` : ""}
+                          ID: {st.full_student_id}
                         </p>
                       </div>
                     </div>
@@ -310,7 +310,7 @@ export function StudentFriendsCircle({ onOpenReviewerWithDeck }: StudentFriendsC
                       {req.full_name}
                     </p>
                     <p className="text-xs text-text-muted font-mono truncate">
-                      {req.section_name || req.full_student_id}
+                      {req.full_student_id}
                     </p>
                   </div>
                 </div>
@@ -401,13 +401,6 @@ export function StudentFriendsCircle({ onOpenReviewerWithDeck }: StudentFriendsC
                     </button>
                   </div>
 
-                  {fr.section_name && (
-                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-steel-ghost border border-steel-border/40 text-xs font-medium text-steel mb-2">
-                      <GraduationCap className="w-3.5 h-3.5" />
-                      {fr.section_name}
-                    </div>
-                  )}
-
                   {fr.bio && (
                     <p className="text-xs text-text-secondary italic line-clamp-2 mt-1">
                       &quot;{fr.bio}&quot;
@@ -427,16 +420,16 @@ export function StudentFriendsCircle({ onOpenReviewerWithDeck }: StudentFriendsC
         )}
       </div>
 
-      {/* Section Classmates (Quick Connect) - 100% Theme-adaptive for Light & Dark Mode */}
+      {/* Course Classmates (Quick Connect) - 100% Theme-adaptive for Light & Dark Mode */}
       {data.classmates.length > 0 && (
         <div className="bg-surface-raised border border-border-default rounded-2xl p-5 sm:p-6 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-base font-bold text-text-primary">
-                Classmates in Your Section
+                Classmates in Your Courses
               </h3>
               <p className="text-xs text-text-muted mt-0.5">
-                Quickly add classmates enrolled in the same class
+                Quickly add classmates enrolled in the same courses
               </p>
             </div>
             <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-steel-ghost text-steel border border-steel-border/50">

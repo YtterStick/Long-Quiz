@@ -48,6 +48,45 @@ async def _get_student(user: User, db: AsyncSession) -> Student:
     return student
 
 
+async def _get_student_enrolled_section_ids(student: Student, db: AsyncSession) -> list[str]:
+    """Return all section IDs the student belongs to across all teachers/courses."""
+    ids = set()
+    if student.section_id:
+        ids.add(student.section_id)
+    res = await db.execute(
+        select(StudentSection.section_id).where(StudentSection.student_id == student.id)
+    )
+    for sid in res.scalars().all():
+        if sid:
+            ids.add(sid)
+    return list(ids)
+
+
+async def _get_student_enrolled_courses(student: Student, db: AsyncSession) -> list[dict]:
+    """Return all course memberships (section + subject + teacher) for the student."""
+    sec_ids = await _get_student_enrolled_section_ids(student, db)
+    if not sec_ids:
+        return []
+    res = await db.execute(
+        select(Section)
+        .options(selectinload(Section.teacher).selectinload(Teacher.user))
+        .where(Section.id.in_(sec_ids))
+        .order_by(Section.name)
+    )
+    courses = []
+    for sec in res.scalars().all():
+        t_name = "Teacher"
+        if sec.teacher and sec.teacher.user:
+            t_name = f"{sec.teacher.user.first_name} {sec.teacher.user.last_name}".strip() or sec.teacher.user.username
+        courses.append({
+            "section_id": sec.id,
+            "section_name": sec.name,
+            "subject": sec.subject or "",
+            "teacher_name": t_name,
+        })
+    return courses
+
+
 @router.get("/profile")
 async def get_student_profile(
     db: AsyncSession = Depends(get_db),
@@ -55,6 +94,7 @@ async def get_student_profile(
 ):
     """Retrieve full student profile, avatar customization config, and study bio."""
     student = await _get_student(current_user, db)
+    enrolled_courses = await _get_student_enrolled_courses(student, db)
     return {
         "student_number": student.student_number,
         "full_student_id": format_full_student_id(student.student_number),
@@ -62,8 +102,9 @@ async def get_student_profile(
         "first_name": current_user.first_name,
         "last_name": current_user.last_name,
         "username": current_user.username,
-        "section_id": student.section_id,
-        "section_name": student.section.name if student.section else None,
+        "section_id": None,
+        "section_name": None,
+        "enrolled_courses": enrolled_courses,
         "avatar_config": student.avatar_config,
         "bio": student.bio,
         "is_profile_setup": student.is_profile_setup,
@@ -89,7 +130,7 @@ async def update_student_profile(
         "ok": True,
         "avatar_config": student.avatar_config,
         "bio": student.bio,
-        "section_name": student.section.name if student.section else None,
+        "section_name": None,
         "is_profile_setup": student.is_profile_setup,
         "first_name": current_user.first_name,
         "last_name": current_user.last_name,
@@ -103,13 +144,15 @@ async def get_student_dashboard(
 ):
     """Get student dashboard info: only counts exams where grades have been published by teacher."""
     student = await _get_student(current_user, db)
+    sec_ids = await _get_student_enrolled_section_ids(student, db)
+    enrolled_courses = await _get_student_enrolled_courses(student, db)
 
-    # Get student's released section exams
+    # Get student's released section exams across all enrolled courses
     released_exam_ids = set()
-    if student.section_id:
+    if sec_ids:
         se_res = await db.execute(
             select(SectionExam.exam_id).where(
-                SectionExam.section_id == student.section_id,
+                SectionExam.section_id.in_(sec_ids),
                 SectionExam.is_grades_released == True,
             )
         )
@@ -133,8 +176,9 @@ async def get_student_dashboard(
         "student_number": student.student_number,
         "full_student_id": format_full_student_id(student.student_number),
         "static_prefix": STATIC_STUDENT_PREFIX,
-        "section_id": student.section_id,
-        "section_name": student.section.name if student.section else None,
+        "section_id": None,
+        "section_name": None,
+        "enrolled_courses": enrolled_courses,
         "first_name": current_user.first_name,
         "last_name": current_user.last_name,
         "total_exams": len(submissions),
@@ -259,17 +303,21 @@ async def get_grades(
     Includes score, shaded answers, correct answer keys, and questionnaire reviewer.
     """
     student = await _get_student(current_user, db)
+    sec_ids = await _get_student_enrolled_section_ids(student, db)
 
-    # Get section-level grade release settings
+    # Get section-level grade release settings across all enrolled courses
     section_exam_status = {}
     section_release_mode = {}
-    if student.section_id:
+    if sec_ids:
         se_res = await db.execute(
-            select(SectionExam).where(SectionExam.section_id == student.section_id)
+            select(SectionExam).where(SectionExam.section_id.in_(sec_ids))
         )
         for se in se_res.scalars().all():
-            section_exam_status[se.exam_id] = se.is_grades_released
-            section_release_mode[se.exam_id] = se.release_mode or "FULL"
+            section_exam_status[se.exam_id] = bool(section_exam_status.get(se.exam_id, False) or se.is_grades_released)
+            if se.is_grades_released:
+                section_release_mode[se.exam_id] = se.release_mode or "FULL"
+            elif se.exam_id not in section_release_mode:
+                section_release_mode[se.exam_id] = se.release_mode or "FULL"
 
     result = await db.execute(
         select(ExamSubmission)
@@ -289,8 +337,8 @@ async def get_grades(
         if not sub.exam:
             continue
 
-        # Check if grades are released for this student's class
-        if student.section_id:
+        # Check if grades are released for any of this student's enrolled classes
+        if sec_ids:
             is_released = section_exam_status.get(sub.exam_id, False) or sub.is_published
         else:
             is_released = sub.is_published or sub.exam.is_grades_released
@@ -366,12 +414,13 @@ async def list_public_exam_reviewers(
     Only shows exams where grades and reviewer have been explicitly released for student's class.
     """
     student = await _get_student(current_user, db)
+    sec_ids = await _get_student_enrolled_section_ids(student, db)
 
     released_exam_ids = set()
-    if student.section_id:
+    if sec_ids:
         se_res = await db.execute(
             select(SectionExam.exam_id).where(
-                SectionExam.section_id == student.section_id,
+                SectionExam.section_id.in_(sec_ids),
                 SectionExam.is_grades_released == True,
                 # Scores-only releases do not expose the questionnaire / answer key
                 SectionExam.release_mode != "SCORES_ONLY",
@@ -415,12 +464,13 @@ async def list_available_exams(
     Scores and percentages remain hidden unless the teacher has released grades for this class.
     """
     student = await _get_student(current_user, db)
+    sec_ids = await _get_student_enrolled_section_ids(student, db)
 
-    # Section-level active online exams for this student
+    # Section-level active online exams for this student across all enrolled courses
     exam_online_map = {}
     exam_grades_map = {}
 
-    if student.section_id:
+    if sec_ids:
         se_res = await db.execute(
             select(SectionExam)
             .options(
@@ -428,18 +478,23 @@ async def list_available_exams(
                 selectinload(SectionExam.exam).selectinload(Exam.teacher).selectinload(Teacher.user),
             )
             .where(
-                SectionExam.section_id == student.section_id,
+                SectionExam.section_id.in_(sec_ids),
                 SectionExam.is_online_active == True,
             )
             .order_by(SectionExam.created_at.desc())
         )
         section_exams = se_res.scalars().all()
-        exams = [se.exam for se in section_exams if se.exam]
-        se_map = {se.exam.id: se for se in section_exams if se.exam}
+        seen_exam_ids = set()
+        exams = []
+        se_map = {}
         for se in section_exams:
+            if se.exam and se.exam.id not in seen_exam_ids:
+                seen_exam_ids.add(se.exam.id)
+                exams.append(se.exam)
+                se_map[se.exam.id] = se
             if se.exam:
-                exam_online_map[se.exam.id] = se.is_online_active
-                exam_grades_map[se.exam.id] = se.is_grades_released
+                exam_online_map[se.exam.id] = bool(exam_online_map.get(se.exam.id, False) or se.is_online_active)
+                exam_grades_map[se.exam.id] = bool(exam_grades_map.get(se.exam.id, False) or se.is_grades_released)
     else:
         # Fallback for unassigned students
         result = await db.execute(
@@ -519,19 +574,21 @@ async def get_exam_for_taking(
     Does not leak answer keys or explanations.
     """
     student = await _get_student(current_user, db)
+    sec_ids = await _get_student_enrolled_section_ids(student, db)
 
-    # Check online active status for student's class
+    # Check online active status across student's enrolled classes
     is_active = False
     is_grades_rel = False
     se = None
-    if student.section_id:
+    if sec_ids:
         se_res = await db.execute(
             select(SectionExam).where(
-                SectionExam.section_id == student.section_id,
+                SectionExam.section_id.in_(sec_ids),
                 SectionExam.exam_id == exam_id,
             )
         )
-        se = se_res.scalar_one_or_none()
+        se_list = se_res.scalars().all()
+        se = next((item for item in se_list if item.is_online_active), se_list[0] if se_list else None)
         if se:
             is_active = se.is_online_active
             is_grades_rel = se.is_grades_released
@@ -677,20 +734,22 @@ async def submit_exam_online(
     Grades remain private and are NOT returned to the student until the teacher releases them for this class.
     """
     student = await _get_student(current_user, db)
+    sec_ids = await _get_student_enrolled_section_ids(student, db)
 
-    # Check online active status for student's class
+    # Check online active status across student's enrolled classes
     is_active = False
     is_grades_rel = False
     section_exam_id = None
     se = None
-    if student.section_id:
+    if sec_ids:
         se_res = await db.execute(
             select(SectionExam).where(
-                SectionExam.section_id == student.section_id,
+                SectionExam.section_id.in_(sec_ids),
                 SectionExam.exam_id == exam_id,
             )
         )
-        se = se_res.scalar_one_or_none()
+        se_list = se_res.scalars().all()
+        se = next((item for item in se_list if item.is_online_active), se_list[0] if se_list else None)
         if se:
             section_exam_id = se.id
             is_active = se.is_online_active
@@ -884,9 +943,10 @@ async def get_shared_decks(
 ):
     """Returns community & section-shared reviewer decks already generated from common handouts/modules."""
     student = await _get_student(current_user, db)
+    sec_ids = await _get_student_enrolled_section_ids(student, db)
     conditions = []
-    if student.section_id:
-        conditions.append(SharedReviewerDeck.section_id == student.section_id)
+    if sec_ids:
+        conditions.append(SharedReviewerDeck.section_id.in_(sec_ids))
     conditions.append(SharedReviewerDeck.section_id.is_(None))
 
     stmt = select(SharedReviewerDeck).where(or_(*conditions)).order_by(SharedReviewerDeck.created_at.desc()).limit(30)
@@ -1121,8 +1181,8 @@ def _serialize_student_card(st: Student) -> dict:
         "username": st.user.username if st.user else "",
         "avatar_config": st.avatar_config,
         "bio": st.bio,
-        "section_id": st.section_id,
-        "section_name": st.section.name if st.section else None,
+        "section_id": None,
+        "section_name": None,
     }
 
 
@@ -1135,9 +1195,10 @@ async def get_student_friends(
 ):
     """
     Returns accepted friends, pending incoming requests, sent outgoing requests,
-    and same-section classmates for quick connecting.
+    and same-course classmates for quick connecting.
     """
     student = await _get_student(current_user, db)
+    sec_ids = await _get_student_enrolled_section_ids(student, db)
 
     # 1. Fetch all friendships involving the student
     friendships_res = await db.execute(
@@ -1185,9 +1246,17 @@ async def get_student_friends(
                 card["requested_at"] = f.created_at.isoformat()
                 outgoing_requests.append(card)
 
-    # 2. Section Classmates (Quick Connect suggestions)
+    # 2. Course Classmates (Quick Connect suggestions across all enrolled courses)
     classmates = []
-    if student.section_id:
+    if sec_ids:
+        cm_enroll_res = await db.execute(
+            select(StudentSection.student_id).where(StudentSection.section_id.in_(sec_ids))
+        )
+        cm_ids = set(cm_enroll_res.scalars().all())
+        cm_cond = Student.section_id.in_(sec_ids)
+        if cm_ids:
+            cm_cond = or_(cm_cond, Student.id.in_(cm_ids))
+
         classmates_res = await db.execute(
             select(Student)
             .options(
@@ -1195,7 +1264,7 @@ async def get_student_friends(
                 selectinload(Student.section),
             )
             .where(
-                Student.section_id == student.section_id,
+                cm_cond,
                 Student.id.not_in(connected_student_ids),
             )
             .limit(20)

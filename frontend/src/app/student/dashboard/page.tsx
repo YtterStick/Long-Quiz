@@ -168,8 +168,14 @@ interface StudentInfo {
   student_number: number;
   full_student_id?: string;
   static_prefix?: string;
-  section_id: string;
+  section_id?: string | null;
   section_name?: string | null;
+  enrolled_courses?: Array<{
+    section_id: string;
+    section_name: string;
+    subject: string;
+    teacher_name: string;
+  }>;
   first_name: string;
   last_name: string;
   total_exams: number;

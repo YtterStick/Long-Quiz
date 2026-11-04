@@ -56,6 +56,11 @@ interface StudentItem {
     name: string;
     subject?: string;
   } | null;
+  enrolled_sections?: Array<{
+    id: string;
+    name: string;
+    subject: string;
+  }>;
   user: {
     id: string;
     first_name: string;
@@ -176,9 +181,14 @@ export default function TeacherStudentsPage() {
   // Filtering
   const filteredStudents = useMemo(() => {
     return students.filter((s) => {
-      // Section filter
-      if (sectionFilter === "UNASSIGNED" && s.section_id) return false;
-      if (sectionFilter !== "ALL" && sectionFilter !== "UNASSIGNED" && s.section_id !== sectionFilter) {
+      const enrolledSecs = s.enrolled_sections || (s.section ? [{ id: s.section.id, name: s.section.name, subject: s.section.subject || "" }] : []);
+      // Course filter (scoped to current teacher's courses)
+      if (sectionFilter === "UNASSIGNED" && enrolledSecs.length > 0) return false;
+      if (
+        sectionFilter !== "ALL" &&
+        sectionFilter !== "UNASSIGNED" &&
+        !enrolledSecs.some((sec) => sec.id === sectionFilter)
+      ) {
         return false;
       }
       // Search term
@@ -188,13 +198,15 @@ export default function TeacherStudentsPage() {
       const idStr = `02000${String(s.student_number).padStart(6, "0")}`;
       const rawId = String(s.student_number);
       const userStr = s.user.username.toLowerCase();
-      const secName = (s.section?.name || "").toLowerCase();
+      const secMatch = enrolledSecs.some(
+        (sec) => sec.name.toLowerCase().includes(term) || (sec.subject || "").toLowerCase().includes(term)
+      );
       return (
         fullName.includes(term) ||
         idStr.includes(term) ||
         rawId.includes(term) ||
         userStr.includes(term) ||
-        secName.includes(term)
+        secMatch
       );
     });
   }, [students, sectionFilter, search]);
@@ -216,7 +228,7 @@ export default function TeacherStudentsPage() {
   // Open detail
   const openStudentDetail = (s: StudentItem) => {
     setSelectedStudentDetail(s);
-    setModalTargetSection(s.section_id || "");
+    setModalTargetSection("");
     setDetailCopied(false);
     setTempPasswordIssued(null);
     setCopiedTempPassword(false);
@@ -337,23 +349,37 @@ export default function TeacherStudentsPage() {
     }
   };
 
-  // Section Update in modal
+  // Course Enrollment & Unenrollment in modal
   const handleModalUpdateSection = async () => {
-    if (!selectedStudentDetail) return;
+    if (!selectedStudentDetail || !modalTargetSection) return;
     setUpdatingSection(true);
     try {
-      if (modalTargetSection) {
-        await teacherApi.enrollStudent(modalTargetSection, selectedStudentDetail.id);
-      } else if (selectedStudentDetail.section_id) {
-        await teacherApi.unenrollStudent(selectedStudentDetail.section_id, selectedStudentDetail.id);
-      }
+      await teacherApi.enrollStudent(modalTargetSection, selectedStudentDetail.id);
+      setModalTargetSection("");
       await loadData();
       const refreshed = (await teacherApi.listAllStudents()).find((st) => st.id === selectedStudentDetail.id);
       if (refreshed) {
         setSelectedStudentDetail(refreshed as StudentItem);
       }
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : "Failed to update section");
+      alert(err instanceof Error ? err.message : "Failed to enroll student into course");
+    } finally {
+      setUpdatingSection(false);
+    }
+  };
+
+  const handleModalUnenrollCourse = async (sectionIdToRemove: string) => {
+    if (!selectedStudentDetail || !sectionIdToRemove) return;
+    setUpdatingSection(true);
+    try {
+      await teacherApi.unenrollStudent(sectionIdToRemove, selectedStudentDetail.id);
+      await loadData();
+      const refreshed = (await teacherApi.listAllStudents()).find((st) => st.id === selectedStudentDetail.id);
+      if (refreshed) {
+        setSelectedStudentDetail(refreshed as StudentItem);
+      }
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to remove student from course");
     } finally {
       setUpdatingSection(false);
     }
@@ -401,7 +427,6 @@ export default function TeacherStudentsPage() {
         first_name: editFirstName.trim(),
         last_name: editLastName.trim(),
         student_number: editStudentNumber.trim() ? editStudentNumber.trim() : undefined,
-        section_id: editSectionId ? editSectionId : "",
       });
       await loadData();
       if (selectedStudentDetail?.id === editingStudent.id) {
@@ -413,6 +438,7 @@ export default function TeacherStudentsPage() {
                 full_student_id: res.full_student_id,
                 section_id: res.section_id,
                 section: res.section,
+                enrolled_sections: (res as StudentItem).enrolled_sections ?? prev.enrolled_sections,
                 user: {
                   ...prev.user,
                   first_name: res.user.first_name,
@@ -515,17 +541,17 @@ export default function TeacherStudentsPage() {
               )}
             </div>
 
-            {/* Section Filter */}
+            {/* Course Filter */}
             <div className="min-w-44">
               <CustomSelect
                 value={sectionFilter}
                 onChange={(val) => setSectionFilter(val)}
-                placeholder="All Sections"
+                placeholder="All Courses"
                 options={[
                   { value: "ALL", label: `All Students (${students.length})` },
                   {
                     value: "UNASSIGNED",
-                    label: `Not in Roster (${students.filter((s) => !s.section_id).length})`,
+                    label: `Not in Your Courses (${students.filter((s) => !(s.enrolled_sections?.length)).length})`,
                   },
                   ...sections.map((sec) => ({
                     value: sec.id,
@@ -643,7 +669,7 @@ export default function TeacherStudentsPage() {
                     <th className="py-3.5 px-4">Student ID (OMR)</th>
                     <th className="py-3.5 px-4">Name</th>
                     <th className="py-3.5 px-4">Username</th>
-                    <th className="py-3.5 px-4">Section / Class</th>
+                    <th className="py-3.5 px-4">Your Courses</th>
                     <th className="py-3.5 px-4">Status / Alerts</th>
                     <th className="py-3.5 px-4 text-right">Actions</th>
                   </tr>
@@ -678,16 +704,24 @@ export default function TeacherStudentsPage() {
                         @{s.user.username}
                       </td>
 
-                      {/* Section Column */}
+                      {/* Courses Column */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
-                        {s.section ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-full bg-steel-ghost px-2.5 py-0.5 text-[11px] font-bold text-steel border border-steel-border">
-                            <School className="h-3 w-3" />
-                            {s.section.name}
-                          </span>
+                        {s.enrolled_sections && s.enrolled_sections.length > 0 ? (
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {s.enrolled_sections.map((sec) => (
+                              <span
+                                key={sec.id}
+                                className="inline-flex items-center gap-1.5 rounded-full bg-steel-ghost px-2.5 py-0.5 text-[11px] font-bold text-steel border border-steel-border"
+                                title={sec.subject}
+                              >
+                                <School className="h-3 w-3" />
+                                {sec.name}
+                              </span>
+                            ))}
+                          </div>
                         ) : (
                           <span className="inline-flex items-center rounded-full bg-surface-subtle px-2.5 py-0.5 text-[11px] font-semibold text-text-muted border border-border-default">
-                            Not in Roster
+                            Not in Your Courses
                           </span>
                         )}
                       </td>
@@ -769,15 +803,21 @@ export default function TeacherStudentsPage() {
                   </div>
                 </div>
 
-                {/* Section & Status */}
-                <div className="flex items-center gap-2 shrink-0">
-                  {s.section ? (
-                    <span className="inline-flex items-center rounded-full bg-steel-ghost px-2.5 py-0.5 text-[10px] font-bold text-steel border border-steel-border">
-                      {s.section.name}
-                    </span>
+                {/* Courses & Status */}
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                  {s.enrolled_sections && s.enrolled_sections.length > 0 ? (
+                    s.enrolled_sections.map((sec) => (
+                      <span
+                        key={sec.id}
+                        className="inline-flex items-center rounded-full bg-steel-ghost px-2.5 py-0.5 text-[10px] font-bold text-steel border border-steel-border"
+                        title={sec.subject}
+                      >
+                        {sec.name}
+                      </span>
+                    ))
                   ) : (
                     <span className="inline-flex items-center rounded-full bg-surface-subtle px-2.5 py-0.5 text-[10px] font-semibold text-text-muted border border-border-default">
-                      Not in Roster
+                      Not in Your Courses
                     </span>
                   )}
 
@@ -837,13 +877,20 @@ export default function TeacherStudentsPage() {
                         <KeyRound className="h-2.5 w-2.5" />
                         Reset
                       </span>
-                    ) : s.section ? (
-                      <span className="inline-flex items-center rounded-full bg-steel-ghost px-2.5 py-0.5 text-[10px] font-bold text-steel border border-steel-border">
-                        {s.section.name}
-                      </span>
+                    ) : s.enrolled_sections && s.enrolled_sections.length > 0 ? (
+                      <div className="flex items-center gap-1 flex-wrap justify-end">
+                        <span className="inline-flex items-center rounded-full bg-steel-ghost px-2.5 py-0.5 text-[10px] font-bold text-steel border border-steel-border">
+                          {s.enrolled_sections[0].name}
+                        </span>
+                        {s.enrolled_sections.length > 1 && (
+                          <span className="inline-flex items-center rounded-full bg-surface-subtle px-2 py-0.5 text-[10px] font-bold text-text-secondary border border-border-default">
+                            +{s.enrolled_sections.length - 1}
+                          </span>
+                        )}
+                      </div>
                     ) : (
                       <span className="inline-flex items-center rounded-full bg-surface-subtle px-2 py-0.5 text-[10px] font-semibold text-text-muted border border-border-default">
-                        Not in Roster
+                        Not in Your Courses
                       </span>
                     )}
                   </div>
@@ -1580,34 +1627,88 @@ export default function TeacherStudentsPage() {
               </div>
             </div>
 
-            {/* Class Section & Roster Management */}
-            <div className="rounded-2xl bg-surface-base p-3.5 border border-border-default space-y-2.5">
-              <span className="text-xs font-bold text-text-primary block">Class Section Enrollment</span>
+            {/* Course Memberships (Microsoft Teams Style - Scoped to Logged-In Teacher) */}
+            <div className="rounded-2xl bg-surface-base p-3.5 border border-border-default space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold text-text-primary block">Your Courses & Class Memberships</span>
+                  <p className="text-[10px] text-text-muted mt-0.5">
+                    Courses managed by you that this student is enrolled in.
+                  </p>
+                </div>
+                <span className="rounded-full bg-steel-ghost px-2.5 py-0.5 text-[10px] font-bold text-steel border border-steel-border">
+                  {selectedStudentDetail.enrolled_sections?.length ?? 0} Course(s)
+                </span>
+              </div>
 
-              <CustomSelect
-                value={modalTargetSection}
-                onChange={(val) => setModalTargetSection(val)}
-                placeholder="None (Unassigned / Directory Only)"
-                options={[
-                  { value: "", label: "None (Unassigned / Directory Only)" },
-                  ...sections.map((sec) => ({
-                    value: sec.id,
-                    label: sec.name,
-                    badge: sec.subject,
-                  })),
-                ]}
-              />
+              {selectedStudentDetail.enrolled_sections && selectedStudentDetail.enrolled_sections.length > 0 ? (
+                <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                  {selectedStudentDetail.enrolled_sections.map((sec) => (
+                    <div
+                      key={sec.id}
+                      className="flex items-center justify-between rounded-xl bg-surface-subtle p-2.5 border border-border-default"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <School className="h-3.5 w-3.5 text-steel shrink-0" />
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-text-primary truncate">{sec.name}</p>
+                          <p className="text-[10px] text-text-muted truncate">{sec.subject}</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleModalUnenrollCourse(sec.id)}
+                        disabled={updatingSection}
+                        className="text-xs font-bold text-rose-500 hover:underline shrink-0 ml-2 cursor-pointer"
+                      >
+                        {updatingSection ? "Removing..." : "Remove"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-xl bg-surface-subtle p-2.5 border border-border-default text-xs text-text-muted">
+                  Not enrolled in any of your courses yet
+                </div>
+              )}
 
-              {modalTargetSection !== (selectedStudentDetail.section_id || "") && (
-                <button
-                  type="button"
-                  onClick={handleModalUpdateSection}
-                  disabled={updatingSection}
-                  className="w-full flex items-center justify-center gap-1.5 rounded-xl gradient-bg-primary py-2 text-xs font-bold text-white shadow-xs cursor-pointer disabled:opacity-50"
-                >
-                  {updatingSection ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                  <span>Save Section Assignment</span>
-                </button>
+              {sections.some(
+                (sec) => !(selectedStudentDetail.enrolled_sections || []).some((es) => es.id === sec.id)
+              ) && (
+                <div className="space-y-2 pt-2 border-t border-border-default/60">
+                  <label className="block text-[11px] font-bold text-text-secondary">
+                    Add Student to Course:
+                  </label>
+                  <CustomSelect
+                    value={modalTargetSection}
+                    onChange={(val) => setModalTargetSection(val)}
+                    placeholder="Select a course to enroll student..."
+                    options={[
+                      { value: "", label: "Select a course to enroll student..." },
+                      ...sections
+                        .filter(
+                          (sec) => !(selectedStudentDetail.enrolled_sections || []).some((es) => es.id === sec.id)
+                        )
+                        .map((sec) => ({
+                          value: sec.id,
+                          label: sec.name,
+                          badge: sec.subject,
+                        })),
+                    ]}
+                  />
+
+                  {modalTargetSection && (
+                    <button
+                      type="button"
+                      onClick={handleModalUpdateSection}
+                      disabled={updatingSection}
+                      className="w-full flex items-center justify-center gap-1.5 rounded-xl gradient-bg-primary py-2 text-xs font-bold text-white shadow-xs cursor-pointer disabled:opacity-50"
+                    >
+                      {updatingSection ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                      <span>Add to Course</span>
+                    </button>
+                  )}
+                </div>
               )}
             </div>
 
@@ -1756,25 +1857,6 @@ export default function TeacherStudentsPage() {
                   />
                 </div>
                 <p className="text-[10px] text-text-muted mt-1">6-digit number printed on bubble sheets.</p>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-text-secondary mb-1">
-                  Class Section Assignment
-                </label>
-                <CustomSelect
-                  value={editSectionId}
-                  onChange={(val) => setEditSectionId(val)}
-                  placeholder="None (Unassigned in Directory)"
-                  options={[
-                    { value: "", label: "None (Unassigned in Directory)" },
-                    ...sections.map((sec) => ({
-                      value: sec.id,
-                      label: sec.name,
-                      badge: sec.subject,
-                    })),
-                  ]}
-                />
               </div>
 
               <div className="flex gap-2 pt-2">

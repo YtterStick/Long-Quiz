@@ -116,6 +116,14 @@ class StudentCSVRow(BaseModel):
     student_number: Optional[Union[int, str]] = None
 
 
+class SectionBriefOut(BaseModel):
+    id: str
+    name: str
+    subject: str
+
+    model_config = {"from_attributes": True}
+
+
 class StudentOut(BaseModel):
     id: str
     user_id: str
@@ -123,6 +131,7 @@ class StudentOut(BaseModel):
     full_student_id: Optional[str] = None  # e.g. "02000282222"
     section_id: Optional[str] = None
     section: Optional[SectionOut] = None
+    enrolled_sections: List[SectionBriefOut] = []
     user: UserOut
     temp_password: Optional[str] = None  # Only returned on creation
     has_pending_reset_request: Optional[bool] = False
