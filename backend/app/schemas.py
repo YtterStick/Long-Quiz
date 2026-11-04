@@ -135,6 +135,8 @@ class StudentOut(BaseModel):
     user: UserOut
     temp_password: Optional[str] = None  # Only returned on creation
     has_pending_reset_request: Optional[bool] = False
+    avatar_config: Optional[str] = None
+    bio: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

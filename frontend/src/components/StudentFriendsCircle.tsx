@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   Users,
   UserPlus,
@@ -18,6 +19,7 @@ import {
   Share2,
   CheckCircle2,
   ArrowRight,
+  Eye,
 } from "lucide-react";
 import {
   student as studentApi,
@@ -48,6 +50,7 @@ export function StudentFriendsCircle({ onOpenReviewerWithDeck }: StudentFriendsC
   const [isSearching, setIsSearching] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [previewStudent, setPreviewStudent] = useState<StudentFriendCard | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -235,14 +238,21 @@ export function StudentFriendsCircle({ onOpenReviewerWithDeck }: StudentFriendsC
                     key={st.student_id}
                     className="flex items-center justify-between p-3.5 rounded-xl border border-border-default bg-surface-base/80 hover:bg-surface-overlay hover:border-steel/40 transition shadow-xs"
                   >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <StudentAvatar
-                        config={parseAvatarConfig(st.avatar_config)}
-                        size={40}
-                      />
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-text-primary truncate">
-                          {st.full_name}
+                    <div
+                      onClick={() => setPreviewStudent(st)}
+                      className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer group"
+                      title="Click to view classmate profile"
+                    >
+                      <div className="shrink-0 group-hover:scale-105 transition-transform">
+                        <StudentAvatar
+                          config={parseAvatarConfig(st.avatar_config)}
+                          size={40}
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-text-primary truncate group-hover:text-steel transition-colors flex items-center gap-1.5">
+                          <span>{st.full_name}</span>
+                          <Eye className="w-3 h-3 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
                         </p>
                         <p className="text-xs text-text-muted font-mono truncate">
                           ID: {st.full_student_id}
@@ -300,14 +310,21 @@ export function StudentFriendsCircle({ onOpenReviewerWithDeck }: StudentFriendsC
                 key={req.request_id}
                 className="flex items-center justify-between p-3.5 bg-surface-raised rounded-xl border border-border-default hover:border-tan-border shadow-xs transition"
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <StudentAvatar
-                    config={parseAvatarConfig(req.avatar_config)}
-                    size={40}
-                  />
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-text-primary truncate">
-                      {req.full_name}
+                <div
+                  onClick={() => setPreviewStudent(req)}
+                  className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer group"
+                  title="Click to view classmate profile"
+                >
+                  <div className="shrink-0 group-hover:scale-105 transition-transform">
+                    <StudentAvatar
+                      config={parseAvatarConfig(req.avatar_config)}
+                      size={40}
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-text-primary truncate group-hover:text-steel transition-colors flex items-center gap-1.5">
+                      <span>{req.full_name}</span>
+                      <Eye className="w-3 h-3 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
                     </p>
                     <p className="text-xs text-text-muted font-mono truncate">
                       {req.full_student_id}
@@ -377,14 +394,21 @@ export function StudentFriendsCircle({ onOpenReviewerWithDeck }: StudentFriendsC
               >
                 <div>
                   <div className="flex items-start justify-between gap-3 mb-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <StudentAvatar
-                        config={parseAvatarConfig(fr.avatar_config)}
-                        size={48}
-                      />
-                      <div className="min-w-0">
-                        <h4 className="text-base font-bold text-text-primary leading-snug truncate">
-                          {fr.full_name}
+                    <div
+                      onClick={() => setPreviewStudent(fr)}
+                      className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer group/item"
+                      title="Click to view friend profile"
+                    >
+                      <div className="shrink-0 group-hover/item:scale-105 transition-transform">
+                        <StudentAvatar
+                          config={parseAvatarConfig(fr.avatar_config)}
+                          size={48}
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-base font-bold text-text-primary leading-snug truncate group-hover/item:text-steel transition-colors flex items-center gap-1.5">
+                          <span>{fr.full_name}</span>
+                          <Eye className="w-3.5 h-3.5 text-text-muted opacity-0 group-hover/item:opacity-100 transition-opacity" />
                         </h4>
                         <p className="text-xs font-mono text-text-muted">
                           {fr.full_student_id}
@@ -443,14 +467,21 @@ export function StudentFriendsCircle({ onOpenReviewerWithDeck }: StudentFriendsC
                 key={cm.student_id}
                 className="flex items-center justify-between p-3.5 bg-surface-base/80 hover:bg-surface-overlay rounded-xl border border-border-default hover:border-steel/40 transition shadow-xs"
               >
-                <div className="flex items-center gap-3 min-w-0">
-                  <StudentAvatar
-                    config={parseAvatarConfig(cm.avatar_config)}
-                    size={40}
-                  />
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-text-primary truncate">
-                      {cm.full_name}
+                <div
+                  onClick={() => setPreviewStudent(cm)}
+                  className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer group"
+                  title="Click to view classmate profile & avatar"
+                >
+                  <div className="shrink-0 group-hover:scale-105 transition-transform">
+                    <StudentAvatar
+                      config={parseAvatarConfig(cm.avatar_config)}
+                      size={40}
+                    />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-text-primary truncate group-hover:text-steel transition-colors flex items-center gap-1.5">
+                      <span>{cm.full_name}</span>
+                      <Eye className="w-3 h-3 text-text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
                     </p>
                     <p className="text-xs text-text-muted font-mono truncate">
                       {cm.full_student_id}
@@ -474,6 +505,164 @@ export function StudentFriendsCircle({ onOpenReviewerWithDeck }: StudentFriendsC
           </div>
         </div>
       )}
+
+      {/* Classmate / Student Profile Preview Modal */}
+      {previewStudent &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-60 flex items-center justify-center bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-200"
+            onClick={() => setPreviewStudent(null)}
+          >
+            <div
+              className="relative w-full max-w-sm rounded-3xl border border-border-default bg-surface-raised p-6 shadow-2xl space-y-5 animate-in zoom-in-95 duration-200"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Close button */}
+              <button
+                onClick={() => setPreviewStudent(null)}
+                className="absolute top-4 right-4 p-2 rounded-xl text-text-muted hover:text-text-primary hover:bg-surface-subtle transition cursor-pointer"
+                aria-label="Close profile modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              {/* Avatar Spotlight Stage */}
+              <div className="flex flex-col items-center text-center pt-2">
+                <div className="relative p-2 rounded-full bg-surface-raised border border-border-emphasis/70 shadow-xl mb-3.5">
+                  <StudentAvatar
+                    config={parseAvatarConfig(previewStudent.avatar_config)}
+                    size={104}
+                    animate={true}
+                  />
+                </div>
+
+                <h3 className="text-lg font-bold text-text-primary leading-tight">
+                  {previewStudent.full_name}
+                </h3>
+                <p className="font-mono text-xs text-text-muted mt-1">
+                  {previewStudent.full_student_id} • @{previewStudent.username}
+                </p>
+
+                {/* Bio quote if present */}
+                {previewStudent.bio ? (
+                  <div className="mt-3.5 w-full rounded-2xl bg-surface-subtle/70 border border-border-default p-3 text-xs text-text-secondary italic leading-relaxed">
+                    &ldquo;{previewStudent.bio}&rdquo;
+                  </div>
+                ) : (
+                  <p className="mt-2 text-[11px] text-text-faint">
+                    Classmate in your course
+                  </p>
+                )}
+              </div>
+
+              {/* Student Details Card */}
+              <div className="rounded-2xl border border-border-default bg-surface-base/80 p-3.5 space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-text-muted">Student ID</span>
+                  <span className="font-mono font-semibold text-text-primary">
+                    {previewStudent.full_student_id}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-text-muted">Username</span>
+                  <span className="font-mono text-steel font-semibold">
+                    @{previewStudent.username}
+                  </span>
+                </div>
+                {previewStudent.section_name && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-text-muted">Course / Section</span>
+                    <span className="font-semibold text-text-primary">
+                      {previewStudent.section_name}
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-text-muted">Status</span>
+                  <span className="font-semibold text-sage flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-sage" />
+                    Active Student
+                  </span>
+                </div>
+              </div>
+
+              {/* Action Footer */}
+              <div className="pt-1">
+                {data.friends.some((f) => f.student_id === previewStudent.student_id) ||
+                previewStudent.relationship_status === "FRIEND" ? (
+                  <div className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-sage-ghost border border-sage-border text-sage text-xs font-bold">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Connected in Study Circle</span>
+                  </div>
+                ) : data.outgoing_requests.some((r) => r.student_id === previewStudent.student_id) ||
+                  previewStudent.relationship_status === "PENDING_OUTGOING" ? (
+                  <div className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-surface-subtle border border-border-default text-text-muted text-xs font-semibold">
+                    <Clock className="w-4 h-4 text-steel" />
+                    <span>Friend Request Pending</span>
+                  </div>
+                ) : data.incoming_requests.some((r) => r.student_id === previewStudent.student_id) ||
+                  previewStudent.relationship_status === "PENDING_INCOMING" ? (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={async () => {
+                        const req = data.incoming_requests.find(
+                          (r) => r.student_id === previewStudent.student_id
+                        );
+                        if (req?.request_id) {
+                          await handleRespondRequest(req.request_id, "ACCEPT");
+                          setPreviewStudent(null);
+                        }
+                      }}
+                      className="flex-1 py-2.5 rounded-xl bg-sage hover:bg-sage-light text-white text-xs font-bold shadow-sm transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>Accept Request</span>
+                    </button>
+                    <button
+                      onClick={async () => {
+                        const req = data.incoming_requests.find(
+                          (r) => r.student_id === previewStudent.student_id
+                        );
+                        if (req?.request_id) {
+                          await handleRespondRequest(req.request_id, "DECLINE");
+                          setPreviewStudent(null);
+                        }
+                      }}
+                      className="py-2.5 px-3.5 rounded-xl bg-surface-subtle hover:bg-burgundy-ghost text-text-muted hover:text-burgundy-light border border-border-default text-xs font-semibold transition cursor-pointer"
+                    >
+                      Decline
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={async () => {
+                      await handleSendRequest(
+                        previewStudent.student_id,
+                        previewStudent.full_name
+                      );
+                      setPreviewStudent((prev) =>
+                        prev
+                          ? { ...prev, relationship_status: "PENDING_OUTGOING" }
+                          : null
+                      );
+                    }}
+                    disabled={actionLoadingId === previewStudent.student_id}
+                    className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-2xl bg-steel hover:bg-steel-light text-white text-xs font-bold shadow-md shadow-steel/25 transition cursor-pointer disabled:opacity-50"
+                  >
+                    {actionLoadingId === previewStudent.student_id ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <UserPlus className="w-4 h-4" />
+                    )}
+                    <span>Add to Study Circle</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }

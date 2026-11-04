@@ -114,6 +114,8 @@ async def _serialize_students_for_teacher(
     for s in students:
         s_out = StudentOut.model_validate(s)
         s_out.full_student_id = format_full_student_id(s.student_number)
+        s_out.avatar_config = s.avatar_config
+        s_out.bio = s.bio
         if pending_ids is not None:
             s_out.has_pending_reset_request = s.id in pending_ids
 

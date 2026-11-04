@@ -40,6 +40,8 @@ import { PasswordChangeModal } from "@/components/PasswordChangeModal";
 import { CustomSelect } from "@/components/ui/CustomSelect";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { SkeletonDashboardPage, SkeletonTable } from "@/components/ui/Skeleton";
+import { StudentAvatar } from "@/components/avatar/StudentAvatar";
+import { parseAvatarConfig } from "@/types/avatar";
 
 interface SectionItem {
   id: string;
@@ -68,6 +70,8 @@ interface StudentItem {
     last_name: string;
     username: string;
   };
+  avatar_config?: string | null;
+  bio?: string | null;
   temp_password?: string;
   has_pending_reset_request?: boolean;
 }
@@ -754,9 +758,11 @@ export default function TeacherStudentsPage() {
                       {/* Name Column */}
                       <td className="py-3.5 px-4 whitespace-nowrap">
                         <div className="flex items-center gap-2.5">
-                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface-subtle border border-border-default text-[11px] font-bold text-text-primary">
-                            {s.user.first_name[0]?.toUpperCase()}
-                            {s.user.last_name[0]?.toUpperCase()}
+                          <div className="shrink-0">
+                            <StudentAvatar
+                              config={parseAvatarConfig(s.avatar_config)}
+                              size={32}
+                            />
                           </div>
                           <span className="font-bold text-text-primary">
                             {s.user.first_name} {s.user.last_name}
@@ -847,9 +853,11 @@ export default function TeacherStudentsPage() {
               >
                 {/* Left: Avatar + Names */}
                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-subtle text-xs font-bold text-text-primary border border-border-default group-hover:border-steel/50 transition-colors">
-                    {s.user.first_name[0]?.toUpperCase()}
-                    {s.user.last_name[0]?.toUpperCase()}
+                  <div className="shrink-0">
+                    <StudentAvatar
+                      config={parseAvatarConfig(s.avatar_config)}
+                      size={44}
+                    />
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -961,9 +969,11 @@ export default function TeacherStudentsPage() {
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-subtle text-xs font-bold text-text-primary border border-border-default group-hover:border-steel/50 transition-colors">
-                      {s.user.first_name[0]?.toUpperCase()}
-                      {s.user.last_name[0]?.toUpperCase()}
+                    <div className="shrink-0">
+                      <StudentAvatar
+                        config={parseAvatarConfig(s.avatar_config)}
+                        size={44}
+                      />
                     </div>
                     <div className="min-w-0 flex-1">
                       <h3 className="font-bold text-sm text-text-primary truncate group-hover:text-steel transition-colors">
@@ -1591,9 +1601,12 @@ export default function TeacherStudentsPage() {
             {/* Header */}
             <div className="flex items-start justify-between border-b border-border-default pb-3.5">
               <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-steel-ghost text-steel text-base font-bold border border-steel-border">
-                  {selectedStudentDetail.user.first_name[0]?.toUpperCase()}
-                  {selectedStudentDetail.user.last_name[0]?.toUpperCase()}
+                <div className="shrink-0">
+                  <StudentAvatar
+                    config={parseAvatarConfig(selectedStudentDetail.avatar_config)}
+                    size={64}
+                    animate={true}
+                  />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
@@ -1627,6 +1640,11 @@ export default function TeacherStudentsPage() {
                       {detailCopied ? <Check className="h-3 w-3 text-sage" /> : <Copy className="h-3 w-3" />}
                     </button>
                   </div>
+                  {selectedStudentDetail.bio && (
+                    <p className="mt-1 text-xs text-text-secondary italic">
+                      &ldquo;{selectedStudentDetail.bio}&rdquo;
+                    </p>
+                  )}
                 </div>
               </div>
 

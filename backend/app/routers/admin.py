@@ -244,6 +244,8 @@ async def list_students(
     for st in students:
         s_out = StudentOut.model_validate(st)
         s_out.full_student_id = format_full_student_id(st.student_number)
+        s_out.avatar_config = st.avatar_config
+        s_out.bio = st.bio
         out.append(s_out)
     return out
 

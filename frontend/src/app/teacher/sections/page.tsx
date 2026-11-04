@@ -52,6 +52,8 @@ import {
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { CustomSelect } from "@/components/ui/CustomSelect";
 import { LiveExamMonitorModal } from "@/components/LiveExamMonitorModal";
+import { StudentAvatar } from "@/components/avatar/StudentAvatar";
+import { parseAvatarConfig } from "@/types/avatar";
 
 interface SectionItem {
   id: string;
@@ -82,6 +84,8 @@ interface StudentItem {
     last_name: string;
     username: string;
   };
+  avatar_config?: string | null;
+  bio?: string | null;
   temp_password?: string;
   has_pending_reset_request?: boolean;
 }
@@ -1411,8 +1415,11 @@ export default function TeacherSectionsPage() {
                               </div>
 
                               <div className="flex items-center gap-3">
-                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-subtle text-sm font-bold text-text-primary border border-border-emphasis group-hover:border-steel/50 transition-colors">
-                                  {s.user.first_name[0]?.toUpperCase()}{s.user.last_name[0]?.toUpperCase()}
+                                <div className="shrink-0">
+                                  <StudentAvatar
+                                    config={parseAvatarConfig(s.avatar_config)}
+                                    size={44}
+                                  />
                                 </div>
                                 <div className="min-w-0 flex-1">
                                   <h3 className="font-bold text-sm text-text-primary truncate group-hover:text-tan transition-colors">
@@ -1473,8 +1480,11 @@ export default function TeacherSectionsPage() {
                                   {/* Student Name */}
                                   <td className="py-3.5 px-4 whitespace-nowrap">
                                     <div className="flex items-center gap-2.5">
-                                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface-subtle border border-border-default text-[11px] font-bold text-text-primary group-hover:border-steel/50 transition-colors">
-                                        {s.user.first_name[0]?.toUpperCase()}{s.user.last_name[0]?.toUpperCase()}
+                                      <div className="shrink-0">
+                                        <StudentAvatar
+                                          config={parseAvatarConfig(s.avatar_config)}
+                                          size={32}
+                                        />
                                       </div>
                                       <span className="font-bold text-text-primary group-hover:text-tan transition-colors">
                                         {s.user.first_name} {s.user.last_name}
@@ -1561,8 +1571,11 @@ export default function TeacherSectionsPage() {
                           >
                             {/* Left: Avatar + Names */}
                             <div className="flex items-center gap-3 min-w-0 flex-1">
-                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-subtle text-xs font-bold text-text-primary border border-border-emphasis group-hover:border-steel/50 transition-colors">
-                                {s.user.first_name[0]?.toUpperCase()}{s.user.last_name[0]?.toUpperCase()}
+                              <div className="shrink-0">
+                                <StudentAvatar
+                                  config={parseAvatarConfig(s.avatar_config)}
+                                  size={44}
+                                />
                               </div>
                               <div className="min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
@@ -2341,8 +2354,11 @@ export default function TeacherSectionsPage() {
 
                                 {/* Student Name & Username */}
                                 <div className="flex items-center gap-3">
-                                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-subtle text-sm font-bold text-text-primary border border-border-emphasis group-hover:border-steel/50 transition-colors">
-                                    {s.user.first_name[0]?.toUpperCase()}{s.user.last_name[0]?.toUpperCase()}
+                                  <div className="shrink-0">
+                                    <StudentAvatar
+                                      config={parseAvatarConfig(s.avatar_config)}
+                                      size={44}
+                                    />
                                   </div>
                                   <div className="min-w-0 flex-1">
                                     <h3 className="font-bold text-sm text-text-primary truncate group-hover:text-tan transition-colors">
@@ -2409,8 +2425,11 @@ export default function TeacherSectionsPage() {
                                     {/* Name */}
                                     <td className="py-3.5 px-4 whitespace-nowrap">
                                       <div className="flex items-center gap-2.5">
-                                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface-subtle border border-border-default text-[11px] font-bold text-text-primary group-hover:border-steel/50 transition-colors">
-                                          {s.user.first_name[0]?.toUpperCase()}{s.user.last_name[0]?.toUpperCase()}
+                                        <div className="shrink-0">
+                                          <StudentAvatar
+                                            config={parseAvatarConfig(s.avatar_config)}
+                                            size={32}
+                                          />
                                         </div>
                                         <span className="font-bold text-text-primary group-hover:text-tan transition-colors">
                                           {s.user.first_name} {s.user.last_name}
@@ -2505,8 +2524,11 @@ export default function TeacherSectionsPage() {
                             >
                               {/* Left: Avatar + Names */}
                               <div className="flex items-center gap-3 min-w-0 flex-1">
-                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-subtle text-xs font-bold text-text-primary border border-border-emphasis group-hover:border-steel/50 transition-colors">
-                                  {s.user.first_name[0]?.toUpperCase()}{s.user.last_name[0]?.toUpperCase()}
+                                <div className="shrink-0">
+                                  <StudentAvatar
+                                    config={parseAvatarConfig(s.avatar_config)}
+                                    size={44}
+                                  />
                                 </div>
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-2 flex-wrap">
@@ -2609,9 +2631,12 @@ export default function TeacherSectionsPage() {
             {/* Header */}
             <div className="flex items-start justify-between border-b border-border-default pb-4">
               <div className="flex items-center gap-3.5">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl gradient-bg-primary text-text-primary text-base font-bold shadow-md shadow-steel/20 border border-steel-light/30">
-                  {selectedStudentDetail.user.first_name[0]?.toUpperCase()}
-                  {selectedStudentDetail.user.last_name[0]?.toUpperCase()}
+                <div className="shrink-0">
+                  <StudentAvatar
+                    config={parseAvatarConfig(selectedStudentDetail.avatar_config)}
+                    size={64}
+                    animate={true}
+                  />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
@@ -2645,6 +2670,11 @@ export default function TeacherSectionsPage() {
                       {detailCopied ? <Check className="h-3 w-3 text-sage" /> : <Copy className="h-3 w-3" />}
                     </button>
                   </div>
+                  {selectedStudentDetail.bio && (
+                    <p className="mt-1 text-xs text-text-secondary italic">
+                      &ldquo;{selectedStudentDetail.bio}&rdquo;
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -2950,25 +2980,33 @@ export default function TeacherSectionsPage() {
                 availableToEnroll.map((s) => (
                   <div
                     key={s.id}
-                    className="flex items-center justify-between p-2.5 rounded-lg bg-surface-subtle hover:bg-surface-muted transition-colors border border-border-emphasis/50"
+                    className="flex items-center justify-between p-2.5 rounded-lg bg-surface-subtle hover:bg-surface-muted transition-colors border border-border-emphasis/50 gap-3"
                   >
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-xs text-text-primary">
-                          {s.full_student_id || `02000${String(s.student_number).padStart(6, "0")}`}
-                        </span>
-                        <span className="font-semibold text-xs text-text-primary">
-                          {s.user.first_name} {s.user.last_name}
-                        </span>
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="shrink-0">
+                        <StudentAvatar
+                          config={parseAvatarConfig(s.avatar_config)}
+                          size={36}
+                        />
                       </div>
-                      <div className="flex items-center gap-2 mt-1 text-[11px] text-text-muted">
-                        <span className="font-mono text-tan">@{s.user.username}</span>
-                        <span>•</span>
-                        <span>
-                          {s.enrolled_sections && s.enrolled_sections.length > 0
-                            ? `In your courses: ${s.enrolled_sections.map((sec) => sec.name).join(", ")}`
-                            : "Global Student Account"}
-                        </span>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-mono font-bold text-xs text-text-primary">
+                            {s.full_student_id || `02000${String(s.student_number).padStart(6, "0")}`}
+                          </span>
+                          <span className="font-semibold text-xs text-text-primary truncate">
+                            {s.user.first_name} {s.user.last_name}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5 text-[11px] text-text-muted">
+                          <span className="font-mono text-tan">@{s.user.username}</span>
+                          <span>•</span>
+                          <span className="truncate">
+                            {s.enrolled_sections && s.enrolled_sections.length > 0
+                              ? `In your courses: ${s.enrolled_sections.map((sec) => sec.name).join(", ")}`
+                              : "Global Student Account"}
+                          </span>
+                        </div>
                       </div>
                     </div>
 
