@@ -941,30 +941,8 @@ async def get_shared_decks(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(Role.STUDENT)),
 ):
-    """Returns community & section-shared reviewer decks already generated from common handouts/modules."""
-    student = await _get_student(current_user, db)
-    sec_ids = await _get_student_enrolled_section_ids(student, db)
-    conditions = []
-    if sec_ids:
-        conditions.append(SharedReviewerDeck.section_id.in_(sec_ids))
-    conditions.append(SharedReviewerDeck.section_id.is_(None))
-
-    stmt = select(SharedReviewerDeck).where(or_(*conditions)).order_by(SharedReviewerDeck.created_at.desc()).limit(30)
-    res = await db.execute(stmt)
-    decks = res.scalars().all()
-
-    return [
-        {
-            "id": d.id,
-            "content_hash": d.content_hash,
-            "title": d.title,
-            "file_name": d.file_name,
-            "views_count": d.usage_count,
-            "created_at": d.created_at.isoformat(),
-            "deck": json.loads(d.deck_data)
-        }
-        for d in decks
-    ]
+    """Class-wide shared study decks are currently disabled."""
+    return []
 
 
 @router.post("/generate-reviewer-from-text")
