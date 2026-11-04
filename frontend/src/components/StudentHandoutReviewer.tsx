@@ -2490,7 +2490,7 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
         onCancel={() => setDeleteFolderTarget(null)}
       />
 
-      {/* Full-Screen Non-Clickable Loading Overlay with Animated Evalo Logo */}
+      {/* Full-Screen Non-Clickable Loading Overlay with Multi-Element Animated Evalo Icon */}
       {loading &&
         typeof document !== "undefined" &&
         createPortal(
@@ -2499,69 +2499,19 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
             aria-busy="true"
             aria-live="assertive"
             aria-label="Generating study reviewer"
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 backdrop-blur-md p-4 select-none cursor-wait pointer-events-auto"
+            className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black/70 backdrop-blur-md p-6 select-none cursor-wait pointer-events-auto animate-in fade-in duration-200"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="relative w-full max-w-md rounded-3xl border border-border-default bg-surface-raised p-6 sm:p-8 text-center shadow-2xl space-y-6 animate-in fade-in zoom-in-95 duration-200">
-              {/* Animated Evalo Logo Orbit */}
-              <div className="relative mx-auto flex h-28 w-28 items-center justify-center">
-                {/* Outer glowing pulse */}
-                <span className="absolute inset-0 rounded-full bg-steel/20 blur-xl animate-pulse" />
-                {/* Outer spinning ring */}
-                <span
-                  className="absolute inset-1 rounded-full border-[3px] border-dashed border-steel/60 animate-spin"
-                  style={{ animationDuration: "6s" }}
-                />
-                {/* Inner reverse spinning ring */}
-                <span
-                  className="absolute inset-3.5 rounded-full border-2 border-t-tan border-r-sage border-b-transparent border-l-transparent animate-spin"
-                  style={{ animationDuration: "2.2s", animationDirection: "reverse" }}
-                />
-                {/* Core emblem container */}
-                <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-surface-base border border-border-default shadow-lg animate-bounce" style={{ animationDuration: "2s" }}>
-                  <ExamIcon className="h-11 w-11" />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-steel-ghost border border-steel-border px-3 py-1 text-xs font-bold uppercase tracking-wider text-steel">
-                  <Sparkles className="h-3.5 w-3.5 animate-pulse" />
-                  Evalo AI Reviewer Engine
-                </span>
-                <h3 className="text-xl font-black text-text-primary">
-                  Generating Your Study Reviewer…
-                </h3>
-                <p className="text-sm font-medium text-text-secondary min-h-5">
-                  {loadingStep === 0 && "Reading & distilling your uploaded handout..."}
-                  {loadingStep === 1 && "Extracting all topics, definitions & key pointers..."}
-                  {loadingStep === 2 && "Building active-recall cards & practice quiz..."}
-                  {loadingStep === 3 && "Finalizing your complete study reviewer..."}
-                </p>
-              </div>
-
-              {/* Animated step indicator bars */}
-              <div className="grid grid-cols-4 gap-2">
-                {[0, 1, 2, 3].map((step) => (
-                  <div
-                    key={step}
-                    className={`h-1.5 rounded-full transition-all duration-500 ${
-                      step <= loadingStep ? "bg-steel shadow-xs" : "bg-surface-muted"
-                    }`}
-                  />
-                ))}
-              </div>
-
-              {/* Warning against refreshing */}
-              <div className="flex items-start gap-2.5 rounded-2xl border border-tan-border bg-tan-ghost p-3.5 text-left">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-tan" />
-                <div className="text-xs leading-relaxed text-text-primary">
-                  <strong className="font-bold text-tan block">
-                    Do not refresh or close this tab
-                  </strong>
-                  Refreshing or leaving the browser right now will cancel your reviewer generation.
-                </div>
-              </div>
-            </div>
+            <ExamIcon animated className="h-24 w-24 sm:h-28 sm:w-28 drop-shadow-2xl" />
+            <p className="mt-5 text-sm font-bold tracking-wide text-white/90 text-center">
+              {loadingStep === 0 && "Reading & distilling your handout..."}
+              {loadingStep === 1 && "Extracting all topics & definitions..."}
+              {loadingStep === 2 && "Building cards & practice quiz..."}
+              {loadingStep === 3 && "Finalizing your study reviewer..."}
+            </p>
+            <p className="mt-1.5 text-xs text-white/60 text-center">
+              Do not refresh or close this tab — refreshing will cancel generation.
+            </p>
           </div>,
           document.body
         )}
