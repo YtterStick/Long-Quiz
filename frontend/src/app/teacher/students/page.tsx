@@ -39,6 +39,7 @@ import Link from "next/link";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
 import { CustomSelect } from "@/components/ui/CustomSelect";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { SkeletonDashboardPage, SkeletonTable } from "@/components/ui/Skeleton";
 
 interface SectionItem {
   id: string;
@@ -519,6 +520,10 @@ export default function TeacherStudentsPage() {
     }
   };
 
+  if (authLoading || !user || user.role !== "TEACHER") {
+    return <SkeletonDashboardPage role="teacher" />;
+  }
+
   return (
     <div className="min-h-screen text-text-primary">
       <Navbar onOpenPasswordModal={() => setPasswordModalOpen(true)} />
@@ -690,10 +695,7 @@ export default function TeacherStudentsPage() {
 
         {/* Main Content Area: Loading vs Empty vs Table vs Grid */}
         {loading ? (
-          <div className="rounded-2xl border border-border-default bg-surface-raised p-8 text-center space-y-3">
-            <Loader2 className="mx-auto h-8 w-8 animate-spin text-steel" />
-            <p className="text-xs text-text-muted">Loading registered students...</p>
-          </div>
+          <SkeletonTable rows={6} />
         ) : filteredStudents.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-border-default bg-surface-raised/50 p-12 text-center space-y-3">
             <Users className="mx-auto h-12 w-12 text-text-muted opacity-60" />

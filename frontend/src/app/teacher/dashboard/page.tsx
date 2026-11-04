@@ -125,7 +125,7 @@ export default function TeacherDashboard() {
     }
   };
 
-  if (authLoading) {
+  if (authLoading || !user || user.role !== "TEACHER" || loading) {
     return <SkeletonDashboardPage role="teacher" />;
   }
 

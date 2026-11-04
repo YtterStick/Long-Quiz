@@ -6,7 +6,10 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { Navbar } from "@/components/Navbar";
 import { StudentHandoutReviewer } from "@/components/StudentHandoutReviewer";
-import { SkeletonReviewerList } from "@/components/ui/Skeleton";
+import {
+  SkeletonReviewerList,
+  SkeletonDashboardPage,
+} from "@/components/ui/Skeleton";
 import { Pagination } from "@/components/ui/Pagination";
 import { student as studentApi } from "@/lib/api";
 import {
@@ -146,7 +149,7 @@ export default function StudentReviewerPage() {
   }, [filteredPublicReviewers, page, pageSize]);
 
   if (authLoading || !user) {
-    return null;
+    return <SkeletonDashboardPage role="student" />;
   }
 
   return (

@@ -594,7 +594,12 @@ export default function AdminDashboard() {
     return filteredTeachers.slice(start, start + teacherPageSize);
   }, [filteredTeachers, teacherPage, teacherPageSize]);
 
-  if (authLoading) {
+  if (
+    authLoading ||
+    !user ||
+    user.role !== "ADMIN" ||
+    (loading && teachers.length === 0 && students.length === 0)
+  ) {
     return <SkeletonDashboardPage role="admin" />;
   }
 

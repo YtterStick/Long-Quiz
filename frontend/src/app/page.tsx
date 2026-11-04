@@ -17,6 +17,7 @@ import {
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
 import { ForgotPasswordModal } from "@/components/ForgotPasswordModal";
 import { ExamIcon } from "@/components/ui/ExamIcon";
+import { SkeletonDashboardPage } from "@/components/ui/Skeleton";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import {
   StudentDeskIllustration,
@@ -106,18 +107,13 @@ export default function LoginPage() {
   };
 
   if (loading || (user && !user.must_change_password)) {
-    return (
-      <main className="relative flex min-h-dvh w-full items-center justify-center bg-surface-base text-text-primary">
-        <DoodleBackgroundElements />
-        <div className="relative z-10 flex flex-col items-center gap-3">
-          <ExamIcon className="h-10 w-10 animate-pulse" />
-          <div className="flex items-center gap-2 text-xs font-semibold text-text-secondary">
-            <Loader2 className="h-4 w-4 animate-spin text-steel" />
-            <span>Redirecting to your workspace...</span>
-          </div>
-        </div>
-      </main>
-    );
+    const targetRole =
+      user?.role === "ADMIN"
+        ? "admin"
+        : user?.role === "TEACHER"
+          ? "teacher"
+          : "student";
+    return <SkeletonDashboardPage role={targetRole} />;
   }
 
   return (
