@@ -124,10 +124,6 @@ export default function StudentReviewerPage() {
     }
   }, [mode]);
 
-  if (authLoading || !user) {
-    return null;
-  }
-
   const filteredPublicReviewers = useMemo(() => {
     return publicReviewers.filter((rev) => {
       if (!searchQuery.trim()) return true;
@@ -148,6 +144,10 @@ export default function StudentReviewerPage() {
     const start = (page - 1) * pageSize;
     return filteredPublicReviewers.slice(start, start + pageSize);
   }, [filteredPublicReviewers, page, pageSize]);
+
+  if (authLoading || !user) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen bg-surface-base text-text-primary flex flex-col">
