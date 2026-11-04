@@ -37,76 +37,92 @@ def get_gemini_api_key() -> str:
     return getattr(settings, "GEMINI_API_KEY", "").strip()
 
 
-def call_gemini_json(prompt: str, system_instruction: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def call_gemini_json(
+    prompt: str,
+    system_instruction: Optional[str] = None,
+    max_output_tokens: int = 32768,
+) -> Optional[Dict[str, Any]]:
     """
     Calls Google Gemini API requesting strict JSON output.
-    Tries gemini-flash-latest first, then gemini-3.8-flash.
+    Tries high-capacity Gemini Flash models first with large output token limits.
     """
     key = get_gemini_api_key()
     if not key:
         logger.warning("No GEMINI_API_KEY available. Falling back to local parser.")
         return None
 
-    models_to_try = ["gemini-3.5-flash", "gemini-flash-lite-latest", "gemini-3.7-flash", "gemini-flash-latest"]
-    payload: Dict[str, Any] = {
-        "contents": [
-            {
-                "parts": [{"text": prompt}]
+    models_to_try = [
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-flash-latest",
+        "gemini-2.5-flash-lite",
+        "gemini-flash-lite-latest",
+    ]
+
+    def _build_payload(token_limit: int) -> bytes:
+        payload: Dict[str, Any] = {
+            "contents": [
+                {
+                    "parts": [{"text": prompt}]
+                }
+            ],
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "temperature": 0.2,
+                "maxOutputTokens": token_limit,
             }
-        ],
-        "generationConfig": {
-            "responseMimeType": "application/json",
-            "temperature": 0.2,
-            "maxOutputTokens": 8192,
         }
-    }
-
-    if system_instruction:
-        payload["systemInstruction"] = {
-            "parts": [{"text": system_instruction}]
-        }
-
-    encoded_data = json.dumps(payload).encode("utf-8")
+        if system_instruction:
+            payload["systemInstruction"] = {
+                "parts": [{"text": system_instruction}]
+            }
+        return json.dumps(payload).encode("utf-8")
 
     for model in models_to_try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-        req = urllib.request.Request(
-            url,
-            data=encoded_data,
-            headers={"Content-Type": "application/json"},
-            method="POST"
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=45) as resp:
-                raw_bytes = resp.read()
-                data = json.loads(raw_bytes.decode("utf-8"))
-                candidates = data.get("candidates", [])
-                if not candidates:
-                    continue
-                parts = candidates[0].get("content", {}).get("parts", [])
-                if not parts:
-                    continue
-                content_text = parts[0].get("text", "").strip()
-                # Remove any markdown code fence if present
-                if content_text.startswith("```json"):
-                    content_text = content_text[7:]
-                if content_text.startswith("```"):
-                    content_text = content_text[3:]
-                if content_text.endswith("```"):
-                    content_text = content_text[:-3]
-                parsed = json.loads(content_text.strip())
-                return parsed
-        except urllib.error.HTTPError as e:
-            err_body = ""
+        token_limits = [max_output_tokens, 8192] if max_output_tokens > 8192 else [max_output_tokens]
+
+        for token_limit in token_limits:
+            req = urllib.request.Request(
+                url,
+                data=_build_payload(token_limit),
+                headers={"Content-Type": "application/json"},
+                method="POST"
+            )
             try:
-                err_body = e.read().decode("utf-8")
-            except Exception:
-                pass
-            logger.warning(f"Gemini API model {model} HTTP {e.code}: {err_body}")
-            continue
-        except Exception as e:
-            logger.warning(f"Gemini API model {model} call error: {str(e)}")
-            continue
+                with urllib.request.urlopen(req, timeout=90) as resp:
+                    raw_bytes = resp.read()
+                    data = json.loads(raw_bytes.decode("utf-8"))
+                    candidates = data.get("candidates", [])
+                    if not candidates:
+                        break
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if not parts:
+                        break
+                    content_text = parts[0].get("text", "").strip()
+                    # Remove any markdown code fence if present
+                    if content_text.startswith("```json"):
+                        content_text = content_text[7:]
+                    if content_text.startswith("```"):
+                        content_text = content_text[3:]
+                    if content_text.endswith("```"):
+                        content_text = content_text[:-3]
+                    parsed = json.loads(content_text.strip())
+                    return parsed
+            except urllib.error.HTTPError as e:
+                err_body = ""
+                try:
+                    err_body = e.read().decode("utf-8")
+                except Exception:
+                    pass
+                logger.warning(f"Gemini API model {model} (maxTokens={token_limit}) HTTP {e.code}: {err_body}")
+                if e.code == 400 and token_limit > 8192:
+                    # Retry same model with 8192 maxOutputTokens if 32768 was rejected
+                    continue
+                break
+            except Exception as e:
+                logger.warning(f"Gemini API model {model} call error: {str(e)}")
+                break
 
     return None
 
@@ -407,64 +423,75 @@ def generate_reviewer_deck_gemini(raw_text: str, custom_title: Optional[str] = N
 
     system_instruction = (
         "You are an expert university curriculum assessor and academic reviewer specialist. "
-        "Your mission is to generate an exhaustive, high-yield student study reviewer that covers 100% "
-        "of the lesson handout from start to finish without leaving out any chapters, lessons, or topics. "
-        "You strictly exclude bibliographies, reference citation lists, and broken incomplete fragments."
+        "Your mission is to generate an exhaustive, line-by-line, section-by-section student study reviewer "
+        "that captures 100% of the important topics, subtopics, enumerations, characteristics, architectures, "
+        "step-by-step processes, schemas, formulas, and comparisons from the lesson handout without omitting "
+        "any section from start to finish. You strictly exclude only end-of-document bibliographies/reference citation lists."
     )
 
     clean_deck_title = custom_title or "Comprehensive Handout Study Reviewer"
 
     prompt = f"""
-Analyze the following complete course handout / lecture notes:
+Analyze the following complete course handout / lecture notes sequentially from the very first line to the very last line:
 ---
 {source_text}
 ---
 
 Generate an EXHAUSTIVE, 100% COMPLETE academic study reviewer deck based strictly on the handout provided above.
+Students rely on this reviewer as their primary study material for exams—DO NOT skip, compress, or gloss over any topic or sub-topic in the handout!
 
 CRITICAL COVERAGE REQUIREMENTS:
-1. 100% FULL-DOCUMENT COVERAGE (DO NOT STOP HALFWAY):
-   - You MUST cover the ENTIRE handout from the first page/section to the very last page/section.
-   - Do NOT summarize only the beginning or first 2 to 3 topics.
-   - Every major chapter, lesson module, core principle, process, algorithm, and formula across the entire document must be included.
-   - Organize into as many structured topic modules as needed to cover every lesson section (typically 3 to 8 topics depending on the handout length).
+1. EXHAUSTIVE SECTION-BY-SECTION & SUBTOPIC EXTRACTION (ZERO OMISSIONS):
+   - Walk through the handout sequentially from beginning to end.
+   - Create a dedicated Topic Module (`topics` item) for EVERY major heading, sub-heading, conceptual group, architecture/component breakdown, classification/type list, step-by-step workflow/process, schema/model type, and comparison table in the handout.
+   - Do NOT merge distinct sections together just to keep the topic count small. Generate as many topic modules as needed to represent every section in the handout (typically 5 to 15 topic modules depending on handout length).
+   - Never stop halfway or summarize only the first few pages.
 
-2. STRICT EXCLUSIONS (WHAT NOT TO INCLUDE):
-   - DO NOT include references, bibliographies, citations, works cited, reading lists, external web URLs, textbook publisher details, author lists, or course administration/syllabus metadata.
-   - DO NOT include incomplete fragments, broken words, or placeholder notes (e.g. "See figure 1", "Source: ...").
-   - Every flashcard, key term, bullet point, and quiz question must be complete, coherent, grammatically sound, and academically rigorous.
+2. 100% COMPLETE ENUMERATIONS, LISTS, ARCHITECTURES & COMPARISONS:
+   - Whenever the handout presents a list or enumeration (e.g., "4 Characteristics of a Data Warehouse", "Types of ...", "Components/Layers of Architecture", "Steps/Phases in ETL", "Database Schemas: Star, Snowflake, Fact Constellation", "OLTP vs. OLAP", "Advantages & Disadvantages"), you MUST include EVERY SINGLE ITEM from that list!
+   - Never include only 2 out of 4 characteristics or 3 out of 6 components. Every enumerated item must appear in `key_terms` (with its full explanation/definition and examples from the handout) AND be thoroughly explained in `bullet_points`.
+   - If the handout contains diagrams, layers, or tables (e.g., Data Sources -> Staging Area -> Warehouse -> Data Marts -> Users, or comparison tables), extract every layer, box, and comparison row into `key_terms` and `bullet_points`.
+
+3. RICH DEPTH PER TOPIC MODULE:
+   - Each topic module must contain ALL key terms/concepts introduced in that section (`key_terms`: typically 4 to 12 items per topic) with complete, detailed definitions (2–3 sentences or full explanation including examples when provided in the handout).
+   - Each topic module must contain comprehensive `bullet_points` (typically 4 to 10 detailed takeaway points per topic) explaining rules, distinctions, mechanisms, use cases, and cause-and-effect relationships.
+   - Include 2 to 3 specific, actionable `exam_tips` per topic highlighting common exam traps, distinctions to memorize, or scenario cues.
+
+4. STRICT EXCLUSIONS (WHAT NOT TO INCLUDE):
+   - DO NOT include end-of-document bibliographies, textbook reference citations, works cited, external web URLs, or ISBNs.
+   - Note: Technical terms that naturally contain the word "Reference" or "Source" (such as "Referential Integrity", "Reference Data", "OSI Reference Model", "Data Sources", "Source Systems") ARE valid academic concepts and MUST be included!
 
 REQUIRED OUTPUT STRUCTURE (Valid JSON):
 {{
   "title": "{clean_deck_title}",
   "topics": [
     {{
-      "topic_name": "Clear descriptive topic/module title",
-      "description": "Comprehensive 1-2 sentence overview of what this topic module covers",
+      "topic_name": "Clear, specific section/topic title matching the handout's progression",
+      "description": "Comprehensive 2-sentence overview of what this topic module covers and why it matters",
       "key_terms": [
-        {{ "term": "Exact Term Name", "definition": "Complete, rigorous definition of the term" }}
+        {{ "term": "Exact Term, Characteristic, Component, or Step Name", "definition": "Complete, rigorous definition and explanation including key details/examples from the handout" }}
       ],
       "bullet_points": [
-        "Complete key takeaway bullet point explaining a core rule, principle, or procedure"
+        "Detailed takeaway point explaining a core rule, mechanism, comparison, or sub-concept from this section"
       ],
       "exam_tips": [
-        "Practical exam/study tip specific to this topic"
+        "High-yield exam tip pointing out how this concept is tested or how to distinguish it from similar terms"
       ]
     }}
   ],
   "flashcards": [
     {{
       "id": "fc-1",
-      "front": "Term or core concept",
+      "front": "Term, characteristic, architecture layer, or concept question",
       "back": "Comprehensive definition, rule, or explanation",
-      "category": "Key Terminology"
+      "category": "Specific Topic Name or Key Terminology"
     }}
   ],
   "quiz_cards": [
     {{
       "id": "quiz-1",
       "question_number": 1,
-      "question": "Clear, complete question stem testing understanding across the handout",
+      "question": "Clear, exam-grade question stem (definition, distinction, or practical scenario) testing understanding",
       "options": {{
         "A": "First plausible choice",
         "B": "Second plausible choice",
@@ -473,30 +500,34 @@ REQUIRED OUTPUT STRUCTURE (Valid JSON):
       }},
       "correct_option": "A",
       "correct_answer_text": "Matching correct text",
-      "explanation": "Clear explanation of why this answer is correct"
+      "explanation": "Clear explanation of why this answer is correct and why the distractors do not fit"
     }}
   ]
 }}
 
 Generate:
-- topics: 3 to 8 topic modules covering EVERY section in the handout (each topic must have 4 to 8 key_terms and 4 to 8 bullet_points).
-- flashcards: 15 to 30 flashcards evenly distributed across ALL topics from the beginning, middle, and end of the handout.
-- quiz_cards: 12 to 20 practice questions spanning all topics across the entire handout.
+- topics: 5 to 15 topic modules covering EVERY section, subtopic, enumeration, architecture, process, and comparison in the handout from start to finish.
+- flashcards: 25 to 45 flashcards evenly distributed across ALL topic modules from the beginning, middle, and end of the handout.
+- quiz_cards: 15 to 25 practice questions spanning ALL topic modules across the entire handout.
 
 Return ONLY a valid JSON object matching this schema.
 """
 
-    result = call_gemini_json(prompt, system_instruction=system_instruction)
+    result = call_gemini_json(prompt, system_instruction=system_instruction, max_output_tokens=32768)
     if result and "topics" in result and "flashcards" in result and "quiz_cards" in result:
-        # Post-filter out any references or invalid citations that might have slipped through
-        bad_topic_keywords = [
-            "reference", "references", "bibliography", "works cited", "suggested reading",
-            "further reading", "reading list", "citation"
-        ]
+        # Post-filter out only actual bibliography/reference citation sections (do NOT drop academic terms containing "reference" or "source")
+        exact_bad_topics = {
+            "references", "reference list", "bibliography", "works cited",
+            "suggested reading", "suggested readings", "further reading",
+            "further readings", "reading list", "textbook references",
+            "online references", "acknowledgments", "acknowledgements",
+        }
+        citation_url_re = re.compile(r"https?://|www\.|\bisbn[\s:\-]*\d|\bdoi\s*:|\bretrieved\s+from\b", re.IGNORECASE)
+
         cleaned_topics = []
         for t in result.get("topics", []):
-            name_lower = (t.get("topic_name") or "").lower()
-            if any(k in name_lower for k in bad_topic_keywords):
+            name_clean = re.sub(r"[^a-z\s]", "", (t.get("topic_name") or "").lower()).strip()
+            if name_clean in exact_bad_topics:
                 continue
 
             # Filter terms inside topic
@@ -506,7 +537,8 @@ Return ONLY a valid JSON object matching this schema.
                 t_def = (item.get("definition") or "").strip()
                 if not t_name or not t_def:
                     continue
-                if any(k in t_name.lower() for k in bad_topic_keywords) or re.search(r"https?://|www\.|\bisbn\b", t_def.lower()):
+                t_name_clean = re.sub(r"[^a-z\s]", "", t_name.lower()).strip()
+                if t_name_clean in exact_bad_topics or citation_url_re.search(t_def):
                     continue
                 clean_terms.append(item)
             t["key_terms"] = clean_terms
@@ -515,11 +547,12 @@ Return ONLY a valid JSON object matching this schema.
             clean_bullets = []
             for b in t.get("bullet_points", []):
                 b_str = (b or "").strip()
-                if b_str and not re.search(r"https?://|www\.|\bisbn\b", b_str.lower()) and not any(k in b_str.lower() for k in bad_topic_keywords):
+                if b_str and not citation_url_re.search(b_str):
                     clean_bullets.append(b_str)
             t["bullet_points"] = clean_bullets
 
-            cleaned_topics.append(t)
+            if t["key_terms"] or t["bullet_points"]:
+                cleaned_topics.append(t)
 
         result["topics"] = cleaned_topics
 
@@ -530,7 +563,8 @@ Return ONLY a valid JSON object matching this schema.
             back = (fc.get("back") or "").strip()
             if not front or not back:
                 continue
-            if any(k in front.lower() for k in bad_topic_keywords) or re.search(r"https?://|www\.|\bisbn\b", back.lower()):
+            front_clean = re.sub(r"[^a-z\s]", "", front.lower()).strip()
+            if front_clean in exact_bad_topics or citation_url_re.search(back):
                 continue
             clean_flashcards.append(fc)
         result["flashcards"] = clean_flashcards
@@ -539,7 +573,7 @@ Return ONLY a valid JSON object matching this schema.
         clean_quizzes = []
         for q in result.get("quiz_cards", []):
             q_text = (q.get("question") or "").strip()
-            if not q_text or any(k in q_text.lower() for k in bad_topic_keywords):
+            if not q_text or citation_url_re.search(q_text):
                 continue
             clean_quizzes.append(q)
         result["quiz_cards"] = clean_quizzes
