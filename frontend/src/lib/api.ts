@@ -1505,6 +1505,12 @@ export interface GeneratedReviewerDeck {
   source_text?: string;
   file_name?: string;
   file_preview_url?: string;
+  uploaded_files?: Array<{
+    name: string;
+    preview_url?: string;
+    text?: string;
+    is_pdf?: boolean;
+  }>;
   cached?: boolean;
   quota_used?: number;
   quota_remaining?: number;

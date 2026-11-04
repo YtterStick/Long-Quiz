@@ -1023,45 +1023,71 @@ async def generate_reviewer_from_text(
 
 @router.post("/generate-reviewer-from-file")
 async def generate_reviewer_from_file(
-    file: UploadFile = File(...),
+    files: Optional[list[UploadFile]] = File(None),
+    file: Optional[UploadFile] = File(None),
     title: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(Role.STUDENT)),
 ):
     """
-    Uploads a PDF or TXT handout and auto-generates pointers to review, 3D flashcards, and practice quiz cards.
-    Applies smart text distillation, section-level shared caching by file hash, and 10 handouts/week quota.
+    Uploads 1 to 3 PDF/TXT/MD/DOCX handouts and auto-generates pointers to review,
+    cards, and practice quiz cards combined into a single unified reviewer deck.
     """
-    filename = file.filename.lower() if file.filename else ""
-    if not (filename.endswith(".pdf") or filename.endswith(".txt") or filename.endswith(".docx") or filename.endswith(".md")):
-        raise HTTPException(
-            status_code=400,
-            detail="Unsupported file format. Please upload a PDF (.pdf), Text file (.txt), or Markdown (.md)."
-        )
+    upload_list: list[UploadFile] = []
+    if files:
+        upload_list.extend([f for f in files if f and f.filename])
+    if file and file.filename and all(f.filename != file.filename for f in upload_list):
+        upload_list.append(file)
 
-    content_bytes = await file.read()
-    if not content_bytes:
-        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+    if not upload_list:
+        raise HTTPException(status_code=400, detail="Please upload at least 1 handout file.")
+    if len(upload_list) > 3:
+        raise HTTPException(status_code=400, detail="You can upload a maximum of 3 handout files per reviewer.")
 
-    extracted_text = ""
-    if filename.endswith(".pdf"):
-        try:
-            extracted_text = extract_text_from_pdf(content_bytes)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Could not read PDF document: {str(e)}")
-    else:
-        try:
-            raw_content = content_bytes.decode("utf-8", errors="replace")
-            extracted_text = distill_handout_text(raw_content)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Could not decode text file: {str(e)}")
+    extracted_parts: list[str] = []
+    file_names: list[str] = []
 
+    for idx, up_file in enumerate(upload_list, start=1):
+        raw_name = up_file.filename or f"Handout_{idx}"
+        filename = raw_name.lower()
+        if not (filename.endswith(".pdf") or filename.endswith(".txt") or filename.endswith(".docx") or filename.endswith(".md")):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file format for '{raw_name}'. Please upload PDF (.pdf), Text (.txt), or Markdown (.md)."
+            )
+
+        content_bytes = await up_file.read()
+        if not content_bytes:
+            raise HTTPException(status_code=400, detail=f"Uploaded file '{raw_name}' is empty.")
+
+        part_text = ""
+        if filename.endswith(".pdf"):
+            try:
+                part_text = extract_text_from_pdf(content_bytes)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Could not read PDF '{raw_name}': {str(e)}")
+        else:
+            try:
+                raw_content = content_bytes.decode("utf-8", errors="replace")
+                part_text = distill_handout_text(raw_content)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Could not decode text file '{raw_name}': {str(e)}")
+
+        if part_text and len(part_text.strip()) >= 15:
+            file_names.append(raw_name)
+            if len(upload_list) > 1:
+                extracted_parts.append(f"=== Handout {idx}: {raw_name} ===\n{part_text.strip()}")
+            else:
+                extracted_parts.append(part_text.strip())
+
+    extracted_text = "\n\n".join(extracted_parts)
     if not extracted_text or len(extracted_text.strip()) < 30:
         raise HTTPException(
             status_code=400,
-            detail="The uploaded document does not contain enough readable text to generate study materials."
+            detail="The uploaded document(s) do not contain enough readable text to generate study materials."
         )
 
+    joined_file_names = ", ".join(file_names)
     student = await _get_student(current_user, db)
     content_hash = compute_content_hash(extracted_text)
 
@@ -1078,8 +1104,8 @@ async def generate_reviewer_from_file(
         deck_data = json.loads(cached_deck.deck_data)
         if not deck_data.get("source_text"):
             deck_data["source_text"] = extracted_text
-        if not deck_data.get("file_name") and file.filename:
-            deck_data["file_name"] = file.filename
+        if not deck_data.get("file_name") and joined_file_names:
+            deck_data["file_name"] = joined_file_names
         deck_data["cached"] = True
         deck_data["quota_used"] = used
         deck_data["quota_remaining"] = max(0, MAX_MONTHLY_HANDOUT_GENERATIONS - used)
@@ -1092,14 +1118,17 @@ async def generate_reviewer_from_file(
             detail="The AI Reviewer generator is currently unavailable and taking a rest for this monthly cycle. You can still access all saved decks and section-shared reviewers without any limit!"
         )
 
-    raw_fname = file.filename or "Handout Reviewer"
-    clean_file_title = title or raw_fname.rsplit(".", 1)[0].replace("_", " ").replace("-", " ").title()
+    cleaned_stems = [
+        fn.rsplit(".", 1)[0].replace("_", " ").replace("-", " ").title()
+        for fn in file_names
+    ]
+    clean_file_title = title or (" + ".join(cleaned_stems) if cleaned_stems else "Handout Reviewer")
 
     # 3. Generate New Deck
     try:
         result = parse_and_generate_reviewer(extracted_text, custom_title=clean_file_title)
         result["source_text"] = extracted_text
-        result["file_name"] = file.filename
+        result["file_name"] = joined_file_names
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to generate reviewer from file: {str(e)}")
 
@@ -1107,7 +1136,7 @@ async def generate_reviewer_from_file(
     new_shared_deck = SharedReviewerDeck(
         content_hash=content_hash,
         title=result["title"],
-        file_name=file.filename,
+        file_name=joined_file_names,
         section_id=student.section_id,
         created_by_user_id=current_user.id,
         deck_data=json.dumps(result),

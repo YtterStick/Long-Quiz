@@ -114,9 +114,14 @@ const FOLDER_COLORS: Record<
 };
 
 export function StudentHandoutReviewer() {
-  // Input states
+  // Input states (supports 1 to 3 handout files per reviewer)
+  const MAX_HANDOUT_FILES = 3;
   const [inputMode, setInputMode] = useState<"file" | "text">("file");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<
+    Array<{ file: File; previewUrl: string; text?: string }>
+  >([]);
+  const [removeFileIndexTarget, setRemoveFileIndexTarget] = useState<number | null>(null);
+  const [activeHandoutFileIndex, setActiveHandoutFileIndex] = useState(0);
   const [rawText, setRawText] = useState("");
   const [deckTitle, setDeckTitle] = useState("");
   const [loading, setLoading] = useState(false);
@@ -485,48 +490,83 @@ export function StudentHandoutReviewer() {
   };
 
   const confirmRemoveFile = () => {
-    if (uploadedFileUrl) {
-      try {
-        URL.revokeObjectURL(uploadedFileUrl);
-      } catch {}
+    if (removeFileIndexTarget !== null) {
+      setSelectedFiles((prev) => {
+        const next = prev.filter((_, idx) => idx !== removeFileIndexTarget);
+        if (next.length > 0) {
+          setDeckTitle(
+            next
+              .map((item) => item.file.name.replace(/\.[^/.]+$/, ""))
+              .join(" + ")
+          );
+        } else {
+          setDeckTitle("");
+        }
+        return next;
+      });
+    } else {
+      setSelectedFiles([]);
+      setDeckTitle("");
     }
-    setUploadedFileUrl(null);
-    setUploadedFileText(null);
-    setSelectedFile(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
+    setRemoveFileIndexTarget(null);
     setRemoveFileModalOpen(false);
     showToast("Uploaded file removed.");
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      if (uploadedFileUrl) {
-        try {
-          URL.revokeObjectURL(uploadedFileUrl);
-        } catch {}
-      }
-      const previewUrl = URL.createObjectURL(file);
-      setUploadedFileUrl(previewUrl);
-      if (
-        file.name.toLowerCase().endsWith(".txt") ||
-        file.name.toLowerCase().endsWith(".md")
-      ) {
-        file
-          .text()
-          .then((txt) => setUploadedFileText(txt))
-          .catch(() => setUploadedFileText(null));
-      } else {
-        setUploadedFileText(null);
-      }
-      setSelectedFile(file);
-      setError(null);
-      if (!deckTitle) {
-        setDeckTitle(file.name.replace(/\.[^/.]+$/, ""));
-      }
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const incoming = Array.from(e.target.files);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
+
+    const remainingSlots = MAX_HANDOUT_FILES - selectedFiles.length;
+    if (remainingSlots <= 0) {
+      showToast(`Maximum of ${MAX_HANDOUT_FILES} handout files allowed per reviewer.`);
+      return;
+    }
+
+    const allowedIncoming = incoming.slice(0, remainingSlots);
+    if (incoming.length > remainingSlots) {
+      showToast(
+        `Added ${allowedIncoming.length} file(s). Maximum of ${MAX_HANDOUT_FILES} files per reviewer.`
+      );
+    }
+
+    const newEntries = await Promise.all(
+      allowedIncoming.map(async (file) => {
+        const previewUrl = URL.createObjectURL(file);
+        let text: string | undefined;
+        if (
+          file.name.toLowerCase().endsWith(".txt") ||
+          file.name.toLowerCase().endsWith(".md")
+        ) {
+          try {
+            text = await file.text();
+          } catch {
+            text = undefined;
+          }
+        }
+        return { file, previewUrl, text };
+      })
+    );
+
+    setSelectedFiles((prev) => {
+      // Avoid exact duplicate filename in current selection
+      const existingNames = new Set(prev.map((p) => p.file.name));
+      const deduped = newEntries.filter((n) => !existingNames.has(n.file.name));
+      const merged = [...prev, ...deduped].slice(0, MAX_HANDOUT_FILES);
+      setDeckTitle(
+        merged
+          .map((item) => item.file.name.replace(/\.[^/.]+$/, ""))
+          .join(" + ")
+      );
+      return merged;
+    });
+    setError(null);
   };
 
   const handleGenerate = async () => {
@@ -537,22 +577,29 @@ export function StudentHandoutReviewer() {
       let result: GeneratedReviewerDeck;
 
       if (inputMode === "file") {
-        if (!selectedFile) {
-          throw new Error("Please select a PDF or Text handout to upload.");
+        if (selectedFiles.length === 0) {
+          throw new Error("Please select 1 to 3 handout files to upload.");
         }
         const formData = new FormData();
-        formData.append("file", selectedFile);
+        selectedFiles.forEach((item) => {
+          formData.append("files", item.file);
+        });
+        formData.append("file", selectedFiles[0].file);
         if (deckTitle.trim()) {
           formData.append("title", deckTitle.trim());
         }
         result = await studentApi.generateReviewerFromFile(formData);
-        result.file_name = result.file_name || selectedFile.name;
-        if (uploadedFileUrl) {
-          result.file_preview_url = uploadedFileUrl;
-        }
-        if (!result.source_text && uploadedFileText) {
-          result.source_text = uploadedFileText;
-        }
+        result.file_name =
+          result.file_name || selectedFiles.map((s) => s.file.name).join(", ");
+        result.file_preview_url = selectedFiles[0].previewUrl;
+        result.uploaded_files = selectedFiles.map((s) => ({
+          name: s.file.name,
+          preview_url: s.previewUrl,
+          text: s.text,
+          is_pdf:
+            s.file.name.toLowerCase().endsWith(".pdf") ||
+            s.file.type === "application/pdf",
+        }));
       } else {
         if (!rawText.trim() || rawText.trim().length < 30) {
           throw new Error("Please paste at least a few sentences of lecture notes.");
@@ -567,6 +614,17 @@ export function StudentHandoutReviewer() {
       setActiveDeck(result);
       saveDeckToStorage(result);
       fetchQuotaAndShared();
+
+      // Clear generator inputs so next time "Generate from handout" is opened it is fresh
+      setSelectedFiles([]);
+      setUploadedFileUrl(null);
+      setUploadedFileText(null);
+      setDeckTitle("");
+      setRawText("");
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+
       setGeneratorOpen(false);
       setCollapsedTopics(new Set());
       setView("study");
@@ -881,7 +939,8 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
                 My decks
               </button>
               <div className="flex flex-wrap items-center gap-1.5">
-                {(activeDeck.file_preview_url ||
+                {(activeDeck.uploaded_files?.length ||
+                  activeDeck.file_preview_url ||
                   activeDeck.source_text ||
                   uploadedFileUrl ||
                   uploadedFileText) && (
@@ -889,19 +948,23 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
                     id="reviewer-view-handout"
                     type="button"
                     onClick={() => {
-                      const hasPdf =
-                        Boolean(activeDeck.file_preview_url || uploadedFileUrl) &&
-                        ((activeDeck.file_name || selectedFile?.name || "")
-                          .toLowerCase()
-                          .endsWith(".pdf") ||
-                          selectedFile?.type === "application/pdf");
+                      setActiveHandoutFileIndex(0);
+                      const firstUploaded = activeDeck.uploaded_files?.[0];
+                      const hasPdf = firstUploaded
+                        ? Boolean(firstUploaded.preview_url && firstUploaded.is_pdf)
+                        : Boolean(activeDeck.file_preview_url || uploadedFileUrl) &&
+                          (activeDeck.file_name || "")
+                            .toLowerCase()
+                            .endsWith(".pdf");
                       setHandoutViewTab(hasPdf ? "pdf" : "text");
                       setHandoutViewerOpen(true);
                     }}
                     className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-tan-border bg-tan-ghost px-3 text-sm font-semibold text-tan hover:brightness-105 transition cursor-pointer"
                   >
                     <Eye className="h-4 w-4" />
-                    View Handout
+                    {activeDeck.uploaded_files && activeDeck.uploaded_files.length > 1
+                      ? `View Handouts (${activeDeck.uploaded_files.length})`
+                      : "View Handout"}
                   </button>
                 )}
                 <button
@@ -1763,62 +1826,89 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
               </div>
 
               {inputMode === "file" ? (
-                <div>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-xs text-text-muted">
+                    <span>
+                      Upload 1 to {MAX_HANDOUT_FILES} handouts for this reviewer
+                    </span>
+                    <span className="font-semibold text-text-secondary">
+                      {selectedFiles.length} / {MAX_HANDOUT_FILES} selected
+                    </span>
+                  </div>
                   <input
                     type="file"
                     ref={fileInputRef}
                     accept=".pdf,.txt,.docx,.md"
+                    multiple
                     onChange={handleFileChange}
                     className="hidden"
                   />
-                  {selectedFile ? (
-                    <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-border-default bg-surface-base p-3.5">
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-steel-ghost border border-steel-border text-steel">
-                        <FileText className="h-5 w-5" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[15px] font-semibold text-text-primary">{selectedFile.name}</p>
-                        <p className="mt-0.5 flex items-center gap-1.5 text-[13px] text-text-muted">
-                          {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB
-                          <span aria-hidden>·</span>
-                          <span className="inline-flex items-center gap-1 font-semibold text-sage">
-                            <CheckCircle2 className="h-3.5 w-3.5" /> Ready
-                          </span>
-                        </p>
-                      </div>
-                      {(uploadedFileUrl || uploadedFileText) && (
+                  {selectedFiles.length > 0 ? (
+                    <div className="space-y-2.5">
+                      {selectedFiles.map((item, idx) => (
+                        <div
+                          key={`${item.file.name}-${idx}`}
+                          className="flex flex-wrap items-center gap-3 rounded-2xl border border-border-default bg-surface-base p-3.5"
+                        >
+                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-steel-ghost border border-steel-border text-steel font-bold text-xs">
+                            {idx + 1}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[15px] font-semibold text-text-primary">
+                              {item.file.name}
+                            </p>
+                            <p className="mt-0.5 flex items-center gap-1.5 text-[13px] text-text-muted">
+                              {(item.file.size / (1024 * 1024)).toFixed(2)} MB
+                              <span aria-hidden>·</span>
+                              <span className="inline-flex items-center gap-1 font-semibold text-sage">
+                                <CheckCircle2 className="h-3.5 w-3.5" /> Ready
+                              </span>
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveHandoutFileIndex(idx);
+                              const isPdf =
+                                item.file.name.toLowerCase().endsWith(".pdf") ||
+                                item.file.type === "application/pdf";
+                              setHandoutViewTab(isPdf ? "pdf" : "text");
+                              setHandoutViewerOpen(true);
+                            }}
+                            className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-tan-border bg-tan-ghost px-3 text-sm font-semibold text-tan hover:brightness-105 transition cursor-pointer"
+                            title="Preview uploaded handout"
+                          >
+                            <Eye className="h-4 w-4" />
+                            <span>Check Handout</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRemoveFileIndexTarget(idx);
+                              setRemoveFileModalOpen(true);
+                            }}
+                            aria-label={`Remove ${item.file.name}`}
+                            title="Remove uploaded file"
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-text-muted hover:bg-burgundy-ghost hover:text-burgundy transition cursor-pointer"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+
+                      {selectedFiles.length < MAX_HANDOUT_FILES && (
                         <button
                           type="button"
-                          onClick={() => {
-                            const isPdf =
-                              selectedFile.name.toLowerCase().endsWith(".pdf") ||
-                              selectedFile.type === "application/pdf";
-                            setHandoutViewTab(isPdf ? "pdf" : "text");
-                            setHandoutViewerOpen(true);
-                          }}
-                          className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-tan-border bg-tan-ghost px-3 text-sm font-semibold text-tan hover:brightness-105 transition cursor-pointer"
-                          title="Preview uploaded handout"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border-emphasis bg-surface-base/50 py-3 px-4 text-sm font-semibold text-steel hover:border-steel hover:bg-steel-ghost transition cursor-pointer"
                         >
-                          <Eye className="h-4 w-4" />
-                          <span>Check Handout</span>
+                          <Plus className="h-4 w-4" />
+                          <span>
+                            Add another handout ({MAX_HANDOUT_FILES - selectedFiles.length} slot
+                            {MAX_HANDOUT_FILES - selectedFiles.length === 1 ? "" : "s"} left)
+                          </span>
                         </button>
                       )}
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="hidden sm:flex min-h-10 items-center rounded-xl px-3 text-sm font-semibold text-text-secondary hover:bg-surface-subtle hover:text-text-primary transition cursor-pointer"
-                      >
-                        Change
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setRemoveFileModalOpen(true)}
-                        aria-label="Remove uploaded file"
-                        title="Remove uploaded file"
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-text-muted hover:bg-burgundy-ghost hover:text-burgundy transition cursor-pointer"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
                     </div>
                   ) : (
                     <button
@@ -1830,8 +1920,12 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
                       <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-steel-ghost border border-steel-border text-steel transition-transform group-hover:scale-105">
                         <UploadCloud className="h-6 w-6" />
                       </span>
-                      <span className="block text-[15px] font-semibold text-text-primary">Tap to choose a handout</span>
-                      <span className="mt-1 block text-[13px] text-text-muted">PDF, DOCX, TXT or MD · up to 20 MB</span>
+                      <span className="block text-[15px] font-semibold text-text-primary">
+                        Tap to choose 1 to {MAX_HANDOUT_FILES} handouts
+                      </span>
+                      <span className="mt-1 block text-[13px] text-text-muted">
+                        PDF, DOCX, TXT or MD · up to {MAX_HANDOUT_FILES} files combined in 1 reviewer
+                      </span>
                     </button>
                   )}
                 </div>
@@ -1890,7 +1984,7 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
                 id="reviewer-generate"
                 type="button"
                 onClick={handleGenerate}
-                disabled={loading || (quotaInfo !== null && quotaInfo.remaining <= 0) || (inputMode === "file" && !selectedFile) || (inputMode === "text" && !rawText.trim())}
+                disabled={loading || (quotaInfo !== null && quotaInfo.remaining <= 0) || (inputMode === "file" && selectedFiles.length === 0) || (inputMode === "text" && !rawText.trim())}
                 className="rv-btn-primary flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl px-6 text-[15px] font-semibold shadow-md active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100 cursor-pointer disabled:cursor-not-allowed"
               >
                 {loading ? (
@@ -2280,12 +2374,19 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
       <ConfirmModal
         isOpen={removeFileModalOpen}
         title="Remove uploaded file?"
-        message={`Are you sure you want to remove "${selectedFile?.name}"? You will need to select or re-upload your document before generating reviewer flashcards.`}
+        message={`Are you sure you want to remove "${
+          removeFileIndexTarget !== null
+            ? selectedFiles[removeFileIndexTarget]?.file.name || "this file"
+            : "this file"
+        }"?`}
         confirmText="Remove File"
         cancelText="Keep File"
         variant="danger"
         onConfirm={confirmRemoveFile}
-        onCancel={() => setRemoveFileModalOpen(false)}
+        onCancel={() => {
+          setRemoveFileIndexTarget(null);
+          setRemoveFileModalOpen(false);
+        }}
       />
 
       {/* Confirm Warning for Saved Deck Deletion */}
@@ -2521,18 +2622,60 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
         typeof document !== "undefined" &&
         createPortal(
           (() => {
-            const pdfUrl = activeDeck?.file_preview_url || uploadedFileUrl;
+            const isStudyMode = view === "study" && Boolean(activeDeck);
+            const handoutFilesList = isStudyMode
+              ? activeDeck?.uploaded_files && activeDeck.uploaded_files.length > 0
+                ? activeDeck.uploaded_files
+                : activeDeck?.file_preview_url || activeDeck?.source_text
+                  ? [
+                      {
+                        name:
+                          activeDeck.file_name ||
+                          activeDeck.title ||
+                          "Uploaded Handout",
+                        preview_url: activeDeck.file_preview_url,
+                        text: activeDeck.source_text,
+                        is_pdf: Boolean(
+                          activeDeck.file_preview_url &&
+                            (activeDeck.file_name || "")
+                              .toLowerCase()
+                              .endsWith(".pdf")
+                        ),
+                      },
+                    ]
+                  : []
+              : selectedFiles.map((s) => ({
+                  name: s.file.name,
+                  preview_url: s.previewUrl,
+                  text: s.text,
+                  is_pdf:
+                    s.file.name.toLowerCase().endsWith(".pdf") ||
+                    s.file.type === "application/pdf",
+                }));
+
+            const safeIdx =
+              handoutFilesList.length > 0
+                ? Math.min(activeHandoutFileIndex, handoutFilesList.length - 1)
+                : 0;
+            const currentFile = handoutFilesList[safeIdx];
+
+            const pdfUrl =
+              currentFile?.preview_url ||
+              (isStudyMode ? activeDeck?.file_preview_url : uploadedFileUrl);
             const fileName =
-              activeDeck?.file_name ||
-              selectedFile?.name ||
-              activeDeck?.title ||
-              "Uploaded Handout";
-            const isPdfAvailable =
-              Boolean(pdfUrl) &&
-              (fileName.toLowerCase().endsWith(".pdf") ||
-                selectedFile?.type === "application/pdf");
+              currentFile?.name ||
+              (isStudyMode
+                ? activeDeck?.file_name || activeDeck?.title || "Uploaded Handout"
+                : "Uploaded Handout");
+            const isPdfAvailable = Boolean(
+              pdfUrl &&
+                (currentFile?.is_pdf || fileName.toLowerCase().endsWith(".pdf"))
+            );
             const fullSourceText =
-              activeDeck?.source_text || uploadedFileText || rawText || "";
+              currentFile?.text ||
+              (isStudyMode
+                ? activeDeck?.source_text || ""
+                : uploadedFileText || rawText || activeDeck?.source_text || "");
             const searchClean = handoutSearch.trim().toLowerCase();
             const filteredLines = fullSourceText
               ? fullSourceText
@@ -2565,6 +2708,9 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
                         </h3>
                         <p className="text-xs text-text-muted">
                           Uploaded Handout Reference Viewer
+                          {handoutFilesList.length > 1
+                            ? ` · Handout ${safeIdx + 1} of ${handoutFilesList.length}`
+                            : ""}
                         </p>
                       </div>
                     </div>
@@ -2617,6 +2763,35 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
                       </button>
                     </div>
                   </div>
+
+                  {/* Multi-File Switcher Bar (when 2 or 3 files uploaded) */}
+                  {handoutFilesList.length > 1 && (
+                    <div className="flex flex-wrap items-center gap-2 border-b border-border-default bg-surface-subtle/60 px-4 py-2.5 sm:px-6">
+                      {handoutFilesList.map((fItem, fIdx) => {
+                        const isSelected = fIdx === safeIdx;
+                        return (
+                          <button
+                            key={`${fItem.name}-${fIdx}`}
+                            type="button"
+                            onClick={() => {
+                              setActiveHandoutFileIndex(fIdx);
+                              setHandoutViewTab(
+                                fItem.preview_url && fItem.is_pdf ? "pdf" : "text"
+                              );
+                            }}
+                            className={`inline-flex max-w-[240px] items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition cursor-pointer ${
+                              isSelected
+                                ? "bg-steel text-white shadow-xs"
+                                : "border border-border-default bg-surface-base text-text-secondary hover:text-text-primary"
+                            }`}
+                          >
+                            <span className="shrink-0 font-bold">#{fIdx + 1}</span>
+                            <span className="truncate">{fItem.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
 
                   {/* Modal Body */}
                   <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
