@@ -287,6 +287,7 @@ app.include_router(teacher.router)
 app.include_router(student.router)
 app.include_router(lobby.teacher_router)
 app.include_router(lobby.student_router)
+app.include_router(lobby.ws_router)
 
 
 @app.get("/api/health")

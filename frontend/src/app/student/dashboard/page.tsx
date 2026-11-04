@@ -4,7 +4,7 @@ import React, { useEffect, useRef, useState, useMemo } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/Navbar";
-import { student as studentApi } from "@/lib/api";
+import { student as studentApi, getWebSocketUrl } from "@/lib/api";
 import { Pagination } from "@/components/ui/Pagination";
 import {
   GraduationCap,
@@ -237,10 +237,28 @@ export default function StudentDashboard() {
   const awayRef = useRef(false);
   const autoSubmittingRef = useRef(false);
   const alertTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lobbyWsRef = useRef<WebSocket | null>(null);
+  const startingExamRef = useRef(false);
   const [antiCheatAlert, setAntiCheatAlert] = useState<{
     message: string;
     type: "blur" | "fullscreen";
   } | null>(null);
+  const [isFullscreenActive, setIsFullscreenActive] = useState(false);
+
+  // Continuously track document fullscreen status
+  useEffect(() => {
+    const handleFsChange = () => {
+      const fs = Boolean(typeof document !== "undefined" && document.fullscreenElement);
+      setIsFullscreenActive(fs);
+    };
+    handleFsChange();
+    document.addEventListener("fullscreenchange", handleFsChange);
+    document.addEventListener("webkitfullscreenchange", handleFsChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFsChange);
+      document.removeEventListener("webkitfullscreenchange", handleFsChange);
+    };
+  }, []);
 
   const [activeTakingExam, setActiveTakingExam] = useState<ExamTakingDetail | null>(null);
   const [takingAnswers, setTakingAnswers] = useState<Record<number, string>>({});
@@ -466,7 +484,33 @@ export default function StudentDashboard() {
     }
   };
 
+  const handleReEnterFullscreen = async () => {
+    try {
+      if (typeof document !== "undefined" && document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen();
+        setIsFullscreenActive(true);
+      }
+      if (typeof navigator !== "undefined" && "keyboard" in navigator && typeof (navigator as any).keyboard?.lock === "function") {
+        try {
+          await (navigator as any).keyboard.lock(["Tab", "AltLeft", "AltRight", "Escape", "MetaLeft", "MetaRight", "F4", "F11"]);
+        } catch {
+          try {
+            await (navigator as any).keyboard.lock();
+          } catch {}
+        }
+      }
+    } catch (e) {
+      console.warn("Fullscreen request error:", e);
+    }
+    if (alertTimerRef.current) {
+      clearTimeout(alertTimerRef.current);
+      alertTimerRef.current = null;
+    }
+    setAntiCheatAlert(null);
+  };
+
   const handleJoinLobbyFullscreen = async () => {
+    setIsFullscreenActive(true);
     try {
       if (document.documentElement.requestFullscreen) {
         await document.documentElement.requestFullscreen();
@@ -511,26 +555,46 @@ export default function StudentDashboard() {
     setTimeRemaining(null);
   };
 
-  // Lobby Polling Effect: pings backend every 2 seconds while in lobby
+  const sendStudentWsState = (payload: {
+    is_fullscreen: boolean;
+    is_focused: boolean;
+    violation?: boolean;
+    violation_type?: "TAB" | "FULLSCREEN";
+  }) => {
+    const ws = lobbyWsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "STATE", ...payload }));
+      return true;
+    }
+    return false;
+  };
+
+  // Real-Time WebSocket Engine for Lobby & Active Exam (with automatic silent fallback)
   useEffect(() => {
-    if (!isWaitingInLobby || !lobbyExamId) return;
+    const isSessionActive = isWaitingInLobby || isExamInProgress;
+    if (!isSessionActive || !lobbyExamId) {
+      if (lobbyWsRef.current) {
+        try {
+          lobbyWsRef.current.close();
+        } catch {}
+        lobbyWsRef.current = null;
+      }
+      startingExamRef.current = false;
+      return;
+    }
 
     let isSubscribed = true;
+    let reconnectTimer: NodeJS.Timeout | null = null;
+    let keepAliveTimer: NodeJS.Timeout | null = null;
+    let fallbackPollTimer: NodeJS.Timeout | null = null;
 
-    const doPing = async () => {
-      try {
-        const isFullscreen = Boolean(document.fullscreenElement);
-        const isFocused = !document.hidden;
-        const res = await studentApi.pingLobby(lobbyExamId, {
-          is_fullscreen: isFullscreen,
-          is_focused: isFocused,
-        });
-
-        if (!isSubscribed) return;
-
-        if (res.status === "STARTED") {
-          // Instructor started the exam! Fetch questions and begin immediately
+    const handleStatusPayload = async (status: string) => {
+      if (!isSubscribed) return;
+      if (status === "STARTED" && isWaitingInLobby && !startingExamRef.current) {
+        startingExamRef.current = true;
+        try {
           const detail = await studentApi.getExamForTaking(lobbyExamId);
+          if (!isSubscribed) return;
           setActiveTakingExam(detail);
           if (detail.has_time_limit) {
             const initialSecs =
@@ -551,30 +615,127 @@ export default function StudentDashboard() {
           awayRef.current = false;
           autoSubmittingRef.current = false;
           setAntiCheatAlert(null);
-        } else if (res.status === "CLOSED") {
-          if (typeof document !== "undefined" && document.fullscreenElement && document.exitFullscreen) {
-            await document.exitFullscreen().catch(() => {});
-          }
-          setIsWaitingInLobby(false);
-          setExamLobbyOpen(false);
-          setLobbyExamId(null);
-          setLobbyExamInfo(null);
-          setTimeRemaining(null);
-          alert("The online exam lobby was closed by your instructor.");
+        } catch (err) {
+          startingExamRef.current = false;
+          console.error("Failed to load exam on start signal:", err);
         }
-      } catch (err) {
-        console.error("Lobby ping error:", err);
+      } else if (status === "CLOSED") {
+        if (typeof document !== "undefined" && document.fullscreenElement && document.exitFullscreen) {
+          await document.exitFullscreen().catch(() => {});
+        }
+        setIsWaitingInLobby(false);
+        setIsExamInProgress(false);
+        setExamLobbyOpen(false);
+        setLobbyExamId(null);
+        setLobbyExamInfo(null);
+        setActiveTakingExam(null);
+        setTimeRemaining(null);
+        alert("The online exam session was closed by your instructor.");
       }
     };
 
-    doPing();
-    const interval = setInterval(doPing, 2000);
+    const startFallbackPolling = () => {
+      if (fallbackPollTimer || !isSubscribed) return;
+      fallbackPollTimer = setInterval(async () => {
+        if (!isSubscribed) return;
+        if (lobbyWsRef.current && lobbyWsRef.current.readyState === WebSocket.OPEN) return;
+        try {
+          const res = await studentApi.pingLobby(lobbyExamId, {
+            is_fullscreen: Boolean(document.fullscreenElement),
+            is_focused: !document.hidden && document.hasFocus(),
+          });
+          await handleStatusPayload(res.status);
+        } catch {}
+      }, 4000);
+    };
+
+    const stopFallbackPolling = () => {
+      if (fallbackPollTimer) {
+        clearInterval(fallbackPollTimer);
+        fallbackPollTimer = null;
+      }
+    };
+
+    const connectWs = () => {
+      if (!isSubscribed) return;
+      try {
+        const ws = new WebSocket(getWebSocketUrl(`/api/ws/student/exams/${lobbyExamId}/lobby`));
+        lobbyWsRef.current = ws;
+
+        ws.onopen = () => {
+          if (!isSubscribed) {
+            ws.close();
+            return;
+          }
+          stopFallbackPolling();
+          ws.send(
+            JSON.stringify({
+              type: "STATE",
+              is_fullscreen: Boolean(document.fullscreenElement),
+              is_focused: !document.hidden && document.hasFocus(),
+            })
+          );
+          if (keepAliveTimer) clearInterval(keepAliveTimer);
+          keepAliveTimer = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(
+                JSON.stringify({
+                  type: "PING",
+                  is_fullscreen: Boolean(document.fullscreenElement),
+                  is_focused: !document.hidden && document.hasFocus(),
+                })
+              );
+            }
+          }, 10000);
+        };
+
+        ws.onmessage = (event) => {
+          if (!isSubscribed) return;
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.type === "STATUS" && msg.status) {
+              handleStatusPayload(msg.status);
+            } else if (msg.type === "ERROR" && msg.detail) {
+              alert(msg.detail);
+              handleLeaveLobby();
+            }
+          } catch {}
+        };
+
+        ws.onclose = () => {
+          if (keepAliveTimer) {
+            clearInterval(keepAliveTimer);
+            keepAliveTimer = null;
+          }
+          if (!isSubscribed) return;
+          startFallbackPolling();
+          reconnectTimer = setTimeout(connectWs, 3000);
+        };
+
+        ws.onerror = () => {
+          ws.close();
+        };
+      } catch {
+        startFallbackPolling();
+        reconnectTimer = setTimeout(connectWs, 3000);
+      }
+    };
+
+    connectWs();
 
     return () => {
       isSubscribed = false;
-      clearInterval(interval);
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (keepAliveTimer) clearInterval(keepAliveTimer);
+      stopFallbackPolling();
+      if (lobbyWsRef.current) {
+        try {
+          lobbyWsRef.current.close();
+        } catch {}
+        lobbyWsRef.current = null;
+      }
     };
-  }, [isWaitingInLobby, lobbyExamId]);
+  }, [isWaitingInLobby, isExamInProgress, lobbyExamId]);
 
   const handleSelectOption = (questionNumber: number, optionKey: string) => {
     setTakingAnswers((prev) => ({
@@ -683,22 +844,6 @@ export default function StudentDashboard() {
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Exam heartbeat: keeps the teacher's live monitor updated while the student is answering
-  useEffect(() => {
-    if (!isExamInProgress || !lobbyExamId) return;
-    const beat = () => {
-      studentApi
-        .pingLobby(lobbyExamId, {
-          is_fullscreen: Boolean(document.fullscreenElement),
-          is_focused: !document.hidden && document.hasFocus(),
-        })
-        .catch(() => {});
-    };
-    beat();
-    const interval = setInterval(beat, 3000);
-    return () => clearInterval(interval);
-  }, [isExamInProgress, lobbyExamId]);
-
   // Anti-Cheat Engine: monitors fullscreen exits and tab switching / Alt-Tab (Active during both Lobby & Exam)
   useEffect(() => {
     const isGuarded = isExamInProgress || isWaitingInLobby;
@@ -730,18 +875,21 @@ export default function StudentDashboard() {
 
     const report = (type: "TAB" | "FULLSCREEN") => {
       if (!lobbyExamId) return;
-      studentApi
-        .pingLobby(lobbyExamId, {
-          is_fullscreen: Boolean(document.fullscreenElement),
-          is_focused: type === "TAB" ? false : !document.hidden,
-          violation: true,
-          violation_type: type,
-        })
-        .catch(() => {});
+      const payload = {
+        is_fullscreen: Boolean(document.fullscreenElement),
+        is_focused: type === "TAB" ? false : !document.hidden,
+        violation: true,
+        violation_type: type,
+      };
+      if (!sendStudentWsState(payload)) {
+        studentApi.pingLobby(lobbyExamId, payload).catch(() => {});
+      }
     };
 
     const onFullscreenChange = () => {
-      if (!document.fullscreenElement) {
+      const fs = Boolean(typeof document !== "undefined" && document.fullscreenElement);
+      setIsFullscreenActive(fs);
+      if (!fs) {
         if (alertTimerRef.current) {
           clearTimeout(alertTimerRef.current);
           alertTimerRef.current = null;
@@ -752,11 +900,6 @@ export default function StudentDashboard() {
           } catch {}
         }
         report("FULLSCREEN");
-        setAntiCheatAlert({
-          message:
-            "Full-screen mode was exited! Full-screen mode is strictly required. Please re-enter full-screen immediately.",
-          type: "fullscreen",
-        });
         registerStrike(`Maximum security violations reached (${MAX_STRIKES} strikes)`);
       } else {
         // Clear alert and timer on fullscreen re-entry
@@ -765,9 +908,13 @@ export default function StudentDashboard() {
           alertTimerRef.current = null;
         }
         setAntiCheatAlert(null);
+        sendStudentWsState({
+          is_fullscreen: true,
+          is_focused: !document.hidden && document.hasFocus(),
+        });
         // Re-lock keyboard on fullscreen re-entry
         if (typeof navigator !== "undefined" && "keyboard" in navigator && typeof (navigator as any).keyboard?.lock === "function") {
-          (navigator as any).keyboard.lock(["Tab", "AltLeft", "AltRight", "Escape", "MetaLeft", "MetaRight"]).catch(() => {
+          (navigator as any).keyboard.lock(["Tab", "AltLeft", "AltRight", "Escape", "MetaLeft", "MetaRight", "F4", "F11"]).catch(() => {
             (navigator as any).keyboard.lock().catch(() => {});
           });
         }
@@ -799,6 +946,10 @@ export default function StudentDashboard() {
     const onFocusRegained = () => {
       if (!document.hidden && document.hasFocus()) {
         awayRef.current = false;
+        sendStudentWsState({
+          is_fullscreen: Boolean(document.fullscreenElement),
+          is_focused: true,
+        });
         // Auto-clear alert once focus is smoothly restored
         if (typeof document !== "undefined" && document.fullscreenElement) {
           if (alertTimerRef.current) clearTimeout(alertTimerRef.current);
@@ -2264,7 +2415,7 @@ export default function StudentDashboard() {
       {/* 3. Modal: Active Proctored Online Exam */}
       {isExamInProgress && activeTakingExam && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md p-2 sm:p-4 select-none">
-          <div className="w-full max-w-4xl h-[96vh] flex flex-col rounded-2xl border border-border-default bg-surface-overlay shadow-2xl overflow-hidden">
+          <div className={`w-full max-w-4xl h-[96vh] flex flex-col rounded-2xl border border-border-default bg-surface-overlay shadow-2xl overflow-hidden transition-all duration-200 ${!isFullscreenActive ? "filter blur-xl opacity-20 pointer-events-none select-none" : ""}`}>
             {/* Modal Header with Fullscreen Indicator */}
             <div className="flex items-center justify-between px-6 py-3.5 border-b border-border-default bg-surface-base shrink-0">
               <div>
@@ -2466,105 +2617,83 @@ export default function StudentDashboard() {
         </div>
       )}
 
-      {/* 4. Modal: Anti-Cheat Violation Alert */}
-      {antiCheatAlert && (
-        antiCheatAlert.type === "fullscreen" && !Boolean(typeof document !== "undefined" && document.fullscreenElement) ? (
-          // Fullscreen exited: Required fullscreen re-entry modal
-          <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 select-none animate-in fade-in">
-            <div className="w-full max-w-md rounded-2xl border border-burgundy-border bg-surface-overlay p-6 shadow-2xl text-center space-y-4">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-burgundy-ghost text-burgundy-light border border-burgundy-border">
-                <ShieldAlert className="h-8 w-8" />
+      {/* 4. Mandatory Fullscreen Lock Screen */}
+      {/* If exam is in progress or student is in lobby, and browser is NOT in fullscreen, HARD BLOCK THE ENTIRE UI */}
+      {(isExamInProgress || isWaitingInLobby) && !isFullscreenActive && (
+        <div className="fixed inset-0 z-70 flex items-center justify-center bg-black/95 backdrop-blur-xl p-4 select-none animate-in fade-in">
+          <div className="w-full max-w-md rounded-2xl border border-burgundy-border bg-surface-overlay p-6 shadow-2xl text-center space-y-4">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-burgundy-ghost text-burgundy-light border border-burgundy-border">
+              <ShieldAlert className="h-8 w-8" />
+            </div>
+            <h2 className="text-lg font-black text-burgundy-light">
+              Full-Screen Mode Required
+            </h2>
+            <p className="text-xs text-text-secondary leading-relaxed">
+              You cannot view, interact with, or take this examination outside of proctored full-screen mode.
+              Exiting full-screen is strictly prohibited.
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-xl bg-burgundy-ghost/50 border border-burgundy-border p-3 text-xs font-mono font-bold text-burgundy-light">
+                Strikes: {antiCheatStrikes} / 3
               </div>
-              <h2 className="text-lg font-black text-burgundy-light">
-                Academic Integrity Warning
-              </h2>
-              <p className="text-xs text-text-secondary leading-relaxed">
+              <div className="rounded-xl bg-burgundy-ghost/50 border border-burgundy-border p-3 text-xs font-mono font-bold text-burgundy-light">
+                Alt-Tabs: {tabSwitchCount}
+              </div>
+            </div>
+            <p className="text-[11px] text-text-muted">
+              Alt-Tab, window switching, or leaving full-screen is forbidden. 3 strikes will trigger automatic submission of your examination.
+            </p>
+            <button
+              type="button"
+              onClick={handleReEnterFullscreen}
+              className="w-full rounded-xl bg-burgundy-light text-white font-bold py-3 text-xs shadow-md cursor-pointer hover:opacity-95 transition-all active:scale-98"
+            >
+              Re-Enter Fullscreen & Resume Exam
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 5. In-Exam Security Warning Toast (Only active when in fullscreen) */}
+      {antiCheatAlert && isFullscreenActive && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-60 w-[92%] max-w-lg select-none pointer-events-auto animate-in slide-in-from-top-4 fade-in duration-200">
+          <div className="rounded-2xl border-2 border-burgundy-light bg-surface-overlay/95 backdrop-blur-xl p-4 shadow-2xl shadow-burgundy/20 flex items-start gap-3.5">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-burgundy-ghost text-burgundy-light border border-burgundy-border">
+              <ShieldAlert className="h-5 w-5 animate-pulse" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-xs font-black uppercase tracking-wider text-burgundy-light">
+                  Proctoring Violation Warning
+                </h3>
+                <span className="text-[10px] font-mono font-bold text-burgundy-light bg-burgundy-ghost px-2 py-0.5 rounded-full border border-burgundy-border">
+                  Strikes: {antiCheatStrikes} / 3
+                </span>
+              </div>
+              <p className="text-xs font-semibold text-text-primary mt-1">
                 {antiCheatAlert.message}
               </p>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-xl bg-burgundy-ghost/50 border border-burgundy-border p-3 text-xs font-mono font-bold text-burgundy-light">
-                  Strikes: {antiCheatStrikes} / 3
-                </div>
-                <div className="rounded-xl bg-burgundy-ghost/50 border border-burgundy-border p-3 text-xs font-mono font-bold text-burgundy-light">
-                  Alt-Tabs: {tabSwitchCount}
-                </div>
+              <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-border-default/60 text-[10px] text-text-muted">
+                <span>Alt-Tab, ESC, and Alt+F4 are locked and prohibited.</span>
+                <span className="italic text-text-faint">Auto-dismissing...</span>
               </div>
-              <p className="text-[11px] text-text-muted">
-                Alt-Tab, window switching, or leaving full-screen is forbidden. 3 strikes will trigger automatic submission of your examination.
-              </p>
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    if (document.documentElement.requestFullscreen) {
-                      await document.documentElement.requestFullscreen();
-                    }
-                    if (typeof navigator !== "undefined" && "keyboard" in navigator && typeof (navigator as any).keyboard?.lock === "function") {
-                      try {
-                        await (navigator as any).keyboard.lock(["Tab", "AltLeft", "AltRight", "Escape", "MetaLeft", "MetaRight"]);
-                      } catch {
-                        try {
-                          await (navigator as any).keyboard.lock();
-                        } catch {}
-                      }
-                    }
-                  } catch (e) {
-                    console.warn("Fullscreen request error:", e);
-                  }
-                  if (alertTimerRef.current) {
-                    clearTimeout(alertTimerRef.current);
-                    alertTimerRef.current = null;
-                  }
-                  setAntiCheatAlert(null);
-                }}
-                className="w-full rounded-xl bg-burgundy-light text-white font-bold py-2.5 text-xs shadow-md cursor-pointer hover:opacity-95 transition-all"
-              >
-                Re-Enter Fullscreen & Resume Exam
-              </button>
             </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (alertTimerRef.current) {
+                  clearTimeout(alertTimerRef.current);
+                  alertTimerRef.current = null;
+                }
+                setAntiCheatAlert(null);
+              }}
+              className="p-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-subtle transition-colors cursor-pointer shrink-0"
+              title="Dismiss warning"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
-        ) : (
-          // In-exam security warning toast/banner (Alt-Tab, Alt+F4, ESC attempted while in fullscreen)
-          // Automatically removed after 3.5s so it never gets buggy!
-          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-60 w-[92%] max-w-lg select-none pointer-events-auto animate-in slide-in-from-top-4 fade-in duration-200">
-            <div className="rounded-2xl border-2 border-burgundy-light bg-surface-overlay/95 backdrop-blur-xl p-4 shadow-2xl shadow-burgundy/20 flex items-start gap-3.5">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-burgundy-ghost text-burgundy-light border border-burgundy-border">
-                <ShieldAlert className="h-5 w-5 animate-pulse" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-xs font-black uppercase tracking-wider text-burgundy-light">
-                    Proctoring Violation Warning
-                  </h3>
-                  <span className="text-[10px] font-mono font-bold text-burgundy-light bg-burgundy-ghost px-2 py-0.5 rounded-full border border-burgundy-border">
-                    Strikes: {antiCheatStrikes} / 3
-                  </span>
-                </div>
-                <p className="text-xs font-semibold text-text-primary mt-1">
-                  {antiCheatAlert.message}
-                </p>
-                <div className="flex items-center justify-between mt-2 pt-1.5 border-t border-border-default/60 text-[10px] text-text-muted">
-                  <span>Alt-Tab, ESC, and Alt+F4 are locked and prohibited.</span>
-                  <span className="italic text-text-faint">Auto-dismissing...</span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  if (alertTimerRef.current) {
-                    clearTimeout(alertTimerRef.current);
-                    alertTimerRef.current = null;
-                  }
-                  setAntiCheatAlert(null);
-                }}
-                className="p-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-subtle transition-colors cursor-pointer shrink-0"
-                title="Dismiss warning"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-        )
+        </div>
       )}
 
       {/* Confirmation Modal when submitting incomplete exam */}

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useMemo } from "react";
-import { teacher as teacherApi } from "@/lib/api";
+import { teacher as teacherApi, getWebSocketUrl } from "@/lib/api";
 import {
   X,
   Play,
@@ -158,16 +158,98 @@ export function LiveExamMonitorModal({
       return;
     }
 
+    let isSubscribed = true;
+    let ws: WebSocket | null = null;
+    let reconnectTimer: NodeJS.Timeout | null = null;
+    let keepAliveTimer: NodeJS.Timeout | null = null;
+    let fallbackPollTimer: NodeJS.Timeout | null = null;
+
     setLoading(true);
-    fetchMonitor();
 
-    // Auto-poll live roster every 3 seconds
-    const interval = setInterval(() => {
+    const startFallback = () => {
+      if (fallbackPollTimer || !isSubscribed) return;
       fetchMonitor();
-    }, 3000);
+      fallbackPollTimer = setInterval(() => {
+        if (!isSubscribed) return;
+        if (ws && ws.readyState === WebSocket.OPEN) return;
+        fetchMonitor();
+      }, 4000);
+    };
 
-    return () => clearInterval(interval);
-  }, [isOpen, fetchMonitor]);
+    const stopFallback = () => {
+      if (fallbackPollTimer) {
+        clearInterval(fallbackPollTimer);
+        fallbackPollTimer = null;
+      }
+    };
+
+    const connectWs = () => {
+      if (!isSubscribed) return;
+      try {
+        ws = new WebSocket(getWebSocketUrl(`/api/ws/teacher/sections/${sectionId}/exams/${examId}/monitor`));
+
+        ws.onopen = () => {
+          if (!isSubscribed) {
+            ws?.close();
+            return;
+          }
+          stopFallback();
+          if (keepAliveTimer) clearInterval(keepAliveTimer);
+          keepAliveTimer = setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: "REFRESH" }));
+            }
+          }, 12000);
+        };
+
+        ws.onmessage = (event) => {
+          if (!isSubscribed) return;
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.type === "MONITOR_UPDATE" && msg.data) {
+              setData(msg.data);
+              setLoading(false);
+              setFetchError(null);
+              if (onStatusChanged) {
+                onStatusChanged(msg.data.is_online_active, msg.data.is_started);
+              }
+            }
+          } catch {}
+        };
+
+        ws.onclose = () => {
+          if (keepAliveTimer) {
+            clearInterval(keepAliveTimer);
+            keepAliveTimer = null;
+          }
+          if (!isSubscribed) return;
+          startFallback();
+          reconnectTimer = setTimeout(connectWs, 3000);
+        };
+
+        ws.onerror = () => {
+          ws?.close();
+        };
+      } catch {
+        startFallback();
+        reconnectTimer = setTimeout(connectWs, 3000);
+      }
+    };
+
+    connectWs();
+
+    return () => {
+      isSubscribed = false;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      if (keepAliveTimer) clearInterval(keepAliveTimer);
+      stopFallback();
+      if (ws) {
+        try {
+          ws.close();
+        } catch {}
+      }
+    };
+  }, [isOpen, sectionId, examId]);
 
   // Pause Exam (freezes students, leaves online active so teacher can resume)
   const handlePauseExam = async () => {

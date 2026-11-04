@@ -463,6 +463,16 @@ async def toggle_section_exam_online(
 
     await db.commit()
 
+    try:
+        from app.routers.lobby import lobby_manager
+        if not se.is_online_active:
+            await lobby_manager.broadcast_to_exam_students(
+                exam_id, {"type": "STATUS", "status": "CLOSED"}
+            )
+        await lobby_manager.broadcast_monitor_update(section_id, exam_id)
+    except Exception:
+        pass
+
     return SectionExamOut(
         id=se.id,
         section_id=se.section_id,

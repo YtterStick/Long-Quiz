@@ -29,6 +29,7 @@ interface RequestOptions {
   body?: unknown;
   headers?: Record<string, string>;
   isFormData?: boolean;
+  silent?: boolean;
 }
 
 class ApiError extends Error {
@@ -45,6 +46,13 @@ class ApiError extends Error {
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("token");
+}
+
+export function getWebSocketUrl(path: string): string {
+  const token = getToken() || "";
+  const wsBase = API_BASE.replace(/^http/, "ws");
+  const sep = path.includes("?") ? "&" : "?";
+  return `${wsBase}${path}${sep}token=${encodeURIComponent(token)}`;
 }
 
 let activeRequestsCount = 0;
@@ -70,7 +78,7 @@ function notifyNetworkDelta(delta: number) {
 }
 
 async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-  const { method = "GET", body, headers = {}, isFormData = false } = options;
+  const { method = "GET", body, headers = {}, isFormData = false, silent = false } = options;
   const token = getToken();
 
   const requestHeaders: Record<string, string> = {
@@ -94,7 +102,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     config.body = isFormData ? (body as FormData) : JSON.stringify(body);
   }
 
-  notifyNetworkDelta(1);
+  if (!silent) notifyNetworkDelta(1);
   let response: Response;
   try {
     response = await fetch(`${API_BASE}${endpoint}`, config);
@@ -104,7 +112,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     }
     throw err;
   } finally {
-    notifyNetworkDelta(-1);
+    if (!silent) notifyNetworkDelta(-1);
   }
 
   if (!response.ok) {
@@ -551,7 +559,7 @@ export const teacher = {
         submitted_at: string | null;
         answers: Array<{ question_number: number; shaded_option: string | null; is_correct: boolean }>;
       }>;
-    }>(`/api/teacher/sections/${sectionId}/exams/${examId}/monitor`),
+    }>(`/api/teacher/sections/${sectionId}/exams/${examId}/monitor`, { silent: true }),
 
   // Students
   listStudents: (sectionId: string) =>
@@ -1283,6 +1291,7 @@ export const student = {
     }>(`/api/student/exams/${examId}/lobby`, {
       method: "POST",
       body: data,
+      silent: true,
     }),
 
   generateReviewerFromText: (data: { raw_text: string; title?: string }) =>
@@ -1360,7 +1369,7 @@ export const student = {
 
   // Student Notifications
   getNotifications: () =>
-    request<StudentNotificationItem[]>("/api/student/notifications"),
+    request<StudentNotificationItem[]>("/api/student/notifications", { silent: true }),
 
   // Custom & Cloud Saved Decks
   getCustomDecks: () =>

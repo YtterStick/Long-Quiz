@@ -818,6 +818,12 @@ async def submit_exam_online(
 
     await db.commit()
 
+    try:
+        from app.routers.lobby import lobby_manager
+        await lobby_manager.broadcast_monitor_for_exam(exam.id)
+    except Exception:
+        pass
+
     return {
         "message": "Exam submitted successfully! Your answers have been recorded.",
         "submission_id": submission.id,

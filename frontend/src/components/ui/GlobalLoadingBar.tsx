@@ -39,11 +39,11 @@ export function GlobalLoadingBar() {
         }, 180);
       }
 
-      // If request takes longer than 500ms, show slow network indicator
+      // If request takes longer than 2000ms (2s), show slow network indicator
       if (!slowTimerRef.current) {
         slowTimerRef.current = setTimeout(() => {
           setShowSlowNetworkBadge(true);
-        }, 500);
+        }, 2000);
       }
     } else {
       // Completed!
