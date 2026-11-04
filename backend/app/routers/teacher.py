@@ -138,19 +138,29 @@ async def list_sections(
     )
     sections = result.scalars().all()
 
-    counts_res = await db.execute(
-        select(Student.section_id, func.count(Student.id))
-        .where(Student.section_id.in_([s.id for s in sections]))
-        .group_by(Student.section_id)
-    ) if sections else None
-    counts = dict(counts_res.all()) if counts_res is not None else {}
+    sec_ids = [s.id for s in sections]
+    sec_members: dict[str, set[str]] = {sid: set() for sid in sec_ids}
+    if sec_ids:
+        primary_res = await db.execute(
+            select(Student.section_id, Student.id).where(Student.section_id.in_(sec_ids))
+        )
+        for sec_id, st_id in primary_res.all():
+            if sec_id in sec_members:
+                sec_members[sec_id].add(st_id)
+
+        assoc_res = await db.execute(
+            select(StudentSection.section_id, StudentSection.student_id).where(StudentSection.section_id.in_(sec_ids))
+        )
+        for sec_id, st_id in assoc_res.all():
+            if sec_id in sec_members:
+                sec_members[sec_id].add(st_id)
 
     out = []
     for s in sections:
         out.append(SectionOut(
             id=s.id, name=s.name, subject=s.subject,
             teacher_id=s.teacher_id, created_at=s.created_at,
-            student_count=counts.get(s.id, 0),
+            student_count=len(sec_members.get(s.id, set())),
         ))
     return out
 
@@ -636,11 +646,37 @@ async def create_student(
             student_number = clean_student_omr_number(body.student_number)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
-        exists = await db.execute(select(Student).where(Student.student_number == student_number))
-        if exists.scalar_one_or_none():
+        exists = await db.execute(
+            select(Student)
+            .options(selectinload(Student.user), selectinload(Student.section))
+            .where(Student.student_number == student_number)
+        )
+        existing_student = exists.scalar_one_or_none()
+        if existing_student:
+            if section_id:
+                already_enrolled = await db.execute(
+                    select(StudentSection.id).where(
+                        StudentSection.student_id == existing_student.id,
+                        StudentSection.section_id == section_id,
+                    )
+                )
+                if not already_enrolled.scalar_one_or_none():
+                    db.add(StudentSection(student_id=existing_student.id, section_id=section_id))
+                if not existing_student.section_id:
+                    existing_student.section_id = section_id
+                await db.flush()
+                result = await db.execute(
+                    select(Student)
+                    .options(selectinload(Student.user), selectinload(Student.section))
+                    .where(Student.id == existing_student.id)
+                )
+                existing_student = result.scalar_one()
+                out = StudentOut.model_validate(existing_student)
+                out.temp_password = None
+                return out
             raise HTTPException(
                 status_code=400,
-                detail=f"Student ID with OMR digit {student_number:06d} ({STATIC_STUDENT_PREFIX}{student_number:06d}) already exists."
+                detail=f"Student ID with OMR digit {student_number:06d} ({STATIC_STUDENT_PREFIX}{student_number:06d}) already exists in the global directory."
             )
     else:
         student_number = generate_student_number()
@@ -681,6 +717,10 @@ async def create_student(
     )
     db.add(student)
     await db.flush()
+
+    if section_id:
+        db.add(StudentSection(student_id=student.id, section_id=section_id))
+        await db.flush()
 
     result = await db.execute(
         select(Student)
@@ -725,8 +765,30 @@ async def _batch_create_students(
             if student_number in used_numbers:
                 errors.append(f"{label}: duplicate ID {student_number:06d} in this batch.")
                 continue
-            exists = await db.execute(select(Student).where(Student.student_number == student_number))
-            if exists.scalar_one_or_none():
+            exists = await db.execute(
+                select(Student)
+                .options(selectinload(Student.user), selectinload(Student.section))
+                .where(Student.student_number == student_number)
+            )
+            existing_student = exists.scalar_one_or_none()
+            if existing_student:
+                if section_id:
+                    already_enrolled = await db.execute(
+                        select(StudentSection.id).where(
+                            StudentSection.student_id == existing_student.id,
+                            StudentSection.section_id == section_id,
+                        )
+                    )
+                    if not already_enrolled.scalar_one_or_none():
+                        db.add(StudentSection(student_id=existing_student.id, section_id=section_id))
+                    if not existing_student.section_id:
+                        existing_student.section_id = section_id
+                    await db.flush()
+                    out = StudentOut.model_validate(existing_student)
+                    out.temp_password = None
+                    created.append(out)
+                    used_numbers.add(student_number)
+                    continue
                 errors.append(
                     f"{label}: ID {STATIC_STUDENT_PREFIX}{student_number:06d} is already registered."
                 )
@@ -765,6 +827,10 @@ async def _batch_create_students(
         student = Student(user_id=user.id, student_number=student_number, section_id=section_id)
         db.add(student)
         await db.flush()
+
+        if section_id:
+            db.add(StudentSection(student_id=student.id, section_id=section_id))
+            await db.flush()
 
         result = await db.execute(
             select(Student)

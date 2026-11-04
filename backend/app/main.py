@@ -183,25 +183,31 @@ async def lifespan(app: FastAPI):
                     "ALTER TABLE exam_answer_keys ALTER COLUMN correct_option TYPE TEXT"
                 ))
 
-        # Backfill existing students into student_sections table
-        try:
-            res = await conn.execute(text("SELECT id, section_id FROM students WHERE section_id IS NOT NULL"))
+        await _encrypt_existing_answer_keys(conn)
+
+    # Backfill existing students into student_sections table in an isolated transaction
+    try:
+        from datetime import datetime, timezone
+        now_ts = datetime.now(timezone.utc)
+        async with engine.begin() as bf_conn:
+            if "postgresql" in settings.DATABASE_URL:
+                await bf_conn.execute(text("ALTER TABLE public.student_sections ALTER COLUMN enrolled_at SET DEFAULT NOW()"))
+                await bf_conn.execute(text("ALTER TABLE public.student_sections ALTER COLUMN enrolled_at DROP NOT NULL"))
+            res = await bf_conn.execute(text("SELECT id, section_id FROM students WHERE section_id IS NOT NULL"))
             rows = res.fetchall()
             for st_id, sec_id in rows:
                 if "postgresql" in settings.DATABASE_URL:
-                    await conn.execute(
-                        text("INSERT INTO student_sections (id, student_id, section_id) VALUES (:id, :st_id, :sec_id) ON CONFLICT (student_id, section_id) DO NOTHING"),
-                        {"id": str(uuid.uuid4()), "st_id": st_id, "sec_id": sec_id}
+                    await bf_conn.execute(
+                        text("INSERT INTO student_sections (id, student_id, section_id, enrolled_at) VALUES (:id, :st_id, :sec_id, :now) ON CONFLICT (student_id, section_id) DO NOTHING"),
+                        {"id": str(uuid.uuid4()), "st_id": st_id, "sec_id": sec_id, "now": now_ts}
                     )
                 else:
-                    await conn.execute(
-                        text("INSERT OR IGNORE INTO student_sections (id, student_id, section_id) VALUES (:id, :st_id, :sec_id)"),
-                        {"id": str(uuid.uuid4()), "st_id": st_id, "sec_id": sec_id}
+                    await bf_conn.execute(
+                        text("INSERT OR IGNORE INTO student_sections (id, student_id, section_id, enrolled_at) VALUES (:id, :st_id, :sec_id, :now)"),
+                        {"id": str(uuid.uuid4()), "st_id": st_id, "sec_id": sec_id, "now": now_ts}
                     )
-        except Exception as e:
-            logger.warning("Migration note for student_sections: %s", e)
-
-        await _encrypt_existing_answer_keys(conn)
+    except Exception as e:
+        logger.warning("Migration note for student_sections: %s", e)
 
     if "postgresql" in settings.DATABASE_URL:
         await _enable_row_level_security()
