@@ -130,6 +130,7 @@ export default function TeacherStudentsPage() {
   // Detail Modal Actions
   const [modalTargetSection, setModalTargetSection] = useState("");
   const [updatingSection, setUpdatingSection] = useState(false);
+  const [removingCourseId, setRemovingCourseId] = useState<string | null>(null);
   const [detailCopied, setDetailCopied] = useState(false);
   const [resettingPassword, setResettingPassword] = useState(false);
   const [tempPasswordIssued, setTempPasswordIssued] = useState<{
@@ -354,13 +355,10 @@ export default function TeacherStudentsPage() {
     if (!selectedStudentDetail || !modalTargetSection) return;
     setUpdatingSection(true);
     try {
-      await teacherApi.enrollStudent(modalTargetSection, selectedStudentDetail.id);
+      const updated = await teacherApi.enrollStudent(modalTargetSection, selectedStudentDetail.id);
       setModalTargetSection("");
+      setSelectedStudentDetail(updated as StudentItem);
       await loadData();
-      const refreshed = (await teacherApi.listAllStudents()).find((st) => st.id === selectedStudentDetail.id);
-      if (refreshed) {
-        setSelectedStudentDetail(refreshed as StudentItem);
-      }
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to enroll student into course");
     } finally {
@@ -370,18 +368,22 @@ export default function TeacherStudentsPage() {
 
   const handleModalUnenrollCourse = async (sectionIdToRemove: string) => {
     if (!selectedStudentDetail || !sectionIdToRemove) return;
-    setUpdatingSection(true);
+    setRemovingCourseId(sectionIdToRemove);
     try {
       await teacherApi.unenrollStudent(sectionIdToRemove, selectedStudentDetail.id);
+      setSelectedStudentDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              enrolled_sections: (prev.enrolled_sections || []).filter((s) => s.id !== sectionIdToRemove),
+            }
+          : null
+      );
       await loadData();
-      const refreshed = (await teacherApi.listAllStudents()).find((st) => st.id === selectedStudentDetail.id);
-      if (refreshed) {
-        setSelectedStudentDetail(refreshed as StudentItem);
-      }
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to remove student from course");
     } finally {
-      setUpdatingSection(false);
+      setRemovingCourseId(null);
     }
   };
 
@@ -1658,10 +1660,10 @@ export default function TeacherStudentsPage() {
                       <button
                         type="button"
                         onClick={() => handleModalUnenrollCourse(sec.id)}
-                        disabled={updatingSection}
-                        className="text-xs font-bold text-rose-500 hover:underline shrink-0 ml-2 cursor-pointer"
+                        disabled={removingCourseId !== null || updatingSection}
+                        className="text-xs font-bold text-rose-500 hover:underline shrink-0 ml-2 cursor-pointer disabled:opacity-50"
                       >
-                        {updatingSection ? "Removing..." : "Remove"}
+                        {removingCourseId === sec.id ? "Removing..." : "Remove"}
                       </button>
                     </div>
                   ))}
@@ -1701,11 +1703,11 @@ export default function TeacherStudentsPage() {
                     <button
                       type="button"
                       onClick={handleModalUpdateSection}
-                      disabled={updatingSection}
+                      disabled={updatingSection || removingCourseId !== null}
                       className="w-full flex items-center justify-center gap-1.5 rounded-xl gradient-bg-primary py-2 text-xs font-bold text-white shadow-xs cursor-pointer disabled:opacity-50"
                     >
                       {updatingSection ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-                      <span>Add to Course</span>
+                      <span>{updatingSection ? "Adding to Course..." : "Add to Course"}</span>
                     </button>
                   )}
                 </div>

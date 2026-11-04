@@ -216,6 +216,7 @@ export default function TeacherSectionsPage() {
   const [selectedStudentDetail, setSelectedStudentDetail] = useState<StudentItem | null>(null);
   const [modalTargetSection, setModalTargetSection] = useState<string>("");
   const [updatingSection, setUpdatingSection] = useState(false);
+  const [removingCourseId, setRemovingCourseId] = useState<string | null>(null);
 
   // Deletion / Unenroll confirm states
   const [sectionToDelete, setSectionToDelete] = useState<SectionItem | null>(null);
@@ -600,19 +601,14 @@ export default function TeacherSectionsPage() {
     if (!selectedStudentDetail || !modalTargetSection) return;
     setUpdatingSection(true);
     try {
-      await teacherApi.enrollStudent(modalTargetSection, selectedStudentDetail.id);
+      const updated = await teacherApi.enrollStudent(modalTargetSection, selectedStudentDetail.id);
       setModalTargetSection("");
-      await loadAllStudents();
-      await loadSections();
-      if (selectedSection) {
-        await loadStudents(selectedSection.id);
-      }
-
-      // Refresh currently viewed student detail
-      const refreshed = (await teacherApi.listAllStudents()).find((st) => st.id === selectedStudentDetail.id);
-      if (refreshed) {
-        setSelectedStudentDetail(refreshed as StudentItem);
-      }
+      setSelectedStudentDetail(updated as StudentItem);
+      await Promise.all([
+        loadAllStudents(),
+        loadSections(),
+        ...(selectedSection ? [loadStudents(selectedSection.id)] : []),
+      ]);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to enroll student into course");
     } finally {
@@ -623,23 +619,26 @@ export default function TeacherSectionsPage() {
   const handleModalUnenroll = async (sectionIdToRemove?: string) => {
     const targetSecId = sectionIdToRemove || selectedStudentDetail?.section_id;
     if (!selectedStudentDetail || !targetSecId) return;
-    setUpdatingSection(true);
+    setRemovingCourseId(targetSecId);
     try {
       await teacherApi.unenrollStudent(targetSecId, selectedStudentDetail.id);
-      await loadAllStudents();
-      await loadSections();
-      if (selectedSection) {
-        await loadStudents(selectedSection.id);
-      }
-      // Refresh currently viewed student detail
-      const refreshed = (await teacherApi.listAllStudents()).find((st) => st.id === selectedStudentDetail.id);
-      if (refreshed) {
-        setSelectedStudentDetail(refreshed as StudentItem);
-      }
+      setSelectedStudentDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              enrolled_sections: (prev.enrolled_sections || []).filter((s) => s.id !== targetSecId),
+            }
+          : null
+      );
+      await Promise.all([
+        loadAllStudents(),
+        loadSections(),
+        ...(selectedSection ? [loadStudents(selectedSection.id)] : []),
+      ]);
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to remove student from course");
     } finally {
-      setUpdatingSection(false);
+      setRemovingCourseId(null);
     }
   };
 
@@ -2598,11 +2597,11 @@ export default function TeacherSectionsPage() {
                       <button
                         type="button"
                         onClick={() => handleModalUnenroll(sec.id)}
-                        disabled={updatingSection}
-                        className="text-xs font-semibold text-burgundy-light hover:text-burgundy hover:underline transition-colors cursor-pointer shrink-0 ml-2"
+                        disabled={removingCourseId !== null || updatingSection}
+                        className="text-xs font-semibold text-burgundy-light hover:text-burgundy hover:underline transition-colors cursor-pointer shrink-0 ml-2 disabled:opacity-50"
                         title={`Remove student from ${sec.name}`}
                       >
-                        {updatingSection ? "Removing..." : "Remove"}
+                        {removingCourseId === sec.id ? "Removing..." : "Remove"}
                       </button>
                     </div>
                   ))}
@@ -2643,11 +2642,11 @@ export default function TeacherSectionsPage() {
                     <button
                       type="button"
                       onClick={handleModalUpdateSection}
-                      disabled={updatingSection}
+                      disabled={updatingSection || removingCourseId !== null}
                       className="w-full flex items-center justify-center gap-2 rounded-xl gradient-bg-primary py-2 px-3 text-xs font-semibold text-text-primary shadow-sm hover:opacity-95 transition-all cursor-pointer disabled:opacity-50"
                     >
                       {updatingSection ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-                      <span>Add to Course</span>
+                      <span>{updatingSection ? "Adding to Course..." : "Add to Course"}</span>
                     </button>
                   )}
                 </div>
