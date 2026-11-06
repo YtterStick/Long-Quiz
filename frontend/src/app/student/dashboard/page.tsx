@@ -240,6 +240,7 @@ export default function StudentDashboard() {
   const [tabSwitchCount, setTabSwitchCount] = useState(0);
   // Refs keep the anti-cheat engine free of stale closures / double-firing
   const strikesRef = useRef(0);
+  const lastStrikeTimeRef = useRef(0);
   const awayRef = useRef(false);
   const autoSubmittingRef = useRef(false);
   const alertTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -716,6 +717,7 @@ export default function StudentDashboard() {
     setAntiCheatStrikes(0);
     setTabSwitchCount(0);
     strikesRef.current = 0;
+    lastStrikeTimeRef.current = 0;
     awayRef.current = false;
     autoSubmittingRef.current = false;
     setAntiCheatAlert(null);
@@ -798,6 +800,7 @@ export default function StudentDashboard() {
           setIsExamInProgress(true);
           setAntiCheatStrikes(0);
           strikesRef.current = 0;
+          lastStrikeTimeRef.current = 0;
           awayRef.current = false;
           setIsWindowAway(false);
           autoSubmittingRef.current = false;
@@ -1056,9 +1059,17 @@ export default function StudentDashboard() {
     };
 
     const registerStrike = (reason: string) => {
+      const now = Date.now();
+      // Debounce: ignore multiple strike triggers from the same event/episode within 3.5 seconds
+      if (now - lastStrikeTimeRef.current < 3500) {
+        return;
+      }
+      lastStrikeTimeRef.current = now;
+
       strikesRef.current += 1;
-      setAntiCheatStrikes(strikesRef.current);
-      if (strikesRef.current >= MAX_STRIKES) {
+      const count = strikesRef.current;
+      setAntiCheatStrikes(count);
+      if (count >= MAX_STRIKES) {
         handleAutoSubmit(reason);
       }
     };
@@ -2921,12 +2932,18 @@ export default function StudentDashboard() {
               <ShieldAlert className="h-8 w-8" />
             </div>
             <h2 className="text-lg font-black text-burgundy-light">
-              {!isFullscreenActive ? "Full-Screen Mode Required" : "Exam Locked — Security Violation"}
+              {!isFullscreenActive
+                ? "Full-Screen Mode Required"
+                : antiCheatStrikes === 1
+                ? "Warning: Security Violation (Strike 1 of 3)"
+                : antiCheatStrikes === 2
+                ? "FINAL WARNING: Security Violation (Strike 2 of 3)"
+                : "Exam Locked — Security Violation"}
             </h2>
             <p className="text-xs text-text-secondary leading-relaxed">
               {!isFullscreenActive
                 ? "You cannot view, interact with, or take this examination outside of proctored full-screen mode. Exiting full-screen is strictly prohibited."
-                : "Window focus lost or prohibited shortcut detected (such as Ctrl+Alt+Del, Alt-Tab, or F11). Examination interaction has been locked to prevent unauthorized assistance."}
+                : "Window focus lost or prohibited shortcut detected (such as Ctrl+Alt+Del, Alt-Tab, or F11). Examination interaction is paused."}
             </p>
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-xl bg-burgundy-ghost/50 border border-burgundy-border p-3 text-xs font-mono font-bold text-burgundy-light">
@@ -2937,7 +2954,11 @@ export default function StudentDashboard() {
               </div>
             </div>
             <p className="text-[11px] text-text-muted">
-              Alt-Tab, Ctrl+Alt+Del, F11, window switching, or leaving full-screen is forbidden. 3 strikes will trigger automatic submission of your examination.
+              {antiCheatStrikes < 2
+                ? "You have strikes remaining. Please resume your examination. Reaching 3 strikes will automatically submit your quiz."
+                : antiCheatStrikes === 2
+                ? "This is your LAST warning! One more violation will immediately submit your examination."
+                : "Maximum strikes reached. Examination is being submitted."}
             </p>
             <button
               type="button"
