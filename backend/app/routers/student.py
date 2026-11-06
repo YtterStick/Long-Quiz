@@ -247,30 +247,56 @@ def get_student_exam_permutation(
             "D": orig_q.option_d,
         }
 
-        if shuffle_options:
-            letters = ["A", "B", "C", "D"]
-            perm = list(letters)
-            rng.shuffle(perm)
+        # Shuffle choices whenever options scrambling OR question rumbling is enabled
+        should_shuffle_options = shuffle_options or shuffle_questions
 
-            new_options = {
-                target_letter: orig_options[source_letter]
-                for target_letter, source_letter in zip(letters, perm)
-            }
+        if should_shuffle_options:
+            available_letters = [
+                L for L in ["A", "B", "C", "D"]
+                if orig_options.get(L) is not None and str(orig_options[L]).strip() != ""
+            ]
+            if len(available_letters) >= 2:
+                perm = list(available_letters)
+                rng.shuffle(perm)
 
-            new_correct = "A"
-            for target_letter, source_letter in zip(letters, perm):
-                if source_letter == orig_correct:
-                    new_correct = target_letter
-                    break
+                new_options = dict(orig_options)
+                new_correct = orig_correct
+                for target_letter, source_letter in zip(available_letters, perm):
+                    new_options[target_letter] = orig_options[source_letter]
+                    if source_letter == orig_correct:
+                        new_correct = target_letter
 
-            student_key_map[idx] = new_correct
+                student_key_map[idx] = new_correct
+                q_out = StudentExamQuestionOut(
+                    question_number=idx,
+                    question_text=orig_q.question_text or f"Question {idx}",
+                    option_a=new_options.get("A"),
+                    option_b=new_options.get("B"),
+                    option_c=new_options.get("C"),
+                    option_d=new_options.get("D"),
+                )
+            else:
+                student_key_map[idx] = orig_correct
+                q_out = StudentExamQuestionOut(
+                    question_number=idx,
+                    question_text=orig_q.question_text or f"Question {idx}",
+                    option_a=orig_options.get("A"),
+                    option_b=orig_options.get("B"),
+                    option_c=orig_options.get("C"),
+                    option_d=orig_options.get("D"),
+                )
+            if hasattr(orig_q, "explanation"):
+                setattr(q_out, "explanation", orig_q.explanation)
+            student_questions.append(q_out)
+        else:
+            student_key_map[idx] = orig_correct
             q_out = StudentExamQuestionOut(
                 question_number=idx,
                 question_text=orig_q.question_text or f"Question {idx}",
-                option_a=new_options["A"],
-                option_b=new_options["B"],
-                option_c=new_options["C"],
-                option_d=new_options["D"],
+                option_a=orig_options["A"],
+                option_b=orig_options["B"],
+                option_c=orig_options["C"],
+                option_d=orig_options["D"],
             )
             if hasattr(orig_q, "explanation"):
                 setattr(q_out, "explanation", orig_q.explanation)

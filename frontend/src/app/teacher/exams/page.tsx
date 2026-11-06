@@ -1197,10 +1197,10 @@ export default function TeacherExamsPage() {
                         </div>
                         <div>
                           <label htmlFor="shuffleQuestionsToggle" className="text-xs font-bold text-text-primary cursor-pointer block">
-                            Rumble Question Order
+                            Rumble Question &amp; Choice Order
                           </label>
                           <p className="text-[11px] text-text-muted mt-0.5 leading-snug">
-                            Randomizes question numbering (1..N) uniquely for each student to prevent screen peeking.
+                            Randomizes question numbering (1..N) and choices (A–D) uniquely for each student to prevent screen peeking.
                           </p>
                         </div>
                       </div>
@@ -1209,7 +1209,13 @@ export default function TeacherExamsPage() {
                         id="shuffleQuestionsToggle"
                         role="switch"
                         aria-checked={shuffleQuestions}
-                        onClick={() => setShuffleQuestions(!shuffleQuestions)}
+                        onClick={() => {
+                          const next = !shuffleQuestions;
+                          setShuffleQuestions(next);
+                          if (next) {
+                            setShuffleOptions(true);
+                          }
+                        }}
                         className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${shuffleQuestions ? "bg-tan" : "bg-surface-muted"}`}
                       >
                         <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${shuffleQuestions ? "translate-x-4" : "translate-x-0"}`} />
@@ -1226,7 +1232,7 @@ export default function TeacherExamsPage() {
                         </div>
                         <div>
                           <label htmlFor="shuffleOptionsToggle" className="text-xs font-bold text-text-primary cursor-pointer block">
-                            Scramble Choices (Different Answer Key)
+                            Scramble Choices (Dynamic Answer Key)
                           </label>
                           <p className="text-[11px] text-text-muted mt-0.5 leading-snug">
                             Randomizes A, B, C, D choices per question so each student has different answer keys while grading remains 100% accurate.

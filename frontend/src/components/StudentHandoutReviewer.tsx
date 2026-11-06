@@ -808,6 +808,52 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
     setCardInput("");
   };
 
+  const shuffleQuiz = () => {
+    if (!activeDeck || !activeDeck.quiz_cards || activeDeck.quiz_cards.length === 0) return;
+    const letters = ["A", "B", "C", "D"] as const;
+
+    // 1. Shuffle question order
+    const shuffledCards = [...activeDeck.quiz_cards].sort(() => Math.random() - 0.5);
+
+    // 2. Shuffle choices (A, B, C, D) for each question & update correct_option dynamically
+    const rumbledQuizCards = shuffledCards.map((qc, newIdx) => {
+      const availableLetters = letters.filter(
+        (l) => qc.options && qc.options[l] && qc.options[l].trim() !== ""
+      );
+
+      if (availableLetters.length < 2) {
+        return { ...qc, question_number: newIdx + 1 };
+      }
+
+      const perm = [...availableLetters].sort(() => Math.random() - 0.5);
+      const newOptions: Record<string, string> = { ...qc.options };
+      let newCorrect = qc.correct_option;
+
+      availableLetters.forEach((targetLetter, i) => {
+        const sourceLetter = perm[i];
+        newOptions[targetLetter] = qc.options[sourceLetter];
+        if (sourceLetter === qc.correct_option) {
+          newCorrect = targetLetter;
+        }
+      });
+
+      return {
+        ...qc,
+        question_number: newIdx + 1,
+        options: newOptions,
+        correct_option: newCorrect,
+      };
+    });
+
+    setActiveDeck({
+      ...activeDeck,
+      quiz_cards: rumbledQuizCards,
+    });
+    setSelectedAnswers({});
+    setCurrentQuizIndex(0);
+    setQuizFinished(false);
+  };
+
   // Quiz Helpers
   const currentQuiz = activeDeck?.quiz_cards[currentQuizIndex];
   const totalQuiz = activeDeck?.quiz_cards.length || 0;
@@ -1484,12 +1530,24 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
                 <section className="rounded-3xl border border-border-default bg-surface-raised p-5 sm:p-7 shadow-sm space-y-5">
                   {/* Progress */}
                   <div className="space-y-2.5">
-                    <div className="flex items-center justify-between text-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
                       <span className="font-semibold text-text-primary">
                         Question {currentQuizIndex + 1}
                         <span className="font-normal text-text-muted"> of {totalQuiz}</span>
                       </span>
-                      <span className="text-text-muted">{answeredCount} answered</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          id="reviewer-quiz-shuffle"
+                          onClick={shuffleQuiz}
+                          className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-surface-subtle border border-border-default hover:bg-surface-muted text-xs font-semibold text-text-secondary hover:text-text-primary transition-all cursor-pointer"
+                          title="Shuffle quiz questions and multiple-choice options"
+                        >
+                          <Shuffle className="h-3.5 w-3.5 text-steel" />
+                          <span>Shuffle Questions &amp; Choices</span>
+                        </button>
+                        <span className="text-text-muted text-xs">{answeredCount} answered</span>
+                      </div>
                     </div>
                     <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-muted">
                       <div
@@ -1667,7 +1725,7 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
                         </div>
                       )}
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                         <button
                           id="reviewer-quiz-retake"
                           type="button"
@@ -1676,10 +1734,19 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
                             setCurrentQuizIndex(0);
                             setQuizFinished(false);
                           }}
-                          className="rv-btn-primary flex h-12 items-center justify-center gap-2 rounded-2xl text-sm font-semibold shadow-md cursor-pointer"
+                          className="flex h-12 items-center justify-center gap-2 rounded-2xl border border-border-default text-sm font-semibold text-text-primary hover:bg-surface-subtle transition cursor-pointer"
                         >
                           <RotateCcw className="h-4 w-4" />
                           Retake quiz
+                        </button>
+                        <button
+                          id="reviewer-quiz-shuffle-retake"
+                          type="button"
+                          onClick={shuffleQuiz}
+                          className="rv-btn-primary flex h-12 items-center justify-center gap-2 rounded-2xl text-sm font-semibold shadow-md cursor-pointer"
+                        >
+                          <Shuffle className="h-4 w-4" />
+                          Shuffle &amp; Retake
                         </button>
                         <button
                           type="button"
