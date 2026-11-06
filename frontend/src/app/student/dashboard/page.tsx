@@ -252,6 +252,21 @@ export default function StudentDashboard() {
   } | null>(null);
   const [isFullscreenActive, setIsFullscreenActive] = useState(false);
   const [isWindowAway, setIsWindowAway] = useState(false);
+  const examContainerRef = useRef<HTMLDivElement>(null);
+
+  // Prevent background page from scrolling or moving while taking an exam or in lobby
+  useEffect(() => {
+    if (isExamInProgress || isWaitingInLobby) {
+      const prevBodyOverflow = document.body.style.overflow;
+      const prevHtmlOverflow = document.documentElement.style.overflow;
+      document.body.style.overflow = "hidden";
+      document.documentElement.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = prevBodyOverflow;
+        document.documentElement.style.overflow = prevHtmlOverflow;
+      };
+    }
+  }, [isExamInProgress, isWaitingInLobby]);
 
   // Continuously track document fullscreen status
   useEffect(() => {
@@ -1129,6 +1144,10 @@ export default function StudentDashboard() {
 
     // A single Alt-Tab or Ctrl+Alt+Del can fire both `blur` and `visibilitychange`; count it once per away-episode.
     const onFocusLost = (customReason?: string) => {
+      // Guard against false positive blur if the browser window still has focus and is visible
+      if (typeof document !== "undefined" && !document.hidden && document.hasFocus()) {
+        return;
+      }
       if (awayRef.current) return;
       awayRef.current = true;
       setIsWindowAway(true);
@@ -1148,6 +1167,16 @@ export default function StudentDashboard() {
         "blur"
       );
       registerStrike(`Maximum tab switch / focus loss violations reached (${MAX_STRIKES} strikes)`);
+    };
+
+    const handleWindowBlur = () => {
+      // Small debounce delay to confirm the window truly lost focus (e.g. Alt-Tab or switching apps)
+      // rather than momentarily transferring focus between elements during a Tab keypress.
+      setTimeout(() => {
+        if (typeof document !== "undefined" && (!document.hasFocus() || document.hidden)) {
+          onFocusLost();
+        }
+      }, 75);
     };
 
     const onFocusRegained = () => {
@@ -1170,6 +1199,42 @@ export default function StudentDashboard() {
       const isTab = e.key === "Tab" || e.code === "Tab";
       const isMeta = e.metaKey || e.key === "Meta" || e.key === "OS" || e.code?.startsWith("Meta");
       const isCtrl = e.ctrlKey || e.key === "Control";
+
+      // 0. Focus Trap: Plain Tab or Shift+Tab wraps cleanly inside the active exam modal and never escapes!
+      const isPlainTab = isTab && !isAlt && !isCtrl && !isMeta;
+      if (isPlainTab && isExamInProgress && examContainerRef.current) {
+        const focusable = Array.from(
+          examContainerRef.current.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          )
+        ).filter((el) => el.offsetParent !== null && !el.closest(".opacity-0"));
+
+        if (focusable.length > 0) {
+          const first = focusable[0];
+          const last = focusable[focusable.length - 1];
+
+          if (e.shiftKey) {
+            if (document.activeElement === first || !examContainerRef.current.contains(document.activeElement)) {
+              e.preventDefault();
+              e.stopPropagation();
+              e.stopImmediatePropagation();
+              last.focus();
+              return false;
+            }
+          } else {
+            if (document.activeElement === last || !examContainerRef.current.contains(document.activeElement)) {
+              e.preventDefault();
+              e.stopPropagation();
+              e.stopImmediatePropagation();
+              first.focus();
+              return false;
+            }
+          }
+        } else {
+          e.preventDefault();
+          return false;
+        }
+      }
 
       // 1. Block F11 and all Function keys (F1 - F12)
       const isFnKey =
@@ -1390,7 +1455,7 @@ export default function StudentDashboard() {
     document.addEventListener("fullscreenchange", onFullscreenChange);
     document.addEventListener("webkitfullscreenchange", onFullscreenChange);
     document.addEventListener("visibilitychange", onVisibilityChange);
-    window.addEventListener("blur", () => onFocusLost());
+    window.addEventListener("blur", handleWindowBlur);
     window.addEventListener("focus", onFocusRegained);
     window.addEventListener("keydown", onKeyDownCapture, { capture: true });
     window.addEventListener("keyup", onKeyUpCapture, { capture: true });
@@ -1404,7 +1469,7 @@ export default function StudentDashboard() {
       document.removeEventListener("fullscreenchange", onFullscreenChange);
       document.removeEventListener("webkitfullscreenchange", onFullscreenChange);
       document.removeEventListener("visibilitychange", onVisibilityChange);
-      window.removeEventListener("blur", () => onFocusLost());
+      window.removeEventListener("blur", handleWindowBlur);
       window.removeEventListener("focus", onFocusRegained);
       window.removeEventListener("keydown", onKeyDownCapture, { capture: true });
       window.removeEventListener("keyup", onKeyUpCapture, { capture: true });
@@ -1438,14 +1503,23 @@ export default function StudentDashboard() {
     );
   }
 
-  return (
-    <div className="min-h-screen text-text-primary">
-      <Navbar
-        onOpenPasswordModal={() => setPasswordModalOpen(true)}
-        onOpenCloset={() => setClosetModalOpen(true)}
-      />
+  const isGuardedActive = isExamInProgress || isWaitingInLobby;
 
-      <main className="mx-auto max-w-7xl px-3 sm:px-6 py-5 sm:py-8 pb-24 sm:pb-12 space-y-6">
+  return (
+    <div className={`min-h-screen text-text-primary ${isGuardedActive ? "overflow-hidden" : ""}`}>
+      {!isGuardedActive && (
+        <Navbar
+          onOpenPasswordModal={() => setPasswordModalOpen(true)}
+          onOpenCloset={() => setClosetModalOpen(true)}
+        />
+      )}
+
+      <main
+        aria-hidden={isGuardedActive}
+        className={`mx-auto max-w-7xl px-3 sm:px-6 py-5 sm:py-8 pb-24 sm:pb-12 space-y-6 ${
+          isGuardedActive ? "pointer-events-none select-none opacity-0 hidden" : ""
+        }`}
+      >
         {/* WelcomeHero is shown ONLY in the Dashboard overview tab (clean view for exams, grades, reviewers, friends) */}
         {activeTab === "dashboard" && (
           <WelcomeHero
@@ -2575,7 +2649,7 @@ export default function StudentDashboard() {
 
       {/* 2. Modal: Exam Lobby (Desktop Fullscreen & Anti-Cheat Preparation) */}
       {examLobbyOpen && lobbyExamInfo && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/90 backdrop-blur-md p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-base dark:bg-black p-4 select-none overflow-hidden">
           <div className="w-full max-w-xl rounded-2xl border border-border-default bg-surface-overlay p-6 sm:p-8 shadow-2xl space-y-5 animate-in fade-in zoom-in-95">
             {!isWaitingInLobby ? (
               /* Step 1: Pre-Lobby Honor Code & Fullscreen Entry */
@@ -2720,8 +2794,11 @@ export default function StudentDashboard() {
 
       {/* 3. Modal: Active Proctored Online Exam */}
       {isExamInProgress && activeTakingExam && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-base/95 dark:bg-black/95 backdrop-blur-md p-2 sm:p-4 select-none">
-          <div className={`w-full max-w-4xl h-[96vh] flex flex-col rounded-2xl border border-border-default bg-surface-overlay shadow-2xl overflow-hidden transition-all duration-200 ${(!isFullscreenActive || isWindowAway) ? "filter blur-2xl opacity-10 pointer-events-none select-none" : ""}`}>
+        <div
+          ref={examContainerRef}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-surface-base dark:bg-black p-0 sm:p-3 select-none overflow-hidden"
+        >
+          <div className={`w-full max-w-4xl h-full sm:h-[96vh] flex flex-col sm:rounded-2xl border-0 sm:border border-border-default bg-surface-overlay shadow-2xl overflow-hidden transition-all duration-200 ${(!isFullscreenActive || isWindowAway) ? "filter blur-2xl opacity-10 pointer-events-none select-none" : ""}`}>
             {/* Modal Header with Fullscreen Indicator */}
             <div className="flex items-center justify-between px-6 py-3.5 border-b border-border-default bg-surface-base shrink-0">
               <div>
@@ -2926,7 +3003,7 @@ export default function StudentDashboard() {
       {/* 4. Mandatory Fullscreen & Security Lock Screen */}
       {/* If exam is in progress or student is in lobby, and browser is NOT in fullscreen or window/focus was lost, HARD BLOCK THE ENTIRE UI */}
       {(isExamInProgress || isWaitingInLobby) && (!isFullscreenActive || isWindowAway) && (
-        <div className="fixed inset-0 z-70 flex items-center justify-center bg-surface-base/95 dark:bg-black/95 backdrop-blur-xl p-4 select-none animate-in fade-in">
+        <div className="fixed inset-0 z-70 flex items-center justify-center bg-surface-base dark:bg-black p-4 select-none animate-in fade-in">
           <div className="w-full max-w-md rounded-2xl border border-burgundy-border bg-surface-overlay p-6 shadow-2xl text-center space-y-4">
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-burgundy-ghost text-burgundy-light border border-burgundy-border">
               <ShieldAlert className="h-8 w-8" />
