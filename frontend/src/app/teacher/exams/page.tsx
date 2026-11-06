@@ -32,6 +32,7 @@ import {
   Upload,
   FileText,
   Check,
+  ClipboardList,
 } from "lucide-react";
 import Link from "next/link";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
@@ -42,6 +43,7 @@ import {
   SkeletonQuestionnaireList,
 } from "@/components/ui/Skeleton";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { QuickImportModal } from "@/components/QuickImportModal";
 
 interface AnswerKey {
   question_number: number;
@@ -296,6 +298,137 @@ export default function TeacherExamsPage() {
     } finally {
       setAiGenerating(false);
     }
+  };
+
+  // Quick Import / Paste Text State & Handlers
+  const [isQuickImportOpen, setIsQuickImportOpen] = useState(false);
+  const [quickImportContext, setQuickImportContext] = useState<"builder" | "questionnaire">("builder");
+
+  const handleImportIntoBuilder = (data: {
+    title: string;
+    total: number;
+    questions: Array<{
+      question_number: number;
+      question_text: string;
+      option_a: string;
+      option_b: string;
+      option_c: string;
+      option_d: string;
+      explanation: string;
+    }>;
+    keys: Record<number, string>;
+  }) => {
+    if (data.title && (!title || title.trim() === "" || title === "Untitled Exam")) {
+      setTitle(data.title);
+    }
+    const newTotal = Math.min(50, Math.max(1, data.total));
+    setTotalQuestions(newTotal);
+
+    const updatedKeys: Record<number, string> = { ...keys };
+    for (let i = 1; i <= newTotal; i++) {
+      if (data.keys[i]) {
+        updatedKeys[i] = data.keys[i];
+      } else if (!updatedKeys[i]) {
+        updatedKeys[i] = "A";
+      }
+    }
+    setKeys(updatedKeys);
+
+    const updatedQuestions: Record<number, Partial<QuestionItem>> = { ...questionsData };
+    data.questions.forEach((q) => {
+      if (q.question_number <= newTotal) {
+        updatedQuestions[q.question_number] = {
+          question_number: q.question_number,
+          question_text: q.question_text,
+          option_a: q.option_a,
+          option_b: q.option_b,
+          option_c: q.option_c,
+          option_d: q.option_d,
+          explanation: q.explanation || "",
+        };
+      }
+    });
+
+    for (let i = 1; i <= newTotal; i++) {
+      if (!updatedQuestions[i]) {
+        updatedQuestions[i] = {
+          question_number: i,
+          question_text: "",
+          option_a: "",
+          option_b: "",
+          option_c: "",
+          option_d: "",
+          explanation: "",
+        };
+      }
+    }
+
+    setQuestionsData(updatedQuestions);
+    setBuilderTab("questions");
+    setIsBuilderOpen(true);
+    setAiSuccessMessage(`✨ Successfully imported ${data.questions.length} questions and answer keys into builder!`);
+    setTimeout(() => setAiSuccessMessage(null), 7000);
+  };
+
+  const handleImportIntoQuestionnaire = (data: {
+    title: string;
+    total: number;
+    questions: Array<{
+      question_number: number;
+      question_text: string;
+      option_a: string;
+      option_b: string;
+      option_c: string;
+      option_d: string;
+      explanation: string;
+    }>;
+    keys: Record<number, string>;
+  }) => {
+    if (!questionnaireExam) return;
+
+    setQuestionnaireKeys((prev) => ({
+      ...prev,
+      ...data.keys,
+    }));
+
+    const qMap: Record<number, QuestionItem> = {};
+    questionnaireList.forEach((q) => {
+      qMap[q.question_number] = q;
+    });
+
+    data.questions.forEach((q) => {
+      qMap[q.question_number] = {
+        question_number: q.question_number,
+        question_text: q.question_text,
+        option_a: q.option_a,
+        option_b: q.option_b,
+        option_c: q.option_c,
+        option_d: q.option_d,
+        explanation: q.explanation,
+      };
+    });
+
+    const updatedList: QuestionItem[] = [];
+    for (let i = 1; i <= questionnaireExam.total_questions; i++) {
+      if (qMap[i]) {
+        updatedList.push(qMap[i]);
+      } else {
+        updatedList.push({
+          question_number: i,
+          question_text: "",
+          option_a: "",
+          option_b: "",
+          option_c: "",
+          option_d: "",
+          explanation: "",
+        });
+      }
+    }
+    setQuestionnaireList(updatedList);
+    setQuestionnaireSuccess(
+      `✨ Successfully imported ${data.questions.length} questions! Click 'Save Questionnaire' when ready.`
+    );
+    setTimeout(() => setQuestionnaireSuccess(null), 6000);
   };
 
   const openPreview = async () => {
@@ -938,35 +1071,50 @@ export default function TeacherExamsPage() {
                 </button>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setAiError(null);
-                  setIsAiModalOpen(true);
-                }}
-                className={`flex items-center gap-1.5 rounded-xl border px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer shadow-sm ${
-                  aiQuota && aiQuota.remaining <= 0
-                    ? "border-tan-border bg-tan-ghost text-tan hover:bg-tan/20"
-                    : "border-sage-border bg-sage-ghost text-sage hover:bg-sage/20"
-                }`}
-                title={
-                  aiQuota && aiQuota.remaining <= 0
-                    ? `AI Assistant currently resting (unlocks in ${aiQuota.resets_in_days}d)`
-                    : "Auto-generate or replenish questions and answer keys from handout PDF or notes using AI"
-                }
-              >
-                {aiQuota && aiQuota.remaining <= 0 ? (
-                  <>
-                    <Timer className="h-3.5 w-3.5 text-tan" />
-                    Fill from Handout (Resting)
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-3.5 w-3.5 text-sage animate-pulse" />
-                    Fill from Handout (AI)
-                  </>
-                )}
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuickImportContext("builder");
+                    setIsQuickImportOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 rounded-xl border border-steel-border bg-steel-ghost px-3.5 py-1.5 text-xs font-bold text-steel hover:bg-steel/20 transition-all cursor-pointer shadow-sm"
+                  title="Paste formatted questionnaire text with answer keys to automatically populate the builder"
+                >
+                  <ClipboardList className="h-3.5 w-3.5" />
+                  Paste / Quick Import
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAiError(null);
+                    setIsAiModalOpen(true);
+                  }}
+                  className={`flex items-center gap-1.5 rounded-xl border px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer shadow-sm ${
+                    aiQuota && aiQuota.remaining <= 0
+                      ? "border-tan-border bg-tan-ghost text-tan hover:bg-tan/20"
+                      : "border-sage-border bg-sage-ghost text-sage hover:bg-sage/20"
+                  }`}
+                  title={
+                    aiQuota && aiQuota.remaining <= 0
+                      ? `AI Assistant currently resting (unlocks in ${aiQuota.resets_in_days}d)`
+                      : "Auto-generate or replenish questions and answer keys from handout PDF or notes using AI"
+                  }
+                >
+                  {aiQuota && aiQuota.remaining <= 0 ? (
+                    <>
+                      <Timer className="h-3.5 w-3.5 text-tan" />
+                      Fill from Handout (Resting)
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-3.5 w-3.5 text-sage animate-pulse" />
+                      Fill from Handout (AI)
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
 
             <form onSubmit={handleSaveExam} className="space-y-6">
@@ -1330,8 +1478,8 @@ export default function TeacherExamsPage() {
 
                           {/* Question text */}
                           <div>
-                            <input
-                              type="text"
+                            <textarea
+                              rows={2}
                               placeholder={`Enter prompt for Question ${qNum}...`}
                               value={q.question_text || ""}
                               onChange={(e) =>
@@ -1340,7 +1488,7 @@ export default function TeacherExamsPage() {
                                   [qNum]: { ...q, question_text: e.target.value },
                                 })
                               }
-                              className="w-full rounded-xl border border-border-emphasis bg-surface-overlay px-3 py-2 text-xs text-text-primary focus:border-steel focus:outline-none"
+                              className="w-full rounded-xl border border-border-emphasis bg-surface-overlay px-3 py-2 text-xs text-text-primary focus:border-steel focus:outline-none resize-y font-sans leading-relaxed"
                             />
                           </div>
 
@@ -1506,6 +1654,20 @@ export default function TeacherExamsPage() {
                 </button>
 
                 <button
+                  type="button"
+                  onClick={() => {
+                    openNewBuilder();
+                    setQuickImportContext("builder");
+                    setIsQuickImportOpen(true);
+                  }}
+                  className="flex items-center gap-2 rounded-xl border border-steel-border bg-steel-ghost px-4 py-2.5 text-xs sm:text-sm font-bold text-steel hover:bg-steel/20 transition-all cursor-pointer shadow-sm"
+                  title="Paste formatted questionnaire text with answer keys to quickly create an exam"
+                >
+                  <ClipboardList className="h-4 w-4" />
+                  Quick Import / Paste
+                </button>
+
+                <button
                   onClick={openNewBuilder}
                   className="flex items-center justify-center gap-2 rounded-xl gradient-bg-primary px-5 py-2.5 text-xs sm:text-sm font-bold text-text-primary shadow-lg shadow-steel/20 hover:opacity-95 transition-all cursor-pointer whitespace-nowrap"
                 >
@@ -1601,6 +1763,18 @@ export default function TeacherExamsPage() {
                   >
                     <Plus className="h-4 w-4 inline mr-1" />
                     Create First Exam
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      openNewBuilder();
+                      setQuickImportContext("builder");
+                      setIsQuickImportOpen(true);
+                    }}
+                    className="flex items-center gap-2 rounded-xl border border-steel-border bg-steel-ghost px-5 py-2.5 text-xs font-bold text-steel hover:bg-steel/20 shadow-sm transition-all cursor-pointer"
+                  >
+                    <ClipboardList className="h-4 w-4" />
+                    Quick Import / Paste
                   </button>
                   <button
                     type="button"
@@ -1797,13 +1971,28 @@ export default function TeacherExamsPage() {
                 </p>
               </div>
 
-              <button
-                onClick={handleRequestCloseQuestionnaire}
-                className="rounded-xl bg-surface-subtle p-2 text-text-secondary hover:bg-surface-muted hover:text-text-primary transition-colors cursor-pointer"
-                title="Close questionnaire"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuickImportContext("questionnaire");
+                    setIsQuickImportOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 rounded-xl border border-steel-border bg-steel-ghost px-3.5 py-1.5 text-xs font-bold text-steel hover:bg-steel/20 transition-all cursor-pointer shadow-sm"
+                  title="Paste questionnaire text with answer keys to auto-fill"
+                >
+                  <ClipboardList className="h-3.5 w-3.5" />
+                  Paste / Quick Import
+                </button>
+
+                <button
+                  onClick={handleRequestCloseQuestionnaire}
+                  className="rounded-xl bg-surface-subtle p-2 text-text-secondary hover:bg-surface-muted hover:text-text-primary transition-colors cursor-pointer"
+                  title="Close questionnaire"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             {/* Filter & Progress Bar */}
@@ -2581,16 +2770,31 @@ Constructor: Special method called when an object is instantiated to initialize 
                   Cancel
                 </button>
                 {aiQuota && aiQuota.remaining <= 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsAiModalOpen(false);
-                      openNewBuilder();
-                    }}
-                    className="px-4 py-2 rounded-xl text-xs font-bold text-text-primary bg-surface-muted hover:bg-surface-elevated border border-border-default transition-all cursor-pointer"
-                  >
-                    Build Manually
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAiModalOpen(false);
+                        openNewBuilder();
+                        setQuickImportContext("builder");
+                        setIsQuickImportOpen(true);
+                      }}
+                      className="px-4 py-2 rounded-xl text-xs font-bold text-steel bg-steel-ghost hover:bg-steel/20 border border-steel-border transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <ClipboardList className="h-3.5 w-3.5" />
+                      Paste / Quick Import
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAiModalOpen(false);
+                        openNewBuilder();
+                      }}
+                      className="px-4 py-2 rounded-xl text-xs font-bold text-text-primary bg-surface-muted hover:bg-surface-elevated border border-border-default transition-all cursor-pointer"
+                    >
+                      Build Manually
+                    </button>
+                  </>
                 )}
                 <button
                   type="button"
@@ -2620,6 +2824,30 @@ Constructor: Special method called when an object is instantiated to initialize 
           </div>
         </div>
       )}
+
+      {/* ── Quick Import Questionnaire & Answer Keys Modal ─────── */}
+      <QuickImportModal
+        isOpen={isQuickImportOpen}
+        onClose={() => setIsQuickImportOpen(false)}
+        onImport={
+          quickImportContext === "questionnaire"
+            ? handleImportIntoQuestionnaire
+            : handleImportIntoBuilder
+        }
+        initialTitle={
+          quickImportContext === "questionnaire" && questionnaireExam
+            ? questionnaireExam.title
+            : title
+        }
+        contextName={
+          quickImportContext === "questionnaire" ? "Questionnaire" : "Exam Builder"
+        }
+        currentQuestionCount={
+          quickImportContext === "questionnaire" && questionnaireExam
+            ? questionnaireExam.total_questions
+            : totalQuestions
+        }
+      />
     </div>
   );
 }
