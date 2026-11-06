@@ -301,19 +301,6 @@ def get_student_exam_permutation(
             if hasattr(orig_q, "explanation"):
                 setattr(q_out, "explanation", orig_q.explanation)
             student_questions.append(q_out)
-        else:
-            student_key_map[idx] = orig_correct
-            q_out = StudentExamQuestionOut(
-                question_number=idx,
-                question_text=orig_q.question_text or f"Question {idx}",
-                option_a=orig_options["A"],
-                option_b=orig_options["B"],
-                option_c=orig_options["C"],
-                option_d=orig_options["D"],
-            )
-            if hasattr(orig_q, "explanation"):
-                setattr(q_out, "explanation", orig_q.explanation)
-            student_questions.append(q_out)
 
     return student_questions, student_key_map, orig_map
 
