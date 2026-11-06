@@ -304,8 +304,8 @@ export function PasswordChangeModal({
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-medium text-text-muted">Username Handle</label>
-                  <p className="text-sm font-mono font-bold text-steel">@{user?.username}</p>
+                  <label className="block text-[11px] font-medium text-text-muted">Username</label>
+                  <p className="text-sm font-mono font-bold text-steel">{user?.username}</p>
                 </div>
               </div>
 

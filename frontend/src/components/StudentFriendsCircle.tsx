@@ -541,7 +541,7 @@ export function StudentFriendsCircle({ onOpenReviewerWithDeck }: StudentFriendsC
                   {previewStudent.full_name}
                 </h3>
                 <p className="font-mono text-xs text-text-muted mt-1">
-                  {previewStudent.full_student_id} • @{previewStudent.username}
+                  {previewStudent.full_student_id} • {previewStudent.username}
                 </p>
 
                 {/* Bio quote if present */}
@@ -567,7 +567,7 @@ export function StudentFriendsCircle({ onOpenReviewerWithDeck }: StudentFriendsC
                 <div className="flex items-center justify-between">
                   <span className="text-text-muted">Username</span>
                   <span className="font-mono text-steel font-semibold">
-                    @{previewStudent.username}
+                    {previewStudent.username}
                   </span>
                 </div>
                 {previewStudent.section_name && (

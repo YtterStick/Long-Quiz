@@ -871,7 +871,7 @@ export default function AdminDashboard() {
                           {st.user.last_name}, {st.user.first_name}
                         </td>
                         <td className="py-3.5 px-4 font-mono text-tan">
-                          @{st.user.username}
+                          {st.user.username}
                         </td>
                         <td className="py-3.5 px-4">
                           {st.section ? (
@@ -1000,7 +1000,7 @@ export default function AdminDashboard() {
                           {t.user.first_name} {t.user.last_name}
                         </td>
                         <td className="py-3.5 px-4 font-mono text-tan">
-                          @{t.user.username}
+                          {t.user.username}
                         </td>
                         <td className="py-3.5 px-4">
                           {t.user.is_active ? (
@@ -1234,7 +1234,7 @@ export default function AdminDashboard() {
                             {st.user.last_name}, {st.user.first_name}
                           </td>
                           <td className="py-2 px-3 font-mono text-tan">
-                            @{st.user.username}
+                            {st.user.username}
                           </td>
                           <td className="py-2 px-3 font-mono font-bold text-emerald-400">
                             {st.temp_password}
@@ -1309,7 +1309,7 @@ export default function AdminDashboard() {
                     </div>
                     <div className="flex justify-between border-b border-border-default/60 pb-1.5">
                       <span className="text-text-muted">Username:</span>
-                      <span className="font-bold text-tan">@{createdStudentCredentials.username}</span>
+                      <span className="font-bold text-tan">{createdStudentCredentials.username}</span>
                     </div>
                     <div className="flex justify-between pt-1">
                       <span className="text-text-muted">Temp Password:</span>
@@ -1445,7 +1445,7 @@ export default function AdminDashboard() {
           <div className="w-full max-w-md rounded-2xl border border-border-default bg-surface-overlay p-6 shadow-2xl">
             <h2 className="text-lg font-bold text-text-primary mb-2">Edit Student Profile</h2>
             <p className="text-xs text-text-muted mb-5">
-              Update details or section enrollment for @{editingStudent.user.username}.
+              Update details or section enrollment for {editingStudent.user.username}.
             </p>
 
             <form onSubmit={handleUpdateStudent} className="space-y-4">
@@ -1557,7 +1557,7 @@ export default function AdminDashboard() {
             <div className="rounded-xl border border-border-default bg-surface-base p-3 mb-4 space-y-1.5 font-mono text-xs">
               <div className="flex justify-between">
                 <span className="text-text-muted">Username:</span>
-                <span className="font-bold text-tan">@{resetPasswordModal.username}</span>
+                <span className="font-bold text-tan">{resetPasswordModal.username}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-text-muted">Temp Password:</span>
@@ -1607,7 +1607,7 @@ export default function AdminDashboard() {
             <div className="rounded-xl border border-border-default bg-surface-base p-3 mb-4 space-y-1.5 font-mono text-xs">
               <div className="flex justify-between">
                 <span className="text-text-muted">Username:</span>
-                <span className="font-bold text-tan">@{resetTeacherPasswordModal.username}</span>
+                <span className="font-bold text-tan">{resetTeacherPasswordModal.username}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-text-muted">Temp Password:</span>
@@ -1665,7 +1665,7 @@ export default function AdminDashboard() {
                   <div className="space-y-2 text-xs font-mono">
                     <div className="flex justify-between border-b border-border-default/60 pb-1.5">
                       <span className="text-text-muted">Username:</span>
-                      <span className="font-bold text-tan">@{createdTeacherCredentials.username}</span>
+                      <span className="font-bold text-tan">{createdTeacherCredentials.username}</span>
                     </div>
                     <div className="flex justify-between pt-1">
                       <span className="text-text-muted">Temp Password:</span>
@@ -1788,7 +1788,7 @@ export default function AdminDashboard() {
           <div className="w-full max-w-md rounded-2xl border border-border-default bg-surface-overlay p-6 shadow-2xl">
             <h2 className="text-lg font-bold text-text-primary mb-2">Edit Teacher Profile</h2>
             <p className="text-xs text-text-muted mb-5">
-              Update details or deactivate account access for @{editingTeacher.user.username}.
+              Update details or deactivate account access for {editingTeacher.user.username}.
             </p>
 
             <form onSubmit={handleUpdateTeacher} className="space-y-4">
@@ -1861,7 +1861,7 @@ export default function AdminDashboard() {
         isOpen={!!teacherToDelete}
         loading={deletingTeacher}
         title="Delete Teacher Account"
-        message={`Are you sure you want to delete the account for ${teacherToDelete?.user.first_name} ${teacherToDelete?.user.last_name} (@${teacherToDelete?.user.username})? All their sections and exams will also be permanently deleted.`}
+        message={`Are you sure you want to delete the account for ${teacherToDelete?.user.first_name} ${teacherToDelete?.user.last_name} (${teacherToDelete?.user.username})? All their sections and exams will also be permanently deleted.`}
         confirmText="Delete Account"
         cancelText="Cancel"
         variant="danger"

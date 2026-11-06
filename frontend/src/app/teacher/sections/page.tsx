@@ -1426,7 +1426,7 @@ export default function TeacherSectionsPage() {
                                     {s.user.first_name} {s.user.last_name}
                                   </h3>
                                   <p className="font-mono text-xs text-text-muted truncate">
-                                    @{s.user.username}
+                                    {s.user.username}
                                   </p>
                                 </div>
                               </div>
@@ -1494,7 +1494,7 @@ export default function TeacherSectionsPage() {
 
                                   {/* Username */}
                                   <td className="py-3.5 px-4 font-mono text-steel whitespace-nowrap">
-                                    @{s.user.username}
+                                    {s.user.username}
                                   </td>
 
                                   {/* Status */}
@@ -1583,7 +1583,7 @@ export default function TeacherSectionsPage() {
                                     {s.user.first_name} {s.user.last_name}
                                   </h3>
                                   <span className="font-mono text-xs text-text-muted">
-                                    @{s.user.username}
+                                    {s.user.username}
                                   </span>
                                 </div>
                                 <div className="flex items-center gap-2 mt-0.5 text-[11px] text-text-muted">
@@ -2365,7 +2365,7 @@ export default function TeacherSectionsPage() {
                                       {s.user.first_name} {s.user.last_name}
                                     </h3>
                                     <p className="font-mono text-xs text-text-muted truncate">
-                                      @{s.user.username}
+                                      {s.user.username}
                                     </p>
                                   </div>
                                 </div>
@@ -2439,7 +2439,7 @@ export default function TeacherSectionsPage() {
 
                                     {/* Username */}
                                     <td className="py-3.5 px-4 font-mono text-steel whitespace-nowrap">
-                                      @{s.user.username}
+                                      {s.user.username}
                                     </td>
 
                                     {/* Courses */}
@@ -2536,7 +2536,7 @@ export default function TeacherSectionsPage() {
                                       {s.user.first_name} {s.user.last_name}
                                     </h3>
                                     <span className="font-mono text-xs text-text-muted">
-                                      @{s.user.username}
+                                      {s.user.username}
                                     </span>
                                   </div>
                                   <div className="flex items-center gap-2 mt-0.5 text-[11px] text-text-muted">
@@ -2655,7 +2655,7 @@ export default function TeacherSectionsPage() {
                   </div>
                   <div className="flex items-center gap-1.5 mt-1">
                     <span className="font-mono text-xs text-tan font-medium">
-                      @{selectedStudentDetail.user.username}
+                      {selectedStudentDetail.user.username}
                     </span>
                     <button
                       type="button"
@@ -2999,7 +2999,7 @@ export default function TeacherSectionsPage() {
                           </span>
                         </div>
                         <div className="flex items-center gap-2 mt-0.5 text-[11px] text-text-muted">
-                          <span className="font-mono text-tan">@{s.user.username}</span>
+                          <span className="font-mono text-tan">{s.user.username}</span>
                           <span>•</span>
                           <span className="truncate">
                             {s.enrolled_sections && s.enrolled_sections.length > 0
@@ -3058,7 +3058,7 @@ export default function TeacherSectionsPage() {
                   <div className="space-y-2 text-xs font-mono bg-surface-base p-3 rounded-lg border border-border-default">
                     <p className="text-text-secondary">Name: <span className="text-text-primary font-semibold">{newStudentCredentials.name}</span></p>
                     <p className="text-text-secondary">Full Student ID: <span className="text-sage font-bold">{newStudentCredentials.full_student_id}</span></p>
-                    <p className="text-text-secondary">Username: <span className="text-tan font-bold">@{newStudentCredentials.username}</span></p>
+                    <p className="text-text-secondary">Username: <span className="text-tan font-bold">{newStudentCredentials.username}</span></p>
                     {newStudentCredentials.temp_password ? (
                       <p className="text-text-secondary">Temp Password: <span className="text-cream font-bold">{newStudentCredentials.temp_password}</span></p>
                     ) : (
@@ -3350,7 +3350,7 @@ export default function TeacherSectionsPage() {
                         <div>
                           <strong className="text-text-primary">{s.user.first_name} {s.user.last_name}</strong>
                           <span className="text-text-muted block text-[10px]">
-                            ID: 02000{String(s.student_number).padStart(6, "0")} • Username: @{s.user.username}
+                            ID: 02000{String(s.student_number).padStart(6, "0")} • Username: {s.user.username}
                           </span>
                         </div>
                         {s.temp_password && (

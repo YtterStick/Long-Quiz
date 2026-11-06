@@ -772,7 +772,7 @@ export default function TeacherStudentsPage() {
 
                       {/* Username Column */}
                       <td className="py-3.5 px-4 font-mono text-steel whitespace-nowrap">
-                        @{s.user.username}
+                        {s.user.username}
                       </td>
 
                       {/* Courses Column */}
@@ -864,7 +864,7 @@ export default function TeacherStudentsPage() {
                       <h3 className="font-bold text-sm text-text-primary truncate group-hover:text-steel transition-colors">
                         {s.user.first_name} {s.user.last_name}
                       </h3>
-                      <span className="font-mono text-xs text-text-muted">@{s.user.username}</span>
+                      <span className="font-mono text-xs text-text-muted">{s.user.username}</span>
                     </div>
                     <div className="flex items-center gap-2 mt-0.5 text-[11px] text-text-muted">
                       <span className="font-mono font-semibold text-text-secondary">
@@ -979,7 +979,7 @@ export default function TeacherStudentsPage() {
                       <h3 className="font-bold text-sm text-text-primary truncate group-hover:text-steel transition-colors">
                         {s.user.first_name} {s.user.last_name}
                       </h3>
-                      <p className="font-mono text-xs text-text-muted truncate">@{s.user.username}</p>
+                      <p className="font-mono text-xs text-text-muted truncate">{s.user.username}</p>
                     </div>
                   </div>
                 </div>
@@ -1134,7 +1134,7 @@ export default function TeacherStudentsPage() {
                       Full Student ID: <span className="font-bold text-sage">{singleSuccess.full_student_id}</span>
                     </p>
                     <p className="text-text-secondary">
-                      Username: <span className="font-bold text-steel">@{singleSuccess.username}</span>
+                      Username: <span className="font-bold text-steel">{singleSuccess.username}</span>
                     </p>
                     {singleSuccess.temp_password ? (
                       <p className="text-text-secondary">
@@ -1364,7 +1364,7 @@ export default function TeacherStudentsPage() {
                             </span>
                           </div>
                           <div className="flex items-center gap-3">
-                            <span className="text-steel">@{st.user.username}</span>
+                            <span className="text-steel">{st.user.username}</span>
                             <span className="text-amber-500 font-bold">{st.temp_password}</span>
                           </div>
                         </div>
@@ -1625,7 +1625,7 @@ export default function TeacherStudentsPage() {
                   </div>
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <span className="font-mono text-xs text-steel font-bold">
-                      @{selectedStudentDetail.user.username}
+                      {selectedStudentDetail.user.username}
                     </span>
                     <button
                       type="button"

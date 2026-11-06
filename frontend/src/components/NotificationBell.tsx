@@ -231,7 +231,7 @@ export function NotificationBell() {
                           <div className="flex items-center gap-1.5 text-[10px] text-text-muted font-mono">
                             <span className="text-tan font-semibold">{req.full_student_id}</span>
                             <span>•</span>
-                            <span className="truncate">@{req.student_username}</span>
+                            <span className="truncate">{req.student_username}</span>
                           </div>
                         </div>
                       </div>
@@ -319,7 +319,7 @@ export function NotificationBell() {
               </div>
               <div className="flex justify-between items-center pb-2 border-b border-border-default/60">
                 <span className="font-sans text-text-muted text-[11px]">Username</span>
-                <span className="font-bold text-text-primary">@{resetSuccess.username}</span>
+                <span className="font-bold text-text-primary">{resetSuccess.username}</span>
               </div>
               <div className="pt-1">
                 <p className="font-sans text-[11px] text-text-muted mb-1.5">New Temporary Password:</p>

@@ -318,7 +318,7 @@ export function Navbar({ onOpenPasswordModal, onOpenCloset }: NavbarProps) {
                       <p className="text-xs font-bold text-text-primary truncate">
                         {user.first_name} {user.last_name}
                       </p>
-                      <p className="text-[11px] text-text-muted font-mono truncate">@{user.username}</p>
+                      <p className="text-[11px] text-text-muted font-mono truncate">{user.username}</p>
                     </div>
                   </div>
 
