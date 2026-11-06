@@ -1142,12 +1142,8 @@ export default function StudentDashboard() {
       }
     };
 
-    // A single Alt-Tab or Ctrl+Alt+Del can fire both `blur` and `visibilitychange`; count it once per away-episode.
+    // A single Alt-Tab, Win-Tab, or Ctrl+Alt+Del can fire both `blur` and `visibilitychange`; count it once per away-episode.
     const onFocusLost = (customReason?: string) => {
-      // Guard against false positive blur if the browser window still has focus and is visible
-      if (typeof document !== "undefined" && !document.hidden && document.hasFocus()) {
-        return;
-      }
       if (awayRef.current) return;
       awayRef.current = true;
       setIsWindowAway(true);
@@ -1163,20 +1159,14 @@ export default function StudentDashboard() {
       } catch {}
 
       triggerSecurityWarning(
-        customReason || "Focus Lost! Navigating away, switching windows, or pressing system shortcuts (e.g. Ctrl+Alt+Del, Alt-Tab) is strictly prohibited and locked the exam.",
+        customReason || "Focus Lost! Navigating away, switching windows, or pressing system shortcuts (e.g. Windows+Tab, Alt-Tab, Ctrl+Alt+Del) is strictly prohibited and locked the exam.",
         "blur"
       );
       registerStrike(`Maximum tab switch / focus loss violations reached (${MAX_STRIKES} strikes)`);
     };
 
     const handleWindowBlur = () => {
-      // Small debounce delay to confirm the window truly lost focus (e.g. Alt-Tab or switching apps)
-      // rather than momentarily transferring focus between elements during a Tab keypress.
-      setTimeout(() => {
-        if (typeof document !== "undefined" && (!document.hasFocus() || document.hidden)) {
-          onFocusLost();
-        }
-      }, 75);
+      onFocusLost();
     };
 
     const onFocusRegained = () => {
@@ -1337,7 +1327,13 @@ export default function StudentDashboard() {
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
-        onFocusLost("Alt-Tab was intercepted and blocked!");
+        setIsWindowAway(true);
+        awayRef.current = true;
+        const reason = "Alt-Tab was intercepted and blocked!";
+        triggerSecurityWarning(reason);
+        setTabSwitchCount((c) => c + 1);
+        registerStrike(reason);
+        report("TAB");
         return false;
       }
 
@@ -1378,13 +1374,20 @@ export default function StudentDashboard() {
         e.stopPropagation();
       }
 
-      // 12. Block Windows / Meta key (start menu popup)
+      // 12. Block Windows + Tab (Task View), Windows key alone, and any Meta shortcuts
       if (isMeta) {
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
         setIsWindowAway(true);
-        onFocusLost("Windows / Command key was blocked!");
+        awayRef.current = true;
+        const reason = isTab
+          ? "Windows + Tab (Task View) is strictly prohibited and blocked during the exam!"
+          : "Windows / Command key is strictly prohibited and blocked during the exam!";
+        triggerSecurityWarning(reason);
+        setTabSwitchCount((c) => c + 1);
+        registerStrike(reason);
+        report("TAB");
         return false;
       }
 
