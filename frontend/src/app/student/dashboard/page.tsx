@@ -250,6 +250,7 @@ export default function StudentDashboard() {
     type: "blur" | "fullscreen";
   } | null>(null);
   const [isFullscreenActive, setIsFullscreenActive] = useState(false);
+  const [isWindowAway, setIsWindowAway] = useState(false);
 
   // Continuously track document fullscreen status
   useEffect(() => {
@@ -662,16 +663,22 @@ export default function StudentDashboard() {
       }
       if (typeof navigator !== "undefined" && "keyboard" in navigator && typeof (navigator as any).keyboard?.lock === "function") {
         try {
-          await (navigator as any).keyboard.lock(["Tab", "AltLeft", "AltRight", "Escape", "MetaLeft", "MetaRight", "F4", "F11"]);
+          await (navigator as any).keyboard.lock();
         } catch {
           try {
-            await (navigator as any).keyboard.lock();
+            await (navigator as any).keyboard.lock([
+              "Tab", "AltLeft", "AltRight", "Escape", "MetaLeft", "MetaRight",
+              "F4", "F11", "Delete", "Backspace", "ControlLeft", "ControlRight",
+              "F1", "F2", "F3", "F5", "F6", "F7", "F8", "F9", "F10", "F12"
+            ]);
           } catch {}
         }
       }
     } catch (e) {
       console.warn("Fullscreen request error:", e);
     }
+    setIsWindowAway(false);
+    awayRef.current = false;
     if (alertTimerRef.current) {
       clearTimeout(alertTimerRef.current);
       alertTimerRef.current = null;
@@ -681,6 +688,7 @@ export default function StudentDashboard() {
 
   const handleJoinLobbyFullscreen = async () => {
     setIsFullscreenActive(true);
+    setIsWindowAway(false);
     try {
       if (document.documentElement.requestFullscreen) {
         await document.documentElement.requestFullscreen();
@@ -689,13 +697,17 @@ export default function StudentDashboard() {
       console.warn("Fullscreen request error:", e);
     }
 
-    // Engage W3C Keyboard Lock API in fullscreen (captures Alt+Tab, Escape, Meta keys in Chrome/Edge)
+    // Engage W3C Keyboard Lock API in fullscreen (captures F11, Alt+Tab, Escape, Meta keys in Chrome/Edge)
     if (typeof navigator !== "undefined" && "keyboard" in navigator && typeof (navigator as any).keyboard?.lock === "function") {
       try {
-        await (navigator as any).keyboard.lock(["Tab", "AltLeft", "AltRight", "Escape", "MetaLeft", "MetaRight"]);
+        await (navigator as any).keyboard.lock();
       } catch {
         try {
-          await (navigator as any).keyboard.lock();
+          await (navigator as any).keyboard.lock([
+            "Tab", "AltLeft", "AltRight", "Escape", "MetaLeft", "MetaRight",
+            "F4", "F11", "Delete", "Backspace", "ControlLeft", "ControlRight",
+            "F1", "F2", "F3", "F5", "F6", "F7", "F8", "F9", "F10", "F12"
+          ]);
         } catch {}
       }
     }
@@ -719,6 +731,10 @@ export default function StudentDashboard() {
       await document.exitFullscreen().catch(() => {});
     }
     setIsWaitingInLobby(false);
+    setIsExamInProgress(false);
+    setIsFullscreenActive(false);
+    setIsWindowAway(false);
+    awayRef.current = false;
     setExamLobbyOpen(false);
     setLobbyExamId(null);
     setLobbyExamInfo(null);
@@ -783,6 +799,7 @@ export default function StudentDashboard() {
           setAntiCheatStrikes(0);
           strikesRef.current = 0;
           awayRef.current = false;
+          setIsWindowAway(false);
           autoSubmittingRef.current = false;
           setAntiCheatAlert(null);
         } catch (err) {
@@ -941,6 +958,9 @@ export default function StudentDashboard() {
 
       setConfirmSubmitOpen(false);
       setIsExamInProgress(false);
+      setIsFullscreenActive(false);
+      setIsWindowAway(false);
+      awayRef.current = false;
       setTimeRemaining(null);
       setAntiCheatAlert(null);
       setActiveTakingExam(null);
@@ -1060,6 +1080,7 @@ export default function StudentDashboard() {
       const fs = Boolean(typeof document !== "undefined" && document.fullscreenElement);
       setIsFullscreenActive(fs);
       if (!fs) {
+        setIsWindowAway(true);
         if (alertTimerRef.current) {
           clearTimeout(alertTimerRef.current);
           alertTimerRef.current = null;
@@ -1084,17 +1105,22 @@ export default function StudentDashboard() {
         });
         // Re-lock keyboard on fullscreen re-entry
         if (typeof navigator !== "undefined" && "keyboard" in navigator && typeof (navigator as any).keyboard?.lock === "function") {
-          (navigator as any).keyboard.lock(["Tab", "AltLeft", "AltRight", "Escape", "MetaLeft", "MetaRight", "F4", "F11"]).catch(() => {
-            (navigator as any).keyboard.lock().catch(() => {});
+          (navigator as any).keyboard.lock().catch(() => {
+            (navigator as any).keyboard.lock([
+              "Tab", "AltLeft", "AltRight", "Escape", "MetaLeft", "MetaRight",
+              "F4", "F11", "Delete", "Backspace", "ControlLeft", "ControlRight",
+              "F1", "F2", "F3", "F5", "F6", "F7", "F8", "F9", "F10", "F12"
+            ]).catch(() => {});
           });
         }
       }
     };
 
-    // A single Alt-Tab can fire both `blur` and `visibilitychange`; count it once per away-episode.
+    // A single Alt-Tab or Ctrl+Alt+Del can fire both `blur` and `visibilitychange`; count it once per away-episode.
     const onFocusLost = (customReason?: string) => {
       if (awayRef.current) return;
       awayRef.current = true;
+      setIsWindowAway(true);
       setTabSwitchCount((c) => c + 1);
       report("TAB");
 
@@ -1107,7 +1133,7 @@ export default function StudentDashboard() {
       } catch {}
 
       triggerSecurityWarning(
-        customReason || "Focus Lost! Alt-Tab or switching away from the exam window is prohibited and blocked.",
+        customReason || "Focus Lost! Navigating away, switching windows, or pressing system shortcuts (e.g. Ctrl+Alt+Del, Alt-Tab) is strictly prohibited and locked the exam.",
         "blur"
       );
       registerStrike(`Maximum tab switch / focus loss violations reached (${MAX_STRIKES} strikes)`);
@@ -1115,18 +1141,10 @@ export default function StudentDashboard() {
 
     const onFocusRegained = () => {
       if (!document.hidden && document.hasFocus()) {
-        awayRef.current = false;
         sendStudentWsState({
           is_fullscreen: Boolean(document.fullscreenElement),
           is_focused: true,
         });
-        // Auto-clear alert once focus is smoothly restored
-        if (typeof document !== "undefined" && document.fullscreenElement) {
-          if (alertTimerRef.current) clearTimeout(alertTimerRef.current);
-          alertTimerRef.current = setTimeout(() => {
-            setAntiCheatAlert(null);
-          }, 1000);
-        }
       }
     };
 
@@ -1135,14 +1153,110 @@ export default function StudentDashboard() {
       else onFocusRegained();
     };
 
-    // Keyboard capture: intercepts and neutralizes Alt+Tab, Alt alone, Tab during Alt, Windows key, etc.
+    // Keyboard capture: intercepts and neutralizes Alt+Tab, Alt alone, F11, Function keys, Ctrl+Alt, etc.
     const onKeyDownCapture = (e: KeyboardEvent) => {
       const isAlt = e.altKey || e.key === "Alt" || e.code?.startsWith("Alt");
       const isTab = e.key === "Tab" || e.code === "Tab";
       const isMeta = e.metaKey || e.key === "Meta" || e.key === "OS" || e.code?.startsWith("Meta");
       const isCtrl = e.ctrlKey || e.key === "Control";
 
-      // 1. Block Alt+Tab or Alt held with Tab
+      // 1. Block F11 and all Function keys (F1 - F12)
+      const isFnKey =
+        e.key === "F11" ||
+        e.code === "F11" ||
+        e.keyCode === 122 ||
+        (e.key && /^F([1-9]|1[0-2])$/i.test(e.key)) ||
+        (e.code && /^F([1-9]|1[0-2])$/i.test(e.code));
+      if (isFnKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        setIsWindowAway(true);
+        triggerSecurityWarning("F11 and Function keys are locked and blocked during the examination.");
+        registerStrike("Attempted to use F11 / Function key to escape fullscreen");
+        if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        }
+        return false;
+      }
+
+      // 2. Block Ctrl + Alt combined (covers start of Ctrl+Alt+Del sequence)
+      if (isCtrl && isAlt) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        setIsWindowAway(true);
+        triggerSecurityWarning("Ctrl+Alt combinations and system escape attempts are strictly blocked!");
+        registerStrike("Attempted Ctrl+Alt system escape sequence");
+        return false;
+      }
+
+      // 3. Block Delete / Backspace / Insert when combined with Ctrl or Alt
+      const isDeleteKey =
+        e.key === "Delete" ||
+        e.code === "Delete" ||
+        e.keyCode === 46 ||
+        e.key === "Backspace" ||
+        e.code === "Backspace" ||
+        e.keyCode === 8 ||
+        e.key === "Insert" ||
+        e.code === "Insert" ||
+        e.keyCode === 45;
+      if ((isCtrl || isAlt) && isDeleteKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        setIsWindowAway(true);
+        triggerSecurityWarning("System escape shortcut (Ctrl/Alt + Del) is strictly blocked!");
+        registerStrike("Attempted system escape combination (Ctrl/Alt + Del)");
+        return false;
+      }
+
+      // 4. Block Task Manager shortcut (Ctrl+Shift+Escape)
+      if (isCtrl && e.shiftKey && (e.key === "Escape" || e.code === "Escape" || e.keyCode === 27)) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        setIsWindowAway(true);
+        triggerSecurityWarning("Task Manager shortcut (Ctrl+Shift+Esc) is strictly blocked!");
+        registerStrike("Attempted to open Task Manager (Ctrl+Shift+Esc)");
+        return false;
+      }
+
+      // 5. Block Alt+Escape (direct window cycle)
+      if (isAlt && (e.key === "Escape" || e.code === "Escape" || e.keyCode === 27)) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        setIsWindowAway(true);
+        triggerSecurityWarning("Alt+Escape window switching is strictly blocked!");
+        registerStrike("Attempted Alt+Escape window switch");
+        return false;
+      }
+
+      // 6. Block Alt+Space (system window menu with Minimize/Close)
+      if (isAlt && (e.key === " " || e.code === "Space" || e.keyCode === 32)) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        setIsWindowAway(true);
+        triggerSecurityWarning("Window menu shortcut (Alt+Space) is strictly blocked!");
+        registerStrike("Attempted Alt+Space system menu");
+        return false;
+      }
+
+      // 7. Block Ctrl+Escape (Windows Start menu)
+      if (isCtrl && (e.key === "Escape" || e.code === "Escape" || e.keyCode === 27)) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        setIsWindowAway(true);
+        triggerSecurityWarning("Start menu shortcut (Ctrl+Esc) is strictly blocked!");
+        registerStrike("Attempted Ctrl+Esc Start Menu");
+        return false;
+      }
+
+      // 8. Block Alt+Tab or Alt held with Tab
       if ((isAlt && isTab) || (e.altKey && isTab) || (isAlt && e.key === "Tab")) {
         e.preventDefault();
         e.stopPropagation();
@@ -1151,21 +1265,23 @@ export default function StudentDashboard() {
         return false;
       }
 
-      // 2. Block Alt+F4 (Window close attempt)
+      // 9. Block Alt+F4 (Window close attempt)
       if ((isAlt || e.altKey) && (e.key === "F4" || e.code === "F4" || e.keyCode === 115)) {
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
+        setIsWindowAway(true);
         triggerSecurityWarning("Alt+F4 is strictly prohibited and blocked during the exam!");
         registerStrike("Attempted to close exam window with Alt+F4");
         return false;
       }
 
-      // 3. Block Escape key from cancelling fullscreen
+      // 10. Block Escape key from cancelling fullscreen
       if (e.key === "Escape" || e.code === "Escape" || e.keyCode === 27) {
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
+        setIsWindowAway(true);
         triggerSecurityWarning("Escape key is locked and blocked during the exam.");
         registerStrike("Attempted to exit fullscreen with Escape key");
         if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
@@ -1174,7 +1290,7 @@ export default function StudentDashboard() {
         return false;
       }
 
-      // 4. Block Alt key alone or combined with navigation (Alt+Left/Right)
+      // 11. Block Alt key alone or combined with navigation (Alt+Left/Right)
       if (isAlt && (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.code === "ArrowLeft" || e.code === "ArrowRight")) {
         e.preventDefault();
         e.stopPropagation();
@@ -1186,16 +1302,17 @@ export default function StudentDashboard() {
         e.stopPropagation();
       }
 
-      // 5. Block Windows / Meta key (start menu popup)
+      // 12. Block Windows / Meta key (start menu popup)
       if (isMeta) {
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
+        setIsWindowAway(true);
         onFocusLost("Windows / Command key was blocked!");
         return false;
       }
 
-      // 6. Block browser tab navigation / closing / opening
+      // 13. Block browser tab navigation / closing / opening
       if (
         isCtrl &&
         (isTab ||
@@ -1209,10 +1326,11 @@ export default function StudentDashboard() {
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
+        setIsWindowAway(true);
         return false;
       }
 
-      // 7. Block Developer Tools (F12, Ctrl+Shift+I/J/C)
+      // 14. Block Developer Tools (F12, Ctrl+Shift+I/J/C)
       if (
         e.key === "F12" ||
         (isCtrl && e.shiftKey && (e.key === "I" || e.key === "i" || e.key === "J" || e.key === "j" || e.key === "C" || e.key === "c"))
@@ -1220,6 +1338,7 @@ export default function StudentDashboard() {
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
+        setIsWindowAway(true);
         return false;
       }
     };
@@ -1227,7 +1346,13 @@ export default function StudentDashboard() {
     const onKeyUpCapture = (e: KeyboardEvent) => {
       const isAlt = e.altKey || e.key === "Alt" || e.code?.startsWith("Alt");
       const isTab = e.key === "Tab" || e.code === "Tab";
-      if ((isAlt && isTab) || (e.altKey && isTab)) {
+      const isFnKey =
+        e.key === "F11" ||
+        e.code === "F11" ||
+        e.keyCode === 122 ||
+        (e.key && /^F([1-9]|1[0-2])$/i.test(e.key)) ||
+        (e.code && /^F([1-9]|1[0-2])$/i.test(e.code));
+      if ((isAlt && isTab) || (e.altKey && isTab) || isFnKey) {
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
@@ -2585,7 +2710,7 @@ export default function StudentDashboard() {
       {/* 3. Modal: Active Proctored Online Exam */}
       {isExamInProgress && activeTakingExam && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface-base/95 dark:bg-black/95 backdrop-blur-md p-2 sm:p-4 select-none">
-          <div className={`w-full max-w-4xl h-[96vh] flex flex-col rounded-2xl border border-border-default bg-surface-overlay shadow-2xl overflow-hidden transition-all duration-200 ${!isFullscreenActive ? "filter blur-xl opacity-20 pointer-events-none select-none" : ""}`}>
+          <div className={`w-full max-w-4xl h-[96vh] flex flex-col rounded-2xl border border-border-default bg-surface-overlay shadow-2xl overflow-hidden transition-all duration-200 ${(!isFullscreenActive || isWindowAway) ? "filter blur-2xl opacity-10 pointer-events-none select-none" : ""}`}>
             {/* Modal Header with Fullscreen Indicator */}
             <div className="flex items-center justify-between px-6 py-3.5 border-b border-border-default bg-surface-base shrink-0">
               <div>
@@ -2787,31 +2912,32 @@ export default function StudentDashboard() {
         </div>
       )}
 
-      {/* 4. Mandatory Fullscreen Lock Screen */}
-      {/* If exam is in progress or student is in lobby, and browser is NOT in fullscreen, HARD BLOCK THE ENTIRE UI */}
-      {(isExamInProgress || isWaitingInLobby) && !isFullscreenActive && (
+      {/* 4. Mandatory Fullscreen & Security Lock Screen */}
+      {/* If exam is in progress or student is in lobby, and browser is NOT in fullscreen or window/focus was lost, HARD BLOCK THE ENTIRE UI */}
+      {(isExamInProgress || isWaitingInLobby) && (!isFullscreenActive || isWindowAway) && (
         <div className="fixed inset-0 z-70 flex items-center justify-center bg-surface-base/95 dark:bg-black/95 backdrop-blur-xl p-4 select-none animate-in fade-in">
           <div className="w-full max-w-md rounded-2xl border border-burgundy-border bg-surface-overlay p-6 shadow-2xl text-center space-y-4">
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-burgundy-ghost text-burgundy-light border border-burgundy-border">
               <ShieldAlert className="h-8 w-8" />
             </div>
             <h2 className="text-lg font-black text-burgundy-light">
-              Full-Screen Mode Required
+              {!isFullscreenActive ? "Full-Screen Mode Required" : "Exam Locked — Security Violation"}
             </h2>
             <p className="text-xs text-text-secondary leading-relaxed">
-              You cannot view, interact with, or take this examination outside of proctored full-screen mode.
-              Exiting full-screen is strictly prohibited.
+              {!isFullscreenActive
+                ? "You cannot view, interact with, or take this examination outside of proctored full-screen mode. Exiting full-screen is strictly prohibited."
+                : "Window focus lost or prohibited shortcut detected (such as Ctrl+Alt+Del, Alt-Tab, or F11). Examination interaction has been locked to prevent unauthorized assistance."}
             </p>
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-xl bg-burgundy-ghost/50 border border-burgundy-border p-3 text-xs font-mono font-bold text-burgundy-light">
                 Strikes: {antiCheatStrikes} / 3
               </div>
               <div className="rounded-xl bg-burgundy-ghost/50 border border-burgundy-border p-3 text-xs font-mono font-bold text-burgundy-light">
-                Alt-Tabs: {tabSwitchCount}
+                Alt-Tabs / Escapes: {tabSwitchCount}
               </div>
             </div>
             <p className="text-[11px] text-text-muted">
-              Alt-Tab, window switching, or leaving full-screen is forbidden. 3 strikes will trigger automatic submission of your examination.
+              Alt-Tab, Ctrl+Alt+Del, F11, window switching, or leaving full-screen is forbidden. 3 strikes will trigger automatic submission of your examination.
             </p>
             <button
               type="button"
@@ -2824,8 +2950,8 @@ export default function StudentDashboard() {
         </div>
       )}
 
-      {/* 5. In-Exam Security Warning Toast (Only active when in fullscreen) */}
-      {antiCheatAlert && isFullscreenActive && (
+      {/* 5. In-Exam Security Warning Toast (Only active when in fullscreen and not in lock overlay) */}
+      {antiCheatAlert && isFullscreenActive && !isWindowAway && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-60 w-[92%] max-w-lg select-none pointer-events-auto animate-in slide-in-from-top-4 fade-in duration-200">
           <div className="rounded-2xl border-2 border-burgundy-light bg-surface-overlay/95 backdrop-blur-xl p-4 shadow-2xl shadow-burgundy/20 flex items-start gap-3.5">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-burgundy-ghost text-burgundy-light border border-burgundy-border">
