@@ -58,7 +58,12 @@ export default function LoginPage() {
     if (user && !loading && !user.must_change_password) {
       if (user.role === "ADMIN") router.push("/admin/dashboard");
       else if (user.role === "TEACHER") router.push("/teacher/dashboard");
-      else if (user.role === "STUDENT") router.push("/student/dashboard");
+      else if (user.role === "STUDENT") {
+        try {
+          sessionStorage.removeItem("evalo_student_dashboard_state");
+        } catch {}
+        router.push("/student/dashboard");
+      }
     }
   }, [user, loading, router]);
 
@@ -88,7 +93,12 @@ export default function LoginPage() {
       } else {
         if (res.role === "ADMIN") router.push("/admin/dashboard");
         else if (res.role === "TEACHER") router.push("/teacher/dashboard");
-        else if (res.role === "STUDENT") router.push("/student/dashboard");
+        else if (res.role === "STUDENT") {
+          try {
+            sessionStorage.removeItem("evalo_student_dashboard_state");
+          } catch {}
+          router.push("/student/dashboard");
+        }
       }
     } catch (err: unknown) {
       if (err instanceof Error) {

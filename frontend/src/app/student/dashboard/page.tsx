@@ -401,33 +401,30 @@ export default function StudentDashboard() {
         const raw = sessionStorage.getItem("evalo_student_dashboard_state");
         const parsed = raw ? JSON.parse(raw) : {};
         const params = new URLSearchParams(window.location.search);
-        const tabParam = params.get("tab") || parsed.activeTab;
+        // Only activate a sub-tab if explicitly requested in URL ?tab=...
+        const tabParam = params.get("tab");
 
         if (
           tabParam === "available" ||
           tabParam === "grades" ||
           tabParam === "reviewers" ||
-          tabParam === "friends" ||
-          tabParam === "dashboard"
+          tabParam === "friends"
         ) {
-          if (tabParam === "reviewers" && window.innerWidth < 768) {
-            router.replace("/student/reviewer");
-            return;
-          }
           setActiveTab(tabParam);
           window.dispatchEvent(new CustomEvent("studentTabChange", { detail: tabParam }));
           const url = new URL(window.location.href);
-          if (tabParam === "dashboard") {
-            url.searchParams.delete("tab");
-          } else {
-            url.searchParams.set("tab", tabParam);
-          }
+          url.searchParams.set("tab", tabParam);
           window.history.replaceState({}, "", url.toString());
           if (tabParam === "reviewers") {
             loadPublicReviewers();
           }
         } else {
+          // Default: Always stay on the main Student Dashboard overview
           setActiveTab("dashboard");
+          window.dispatchEvent(new CustomEvent("studentTabChange", { detail: "dashboard" }));
+          const url = new URL(window.location.href);
+          url.searchParams.delete("tab");
+          window.history.replaceState({}, "", url.toString());
         }
 
         if (parsed.reviewerSectionMode === "ai_handout" || parsed.reviewerSectionMode === "public_exams") {
@@ -454,10 +451,6 @@ export default function StudentDashboard() {
     const handleTabChange = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (detail === "available" || detail === "grades" || detail === "reviewers" || detail === "friends" || detail === "dashboard") {
-        if (detail === "reviewers" && typeof window !== "undefined" && window.innerWidth < 768) {
-          router.push("/student/reviewer");
-          return;
-        }
         setActiveTab(detail);
         if (detail === "reviewers") {
           loadPublicReviewers();
@@ -603,10 +596,6 @@ export default function StudentDashboard() {
   }, [isExamInProgress, activeTakingExam, takingAnswers, examLobbyOpen, isWaitingInLobby, lobbyExamId, lobbyExamInfo]);
 
   const handleTabSelect = (tab: "dashboard" | "available" | "grades" | "reviewers" | "friends") => {
-    if (tab === "reviewers" && typeof window !== "undefined" && window.innerWidth < 768) {
-      router.push("/student/reviewer");
-      return;
-    }
     setActiveTab(tab);
     if (tab === "reviewers") {
       loadPublicReviewers();
