@@ -112,6 +112,9 @@ class LobbyConnectionManager:
         self.student_sockets: dict[str, dict[str, WebSocket]] = {}
         # (section_id, exam_id) -> set[WebSocket]
         self.teacher_sockets: dict[tuple[str, str], set[WebSocket]] = {}
+        # Debouncing monitor updates per (section_id, exam_id) to prevent DB storm
+        self._pending_tasks: dict[tuple[str, str], asyncio.Task] = {}
+        self._last_broadcast: dict[tuple[str, str], float] = {}
 
     def register_student(self, exam_id: str, student_id: str, ws: WebSocket) -> None:
         self.student_sockets.setdefault(exam_id, {})[student_id] = ws
@@ -181,10 +184,60 @@ class LobbyConnectionManager:
             except Exception:
                 self.unregister_teacher(section_id, exam_id, ws)
 
-    async def broadcast_monitor_for_exam(self, exam_id: str) -> None:
+    def schedule_monitor_update(self, section_id: str, exam_id: str, delay: float = 2.0, force: bool = False) -> None:
+        """
+        Throttles and coalesces student heartbeats to prevent DB query storms.
+        If no teacher is monitoring this class, no database query is executed.
+        """
+        key = (section_id, exam_id)
+        if not self.teacher_sockets.get(key):
+            return
+
+        if force:
+            existing = self._pending_tasks.pop(key, None)
+            if existing and not existing.done():
+                existing.cancel()
+            try:
+                loop = asyncio.get_running_loop()
+                self._last_broadcast[key] = loop.time()
+                asyncio.create_task(self.broadcast_monitor_update(section_id, exam_id))
+            except RuntimeError:
+                pass
+            return
+
+        existing = self._pending_tasks.get(key)
+        if existing and not existing.done():
+            return
+
+        async def _debounced():
+            try:
+                loop = asyncio.get_running_loop()
+                now = loop.time()
+                last = self._last_broadcast.get(key, 0.0)
+                elapsed = now - last
+                if elapsed < delay:
+                    await asyncio.sleep(delay - elapsed)
+                await self.broadcast_monitor_update(section_id, exam_id)
+                self._last_broadcast[key] = loop.time()
+            except asyncio.CancelledError:
+                pass
+            except Exception as exc:
+                logger.debug("Debounced monitor broadcast error: %s", exc)
+            finally:
+                self._pending_tasks.pop(key, None)
+
+        try:
+            self._pending_tasks[key] = asyncio.create_task(_debounced())
+        except RuntimeError:
+            pass
+
+    def schedule_monitor_for_exam(self, exam_id: str, force: bool = False) -> None:
         keys = [k for k in list(self.teacher_sockets.keys()) if k[1] == exam_id]
         for section_id, ex_id in keys:
-            await self.broadcast_monitor_update(section_id, ex_id)
+            self.schedule_monitor_update(section_id, ex_id, force=force)
+
+    async def broadcast_monitor_for_exam(self, exam_id: str) -> None:
+        self.schedule_monitor_for_exam(exam_id, force=True)
 
 
 lobby_manager = LobbyConnectionManager()
@@ -208,7 +261,6 @@ async def _build_monitor_payload(
 
     subs_res = await db.execute(
         select(ExamSubmission)
-        .options(selectinload(ExamSubmission.answers))
         .where(
             ExamSubmission.exam_id == exam_id,
             ExamSubmission.student_id.in_([s.id for s in students] or [""]),
@@ -286,14 +338,7 @@ async def _build_monitor_payload(
             "submitted_at": sub.scanned_at.isoformat() if (sub and sub.scanned_at) else None,
             "scanned_image_url": sub.scanned_image_url if sub else None,
             "is_online_submission": bool(sub and not sub.scanned_image_url),
-            "answers": [
-                {
-                    "question_number": a.question_number,
-                    "shaded_option": a.shaded_option,
-                    "is_correct": a.is_correct,
-                }
-                for a in sorted(sub.answers or [], key=lambda x: x.question_number or 0)
-            ] if sub and sub.answers else [],
+            "answers": [],  # Detailed answers loaded on demand via /students/{id}/answers
         })
 
     total_scores = 0.0
@@ -422,7 +467,7 @@ async def start_or_stop_exam(
         exam_id,
         {"type": "STATUS", "status": "STARTED" if se.is_started else "WAITING"},
     )
-    await lobby_manager.broadcast_monitor_update(section_id, exam_id)
+    lobby_manager.schedule_monitor_update(section_id, exam_id, force=True)
 
     return {"is_started": se.is_started, "is_online_active": se.is_online_active}
 
@@ -443,7 +488,7 @@ async def toggle_lock_lobby(
         se.is_lobby_locked = not getattr(se, "is_lobby_locked", False)
     await db.commit()
 
-    await lobby_manager.broadcast_monitor_update(section_id, exam_id)
+    lobby_manager.schedule_monitor_update(section_id, exam_id, force=True)
 
     return {
         "is_lobby_locked": se.is_lobby_locked,
@@ -471,7 +516,7 @@ async def end_exam(
         exam_id,
         {"type": "STATUS", "status": "CLOSED"},
     )
-    await lobby_manager.broadcast_monitor_update(section_id, exam_id)
+    lobby_manager.schedule_monitor_update(section_id, exam_id, force=True)
 
     return {
         "message": "Exam session ended and online quiz access disabled.",
@@ -488,9 +533,40 @@ async def monitor_exam(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(Role.TEACHER)),
 ):
-    """Live roster: who is in the lobby, who is taking the exam, who submitted (with their answers)."""
+    """Live roster: who is in the lobby, who is taking the exam, who submitted."""
     se = await _owned_section_exam(db, current_user, section_id, exam_id)
     return await _build_monitor_payload(db, se, section_id, exam_id)
+
+
+@teacher_router.get("/sections/{section_id}/exams/{exam_id}/students/{student_id}/answers")
+async def get_student_submission_answers(
+    section_id: str,
+    exam_id: str,
+    student_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_role(Role.TEACHER)),
+):
+    """Fetch detailed question-by-question answers for a single student on demand."""
+    await _owned_section_exam(db, current_user, section_id, exam_id)
+    sub_res = await db.execute(
+        select(ExamSubmission)
+        .options(selectinload(ExamSubmission.answers))
+        .where(
+            ExamSubmission.exam_id == exam_id,
+            ExamSubmission.student_id == student_id,
+        )
+    )
+    sub = sub_res.scalar_one_or_none()
+    if not sub:
+        return []
+    return [
+        {
+            "question_number": a.question_number,
+            "shaded_option": a.shaded_option,
+            "is_correct": a.is_correct,
+        }
+        for a in sorted(sub.answers or [], key=lambda x: x.question_number or 0)
+    ]
 
 
 @teacher_router.post("/sections/{section_id}/exams/{exam_id}/students/{student_id}/allow-retake")
@@ -555,7 +631,7 @@ async def allow_retake(
         student_id,
         {"type": "STATUS", "status": "STARTED" if se.is_started else "WAITING"},
     )
-    await lobby_manager.broadcast_monitor_update(section_id, exam_id)
+    lobby_manager.schedule_monitor_update(section_id, exam_id, force=True)
 
     return {
         "message": "Retake granted. The student can now re-enter the exam lobby.",
@@ -582,7 +658,7 @@ async def lobby_ping(
 
     res_dict, section_id = await _process_student_heartbeat(db, student, exam_id, body)
     if section_id:
-        await lobby_manager.broadcast_monitor_update(section_id, exam_id)
+        lobby_manager.schedule_monitor_update(section_id, exam_id)
     return res_dict
 
 
@@ -638,7 +714,7 @@ async def ws_student_lobby(
     # Push initial status to student & notify teacher monitor immediately
     await websocket.send_json({"type": "STATUS", **initial_state})
     if section_id:
-        await lobby_manager.broadcast_monitor_update(section_id, exam_id)
+        lobby_manager.schedule_monitor_update(section_id, exam_id)
 
     try:
         while True:
@@ -666,7 +742,7 @@ async def ws_student_lobby(
                         section_id = sec_id or section_id
                         await websocket.send_json({"type": "STATUS", **state_dict})
                 if section_id:
-                    await lobby_manager.broadcast_monitor_update(section_id, exam_id)
+                    lobby_manager.schedule_monitor_update(section_id, exam_id)
     except WebSocketDisconnect:
         pass
     except Exception as exc:
@@ -699,7 +775,7 @@ async def ws_student_lobby(
             except Exception:
                 pass
             if section_id:
-                await lobby_manager.broadcast_monitor_update(section_id, exam_id)
+                lobby_manager.schedule_monitor_update(section_id, exam_id)
 
 
 @ws_router.websocket("/api/ws/teacher/sections/{section_id}/exams/{exam_id}/monitor")
@@ -744,7 +820,7 @@ async def ws_teacher_monitor(
             except Exception:
                 continue
             if msg.get("type") == "REFRESH":
-                await lobby_manager.broadcast_monitor_update(section_id, exam_id)
+                lobby_manager.schedule_monitor_update(section_id, exam_id, force=True)
     except WebSocketDisconnect:
         pass
     except Exception as exc:

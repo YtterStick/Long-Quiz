@@ -487,7 +487,6 @@ async def list_available_exams(
         se_res = await db.execute(
             select(SectionExam)
             .options(
-                selectinload(SectionExam.exam).selectinload(Exam.questions),
                 selectinload(SectionExam.exam).selectinload(Exam.teacher).selectinload(Teacher.user),
             )
             .where(
@@ -513,7 +512,6 @@ async def list_available_exams(
         result = await db.execute(
             select(Exam)
             .options(
-                selectinload(Exam.questions),
                 selectinload(Exam.teacher).selectinload(Teacher.user),
             )
             .where(Exam.is_online_active == True)
@@ -561,7 +559,7 @@ async def list_available_exams(
             time_limit_minutes=tlm,
             created_at=exam.created_at,
             teacher_name=teacher_name,
-            question_count=len([q for q in exam.questions if q.question_text and q.question_text.strip()]),
+            question_count=exam.total_questions or 50,
             has_submitted=has_sub,
             submission_id=sub.id if sub else None,
             total_score=sub.total_score if (show_grades and sub) else None,

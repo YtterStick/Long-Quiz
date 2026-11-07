@@ -123,10 +123,28 @@ export function LiveExamMonitorModal({
   const [copyMenuOpen, setCopyMenuOpen] = useState(false);
 
   const [selectedStudentForAnswers, setSelectedStudentForAnswers] = useState<MonitorStudent | null>(null);
+  const [loadingAnswersForStudentId, setLoadingAnswersForStudentId] = useState<string | null>(null);
   const [retakeTarget, setRetakeTarget] = useState<MonitorStudent | null>(null);
   const [resetCounters, setResetCounters] = useState(true);
   const [grantingRetake, setGrantingRetake] = useState(false);
   const [retakeNotice, setRetakeNotice] = useState<string | null>(null);
+
+  const handleViewAnswers = async (student: MonitorStudent) => {
+    if (student.answers && student.answers.length > 0) {
+      setSelectedStudentForAnswers(student);
+      return;
+    }
+    setLoadingAnswersForStudentId(student.student_id);
+    try {
+      const answers = await teacherApi.getStudentSubmissionAnswers(sectionId, examId, student.student_id);
+      setSelectedStudentForAnswers({ ...student, answers });
+    } catch (err) {
+      console.error("Failed to load student answers", err);
+      setSelectedStudentForAnswers({ ...student, answers: [] });
+    } finally {
+      setLoadingAnswersForStudentId(null);
+    }
+  };
 
   const fetchMonitor = useCallback(async (isManual = false) => {
     if (isManual) setRefreshing(true);
@@ -1225,13 +1243,18 @@ export function LiveExamMonitorModal({
                         </a>
                       )}
 
-                      {student.status === "SUBMITTED" && student.answers && student.answers.length > 0 && (
+                      {student.status === "SUBMITTED" && (
                         <button
                           type="button"
-                          onClick={() => setSelectedStudentForAnswers(student)}
-                          className="inline-flex items-center gap-1 rounded-xl border border-steel-border bg-steel-ghost px-2.5 py-1 text-[11px] font-bold text-steel hover:bg-steel/20 transition-all cursor-pointer"
+                          disabled={loadingAnswersForStudentId === student.student_id}
+                          onClick={() => handleViewAnswers(student)}
+                          className="inline-flex items-center gap-1 rounded-xl border border-steel-border bg-steel-ghost px-2.5 py-1 text-[11px] font-bold text-steel hover:bg-steel/20 transition-all cursor-pointer disabled:opacity-50"
                         >
-                          <Eye className="h-3.5 w-3.5" />
+                          {loadingAnswersForStudentId === student.student_id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Eye className="h-3.5 w-3.5" />
+                          )}
                           Answers
                         </button>
                       )}
@@ -1399,12 +1422,18 @@ export function LiveExamMonitorModal({
                                 <ExternalLink className="h-3 w-3" />
                               </a>
                             )}
-                            {student.status === "SUBMITTED" && student.answers && student.answers.length > 0 && (
+                            {student.status === "SUBMITTED" && (
                               <button
                                 type="button"
-                                onClick={() => setSelectedStudentForAnswers(student)}
-                                className="rounded-lg border border-steel-border bg-steel-ghost px-2 py-1 text-xs font-bold text-steel hover:bg-steel/20 cursor-pointer"
+                                disabled={loadingAnswersForStudentId === student.student_id}
+                                onClick={() => handleViewAnswers(student)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-steel-border bg-steel-ghost px-2 py-1 text-xs font-bold text-steel hover:bg-steel/20 cursor-pointer disabled:opacity-50"
                               >
+                                {loadingAnswersForStudentId === student.student_id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Eye className="h-3 w-3" />
+                                )}
                                 Answers
                               </button>
                             )}
@@ -1519,30 +1548,36 @@ export function LiveExamMonitorModal({
             </div>
 
             <div className="flex-1 overflow-y-auto space-y-2 p-1 font-mono text-xs">
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {selectedStudentForAnswers.answers.map((ans) => (
-                  <div
-                    key={ans.question_number}
-                    className={`flex items-center justify-between rounded-xl p-2.5 border ${
-                      ans.is_correct
-                        ? "bg-sage-ghost border-sage-border text-sage"
-                        : ans.shaded_option === null
-                        ? "bg-surface-subtle border-border-default text-text-muted"
-                        : "bg-burgundy-ghost border-burgundy-border text-burgundy-light"
-                    }`}
-                  >
-                    <span className="font-bold text-text-muted">Q{ans.question_number}</span>
-                    <div className="flex items-center gap-1.5 font-bold">
-                      <span>{ans.shaded_option || "BLANK"}</span>
-                      {ans.is_correct ? (
-                        <CheckCircle2 className="h-3.5 w-3.5 text-sage" />
-                      ) : (
-                        <AlertTriangle className="h-3.5 w-3.5 text-burgundy-light" />
-                      )}
+              {!selectedStudentForAnswers.answers || selectedStudentForAnswers.answers.length === 0 ? (
+                <div className="py-12 text-center text-text-muted text-xs font-sans">
+                  No individual answer items recorded for this submission.
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {selectedStudentForAnswers.answers.map((ans) => (
+                    <div
+                      key={ans.question_number}
+                      className={`flex items-center justify-between rounded-xl p-2.5 border ${
+                        ans.is_correct
+                          ? "bg-sage-ghost border-sage-border text-sage"
+                          : ans.shaded_option === null
+                          ? "bg-surface-subtle border-border-default text-text-muted"
+                          : "bg-burgundy-ghost border-burgundy-border text-burgundy-light"
+                      }`}
+                    >
+                      <span className="font-bold text-text-muted">Q{ans.question_number}</span>
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <span>{ans.shaded_option || "BLANK"}</span>
+                        {ans.is_correct ? (
+                          <CheckCircle2 className="h-3.5 w-3.5 text-sage" />
+                        ) : (
+                          <AlertTriangle className="h-3.5 w-3.5 text-burgundy-light" />
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="pt-3 border-t border-border-default flex justify-end shrink-0">

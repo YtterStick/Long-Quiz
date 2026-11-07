@@ -8,15 +8,16 @@ settings = get_settings()
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=False,
-    pool_size=10,
-    max_overflow=20,
+    pool_size=15,
+    max_overflow=10,
     pool_pre_ping=True,
-    pool_recycle=60,
+    pool_recycle=120,
+    pool_timeout=30,
     connect_args={
         "prepared_statement_cache_size": 0,
         "statement_cache_size": 0,
-        "command_timeout": 10,
-        "timeout": 10,
+        "command_timeout": 30,
+        "timeout": 30,
     } if "postgresql" in settings.DATABASE_URL else {},
 )
 

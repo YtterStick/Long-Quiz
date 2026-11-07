@@ -561,6 +561,11 @@ export const teacher = {
       }>;
     }>(`/api/teacher/sections/${sectionId}/exams/${examId}/monitor`, { silent: true }),
 
+  getStudentSubmissionAnswers: (sectionId: string, examId: string, studentId: string) =>
+    request<Array<{ question_number: number; shaded_option: string | null; is_correct: boolean }>>(
+      `/api/teacher/sections/${sectionId}/exams/${examId}/students/${studentId}/answers`
+    ),
+
   // Students
   listStudents: (sectionId: string) =>
     request<Array<{

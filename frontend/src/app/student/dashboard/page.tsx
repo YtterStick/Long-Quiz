@@ -325,14 +325,19 @@ export default function StudentDashboard() {
 
   const refreshAllStudentData = async () => {
     try {
-      const [infoData, gradesData, availableData] = await Promise.all([
+      const [infoData, availableData] = await Promise.all([
         studentApi.getDashboard(),
-        studentApi.getGrades(),
         studentApi.listAvailableExams(),
       ]);
       setInfo(infoData);
-      setGrades(gradesData);
       setAvailableExams(availableData);
+
+      // Background fetch of past exam grades so dashboard renders instantly for waiting students
+      studentApi.getGrades().then((gradesData) => {
+        setGrades(gradesData);
+      }).catch((err) => {
+        console.warn("Background grades fetch error:", err);
+      });
 
       // Handle avatar loading
       if (infoData.avatar_config) {
@@ -617,6 +622,9 @@ export default function StudentDashboard() {
     if (tab === "reviewers") {
       loadPublicReviewers();
     }
+    if (tab === "grades" && grades.length === 0) {
+      studentApi.getGrades().then(setGrades).catch(() => {});
+    }
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("studentTabChange", { detail: tab }));
       const url = new URL(window.location.href);
@@ -851,7 +859,7 @@ export default function StudentDashboard() {
           });
           await handleStatusPayload(res.status);
         } catch {}
-      }, 4000);
+      }, 8000);
     };
 
     const stopFallbackPolling = () => {

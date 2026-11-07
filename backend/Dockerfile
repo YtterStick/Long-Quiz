@@ -32,4 +32,4 @@ COPY app ./app
 EXPOSE 8080
 
 # Run FastAPI with uvicorn respecting Cloud Run dynamic $PORT
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 2"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1"]
