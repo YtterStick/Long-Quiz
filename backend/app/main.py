@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from sqlalchemy import text, select
 
 from app.config import get_settings
@@ -265,6 +266,8 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With"],
 )
+# Compress all API responses over 1KB (shrinks JSON bandwidth by ~70-80%)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
 def _origin_allowed(origin: str) -> bool:
