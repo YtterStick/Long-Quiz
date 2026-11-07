@@ -332,15 +332,37 @@ async def get_grades(
             elif se.exam_id not in section_release_mode:
                 section_release_mode[se.exam_id] = se.release_mode or "FULL"
 
-    result = await db.execute(
+    light_res = await db.execute(
         select(ExamSubmission)
         .join(Exam, ExamSubmission.exam_id == Exam.id)
+        .options(selectinload(ExamSubmission.exam))
+        .where(ExamSubmission.student_id == student.id)
+        .order_by(ExamSubmission.scanned_at.desc())
+    )
+    all_subs = light_res.scalars().all()
+
+    released_sub_ids = []
+    for sub in all_subs:
+        if not sub.exam:
+            continue
+        if sec_ids:
+            is_rel = section_exam_status.get(sub.exam_id, False) or sub.is_published
+        else:
+            is_rel = sub.is_published or sub.exam.is_grades_released
+        if is_rel:
+            released_sub_ids.append(sub.id)
+
+    if not released_sub_ids:
+        return []
+
+    result = await db.execute(
+        select(ExamSubmission)
         .options(
             selectinload(ExamSubmission.answers),
             selectinload(ExamSubmission.exam).selectinload(Exam.answer_keys),
             selectinload(ExamSubmission.exam).selectinload(Exam.questions),
         )
-        .where(ExamSubmission.student_id == student.id)
+        .where(ExamSubmission.id.in_(released_sub_ids))
         .order_by(ExamSubmission.scanned_at.desc())
     )
     submissions = result.scalars().all()
@@ -348,14 +370,6 @@ async def get_grades(
     grades = []
     for sub in submissions:
         if not sub.exam:
-            continue
-
-        # Check if grades are released for any of this student's enrolled classes
-        if sec_ids:
-            is_released = section_exam_status.get(sub.exam_id, False) or sub.is_published
-        else:
-            is_released = sub.is_published or sub.exam.is_grades_released
-        if not is_released:
             continue
 
         release_mode = section_release_mode.get(sub.exam_id, "FULL")

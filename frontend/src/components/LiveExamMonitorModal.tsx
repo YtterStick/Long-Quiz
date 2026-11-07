@@ -189,9 +189,10 @@ export function LiveExamMonitorModal({
       fetchMonitor();
       fallbackPollTimer = setInterval(() => {
         if (!isSubscribed) return;
+        if (typeof document !== "undefined" && document.hidden) return;
         if (ws && ws.readyState === WebSocket.OPEN) return;
         fetchMonitor();
-      }, 4000);
+      }, 10000);
     };
 
     const stopFallback = () => {
@@ -215,9 +216,9 @@ export function LiveExamMonitorModal({
           if (keepAliveTimer) clearInterval(keepAliveTimer);
           keepAliveTimer = setInterval(() => {
             if (ws && ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: "REFRESH" }));
+              ws.send(JSON.stringify({ type: "PING" }));
             }
-          }, 12000);
+          }, 30000);
         };
 
         ws.onmessage = (event) => {

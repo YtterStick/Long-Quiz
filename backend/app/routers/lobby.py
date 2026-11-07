@@ -331,7 +331,7 @@ async def _build_monitor_payload(
             "attempt_number": (sub.attempt_number or 1) if sub else (((entry.retakes_granted or 0) + 1) if entry else 1),
             "retakes_granted": (entry.retakes_granted or 0) if entry else 0,
             "auto_submitted": sub.auto_submitted if sub else False,
-            "last_seen": last_seen.isoformat() if last_seen else None,
+            "last_seen": now.isoformat() if ws_connected else (last_seen.isoformat() if last_seen else None),
             "submission_id": sub.id if sub else None,
             "total_score": sub.total_score if sub else None,
             "max_score": sub.max_score if sub else None,
@@ -716,6 +716,9 @@ async def ws_student_lobby(
     if section_id:
         lobby_manager.schedule_monitor_update(section_id, exam_id)
 
+    last_fullscreen = True
+    last_focused = True
+
     try:
         while True:
             raw = await websocket.receive_text()
@@ -726,10 +729,24 @@ async def ws_student_lobby(
 
             msg_type = msg.get("type", "PING")
             if msg_type in ("PING", "STATE"):
+                is_fs = bool(msg.get("is_fullscreen", True))
+                is_foc = bool(msg.get("is_focused", True))
+                has_violation = bool(msg.get("violation", False))
+                state_changed = (is_fs != last_fullscreen) or (is_foc != last_focused) or has_violation
+
+                # Zero-bandwidth keepalive: if student focus/fullscreen state hasn't changed,
+                # skip redundant DB queries and skip re-broadcasting the entire roster.
+                if not state_changed and msg_type == "PING":
+                    await websocket.send_json({"type": "PONG"})
+                    continue
+
+                last_fullscreen = is_fs
+                last_focused = is_foc
+
                 ping_body = LobbyPing(
-                    is_fullscreen=bool(msg.get("is_fullscreen", True)),
-                    is_focused=bool(msg.get("is_focused", True)),
-                    violation=bool(msg.get("violation", False)),
+                    is_fullscreen=is_fs,
+                    is_focused=is_foc,
+                    violation=has_violation,
                     violation_type=msg.get("violation_type"),
                 )
                 async with async_session_factory() as db:
@@ -819,7 +836,10 @@ async def ws_teacher_monitor(
                 msg = json.loads(raw)
             except Exception:
                 continue
-            if msg.get("type") == "REFRESH":
+            mtype = msg.get("type")
+            if mtype == "PING":
+                await websocket.send_json({"type": "PONG"})
+            elif mtype == "REFRESH":
                 lobby_manager.schedule_monitor_update(section_id, exam_id, force=True)
     except WebSocketDisconnect:
         pass

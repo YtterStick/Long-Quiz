@@ -132,8 +132,6 @@ export function StudentNotificationBell() {
 
   useEffect(() => {
     fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000);
-    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -144,7 +142,7 @@ export function StudentNotificationBell() {
     return () => window.removeEventListener("evalo_notifications_refresh", handleUpdate);
   }, []);
 
-  // Close dropdown on click outside
+  // Close dropdown on click outside & refresh when opened
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -152,6 +150,7 @@ export function StudentNotificationBell() {
       }
     }
     if (isOpen) {
+      fetchNotifications();
       document.addEventListener("mousedown", handleClickOutside);
     }
     return () => document.removeEventListener("mousedown", handleClickOutside);

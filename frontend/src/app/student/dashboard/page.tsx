@@ -899,7 +899,7 @@ export default function StudentDashboard() {
                 })
               );
             }
-          }, 10000);
+          }, 25000);
         };
 
         ws.onmessage = (event) => {

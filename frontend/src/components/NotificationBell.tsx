@@ -75,12 +75,9 @@ export function NotificationBell() {
 
   useEffect(() => {
     fetchRequests();
-    // Poll every 30 seconds for new student requests
-    const interval = setInterval(fetchRequests, 30000);
-    return () => clearInterval(interval);
   }, []);
 
-  // Close dropdown on click outside
+  // Close dropdown on click outside & refresh when opened
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -88,6 +85,7 @@ export function NotificationBell() {
       }
     }
     if (isOpen) {
+      fetchRequests();
       document.addEventListener("mousedown", handleClickOutside);
     }
     return () => document.removeEventListener("mousedown", handleClickOutside);
