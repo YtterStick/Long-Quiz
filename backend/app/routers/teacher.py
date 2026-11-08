@@ -554,15 +554,9 @@ async def toggle_section_exam_online(
     else:
         se.is_online_active = not se.is_online_active
     if not se.is_online_active:
-        # Closing the lobby also un-releases the exam and clears waiting students.
-        # Entries carrying a teacher-granted retake are kept so the attempt counter survives.
+        # Closing the online session stops active taking while preserving ExamLobbyEntry
+        # records so attendance, violation history, and in-flight auto-submissions remain intact.
         se.is_started = False
-        await db.execute(
-            delete(ExamLobbyEntry).where(
-                ExamLobbyEntry.section_exam_id == se.id,
-                ExamLobbyEntry.retakes_granted == 0,
-            )
-        )
 
     await db.commit()
 

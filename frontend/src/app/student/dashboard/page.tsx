@@ -285,6 +285,21 @@ export default function StudentDashboard() {
 
   const [activeTakingExam, setActiveTakingExam] = useState<ExamTakingDetail | null>(null);
   const [takingAnswers, setTakingAnswers] = useState<Record<number, string>>({});
+  const activeTakingExamRef = useRef<ExamTakingDetail | null>(null);
+  const takingAnswersRef = useRef<Record<number, string>>({});
+  const isExamInProgressRef = useRef(false);
+
+  useEffect(() => {
+    activeTakingExamRef.current = activeTakingExam;
+  }, [activeTakingExam]);
+
+  useEffect(() => {
+    takingAnswersRef.current = takingAnswers;
+  }, [takingAnswers]);
+
+  useEffect(() => {
+    isExamInProgressRef.current = isExamInProgress;
+  }, [isExamInProgress]);
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
   const [loadingTakingExam, setLoadingTakingExam] = useState(false);
   const [submittingOnlineExam, setSubmittingOnlineExam] = useState(false);
@@ -833,6 +848,13 @@ export default function StudentDashboard() {
           console.error("Failed to load exam on start signal:", err);
         }
       } else if (status === "CLOSED") {
+        // If student was actively taking the exam when the teacher closed/ended it, auto-submit their answers first!
+        if (isExamInProgressRef.current && activeTakingExamRef.current && !autoSubmittingRef.current) {
+          autoSubmittingRef.current = true;
+          await doSubmitExam(true);
+          alert("The online exam session was ended by your instructor. Your current answers have been automatically submitted and recorded.");
+          return;
+        }
         if (typeof document !== "undefined" && document.fullscreenElement && document.exitFullscreen) {
           await document.exitFullscreen().catch(() => {});
         }
@@ -951,24 +973,30 @@ export default function StudentDashboard() {
   }, [isWaitingInLobby, isExamInProgress, lobbyExamId]);
 
   const handleSelectOption = (questionNumber: number, optionKey: string) => {
-    setTakingAnswers((prev) => ({
-      ...prev,
-      [questionNumber]: optionKey,
-    }));
+    setTakingAnswers((prev) => {
+      const next = {
+        ...prev,
+        [questionNumber]: optionKey,
+      };
+      takingAnswersRef.current = next;
+      return next;
+    });
   };
 
   const doSubmitExam = async (autoSubmitted = false) => {
-    if (!activeTakingExam) return;
+    const currentExam = activeTakingExamRef.current || activeTakingExam;
+    if (!currentExam) return;
     setSubmittingOnlineExam(true);
     setSubmitError(null);
 
-    const answersPayload = Object.entries(takingAnswers).map(([qNum, opt]) => ({
+    const latestAnswers = takingAnswersRef.current || takingAnswers;
+    const answersPayload = Object.entries(latestAnswers).map(([qNum, opt]) => ({
       question_number: Number(qNum),
       selected_option: opt,
     }));
 
     try {
-      const res = await studentApi.submitExamOnline(activeTakingExam.id, {
+      const res = await studentApi.submitExamOnline(currentExam.id, {
         answers: answersPayload,
         auto_submitted: autoSubmitted,
       });
@@ -984,12 +1012,14 @@ export default function StudentDashboard() {
 
       setConfirmSubmitOpen(false);
       setIsExamInProgress(false);
+      isExamInProgressRef.current = false;
       setIsFullscreenActive(false);
       setIsWindowAway(false);
       awayRef.current = false;
       setTimeRemaining(null);
       setAntiCheatAlert(null);
       setActiveTakingExam(null);
+      activeTakingExamRef.current = null;
       setSubmissionSuccessResult({
         submission_id: res.submission_id,
         exam_id: res.exam_id,
@@ -1015,17 +1045,19 @@ export default function StudentDashboard() {
   const handleAutoSubmit = async (reason: string) => {
     if (autoSubmittingRef.current) return;
     autoSubmittingRef.current = true;
-    if (activeTakingExam) {
-      if (reason.toLowerCase().includes("time")) {
-        alert(`Exam Time Expired: ${reason}. Auto-submitting your quiz now.`);
-      } else {
-        alert(`Security Violation: ${reason}. Auto-submitting your exam now.`);
-      }
+    const currentExam = activeTakingExamRef.current || activeTakingExam;
+    if (currentExam) {
+      // Submit first BEFORE blocking with alert() so the student's record is immediately saved!
       await doSubmitExam(true);
+      if (reason.toLowerCase().includes("time")) {
+        alert(`Exam Time Expired: ${reason}. Your quiz has been automatically submitted and recorded.`);
+      } else {
+        alert(`Security Violation: ${reason}. Your exam has been automatically submitted and recorded.`);
+      }
     } else if (isWaitingInLobby && lobbyExamId) {
       // Violation in lobby
-      alert(`Security Violation: ${reason}. Exiting exam lobby.`);
       handleLeaveLobby();
+      alert(`Security Violation: ${reason}. Exiting exam lobby.`);
     }
   };
 

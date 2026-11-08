@@ -41,6 +41,7 @@ import {
   LayoutGrid,
   Table as TableIcon,
   List,
+  Clock,
 } from "lucide-react";
 import Link from "next/link";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
@@ -104,6 +105,8 @@ interface SectionExamItem {
     title: string;
     total_questions: number;
     is_public: boolean;
+    has_time_limit?: boolean;
+    time_limit_minutes?: number | null;
     answer_keys: Array<{ id: string; question_number: number; correct_option: string }>;
     questions?: Array<{
       id: string;
@@ -1724,6 +1727,12 @@ export default function TeacherSectionsPage() {
                                   {se.exam.questions.length} Reviewer Prompts
                                 </span>
                               )}
+                              {se.exam?.has_time_limit && (
+                                <span className="inline-flex items-center gap-1 rounded-full bg-steel/15 px-2.5 py-0.5 text-xs font-semibold text-steel-light border border-steel/30">
+                                  <Clock className="h-3 w-3" />
+                                  {se.exam.time_limit_minutes || 60}m Timer
+                                </span>
+                              )}
                             </div>
                             <p className="text-xs text-text-muted mt-1">
                               Assigned to {selectedSection.name} • Control online quiz access and grade visibility for this class below
@@ -1966,7 +1975,9 @@ export default function TeacherSectionsPage() {
                               ) : (
                                 <>
                                   <FileSpreadsheet className="h-3.5 w-3.5 text-tan" />
-                                  <span>Gradebook &amp; Submissions</span>
+                                  <span>
+                                    Gradebook &amp; Submissions{se.submission_count > 0 ? ` (${se.submission_count} Records)` : ""}
+                                  </span>
                                 </>
                               )}
                             </button>

@@ -766,6 +766,7 @@ async def submit_exam_online(
     is_grades_rel = False
     section_exam_id = None
     se = None
+    has_lobby_session = False
     if sec_ids:
         se_res = await db.execute(
             select(SectionExam).where(
@@ -779,17 +780,33 @@ async def submit_exam_online(
             section_exam_id = se.id
             is_active = se.is_online_active
             is_grades_rel = se.is_grades_released
-            if se.is_online_active and not se.is_started:
+
+            # Check if this student already joined/started this exam session in the lobby
+            lobby_check = await db.execute(
+                select(ExamLobbyEntry).where(
+                    ExamLobbyEntry.section_exam_id == se.id,
+                    ExamLobbyEntry.student_id == student.id,
+                )
+            )
+            lobby_entry_existing = lobby_check.scalar_one_or_none()
+            if lobby_entry_existing is not None:
+                has_lobby_session = True
+
+            # Allow submission if the exam is active OR if the student was already taking the exam
+            # when the timer expired / teacher just ended the session.
+            if se.is_online_active and not se.is_started and not has_lobby_session and not body.auto_submitted:
                 raise HTTPException(
                     status_code=403,
                     detail="Your teacher hasn't started this exam yet.",
                 )
+            if has_lobby_session or body.auto_submitted:
+                is_active = True
 
     # Fallback check on Exam table directly
     if not is_active:
         ex_check = await db.execute(select(Exam).where(Exam.id == exam_id))
         exam_obj = ex_check.scalar_one_or_none()
-        if exam_obj and exam_obj.is_online_active:
+        if exam_obj and (exam_obj.is_online_active or body.auto_submitted):
             is_active = True
             is_grades_rel = exam_obj.is_grades_released
 
@@ -926,7 +943,7 @@ import json
 from datetime import datetime, timezone, timedelta
 from app.models import SharedReviewerDeck, StudentGenerationLog
 from app.reviewer_generator import (
-    extract_text_from_pdf, parse_and_generate_reviewer, distill_handout_text, compute_content_hash
+    extract_text_from_pdf, parse_and_generate_reviewer, distill_handout_text, compute_content_hash, clean_and_repair_deck
 )
 
 MAX_MONTHLY_HANDOUT_GENERATIONS = 10
@@ -998,15 +1015,20 @@ async def generate_reviewer_from_text(
     used = await _get_monthly_usage(student.id, db)
 
     if cached_deck:
-        cached_deck.usage_count += 1
-        await db.commit()
-        deck_data = json.loads(cached_deck.deck_data)
-        if not deck_data.get("source_text"):
-            deck_data["source_text"] = distilled or payload.raw_text
-        deck_data["cached"] = True
-        deck_data["quota_used"] = used
-        deck_data["quota_remaining"] = max(0, MAX_MONTHLY_HANDOUT_GENERATIONS - used)
-        return deck_data
+        deck_data = clean_and_repair_deck(json.loads(cached_deck.deck_data))
+        if deck_data.get("is_ai_powered", False) or len(deck_data.get("flashcards", [])) >= 5:
+            cached_deck.usage_count += 1
+            cached_deck.deck_data = json.dumps(deck_data)
+            await db.commit()
+            if not deck_data.get("source_text"):
+                deck_data["source_text"] = distilled or payload.raw_text
+            deck_data["cached"] = True
+            deck_data["quota_used"] = used
+            deck_data["quota_remaining"] = max(0, MAX_MONTHLY_HANDOUT_GENERATIONS - used)
+            return deck_data
+        else:
+            await db.delete(cached_deck)
+            await db.flush()
 
     # 2. Check 10 handouts per month limit
     if used >= MAX_MONTHLY_HANDOUT_GENERATIONS:
@@ -1124,17 +1146,22 @@ async def generate_reviewer_from_file(
     used = await _get_monthly_usage(student.id, db)
 
     if cached_deck:
-        cached_deck.usage_count += 1
-        await db.commit()
-        deck_data = json.loads(cached_deck.deck_data)
-        if not deck_data.get("source_text"):
-            deck_data["source_text"] = extracted_text
-        if not deck_data.get("file_name") and joined_file_names:
-            deck_data["file_name"] = joined_file_names
-        deck_data["cached"] = True
-        deck_data["quota_used"] = used
-        deck_data["quota_remaining"] = max(0, MAX_MONTHLY_HANDOUT_GENERATIONS - used)
-        return deck_data
+        deck_data = clean_and_repair_deck(json.loads(cached_deck.deck_data))
+        if deck_data.get("is_ai_powered", False) or len(deck_data.get("flashcards", [])) >= 5:
+            cached_deck.usage_count += 1
+            cached_deck.deck_data = json.dumps(deck_data)
+            await db.commit()
+            if not deck_data.get("source_text"):
+                deck_data["source_text"] = extracted_text
+            if not deck_data.get("file_name") and joined_file_names:
+                deck_data["file_name"] = joined_file_names
+            deck_data["cached"] = True
+            deck_data["quota_used"] = used
+            deck_data["quota_remaining"] = max(0, MAX_MONTHLY_HANDOUT_GENERATIONS - used)
+            return deck_data
+        else:
+            await db.delete(cached_deck)
+            await db.flush()
 
     # 2. Check 10 handouts per month limit
     if used >= MAX_MONTHLY_HANDOUT_GENERATIONS:
@@ -1565,7 +1592,7 @@ async def get_decks_shared_with_me(
     for item in items:
         sender_card = _serialize_student_card(item.sender) if item.sender else None
         try:
-            deck_parsed = json.loads(item.deck_data)
+            deck_parsed = clean_and_repair_deck(json.loads(item.deck_data))
         except Exception:
             deck_parsed = {}
         out.append({
@@ -1620,7 +1647,7 @@ async def get_custom_decks(
     out = []
     for d in decks:
         try:
-            deck_parsed = json.loads(d.deck_data)
+            deck_parsed = clean_and_repair_deck(json.loads(d.deck_data))
         except Exception:
             deck_parsed = {}
         out.append({

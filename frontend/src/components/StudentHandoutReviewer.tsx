@@ -71,6 +71,173 @@ const DEFAULT_FOLDERS: StudyFolder[] = [
   { id: "general", name: "General", color: "steel" },
 ];
 
+const BAD_SINGLE_TERMS = new Set([
+  "it", "this", "that", "these", "those", "here", "there", "they", "we", "you",
+  "he", "she", "its", "their", "our", "your", "example", "examples", "note",
+  "notes", "summary", "overview", "introduction", "conclusion", "name",
+  "country", "gender", "email", "mobile", "phone", "address", "age", "id",
+]);
+
+function isCleanClientTerm(term: string, defText: string): boolean {
+  const t = (term || "").trim();
+  const d = (defText || "").trim();
+  if (!t || !d || t.length < 2 || t.length > 75 || d.length < 12) return false;
+  if (t.includes("...") || t.includes("===") || t.includes("?") || t.includes("{") || t.includes("}")) return false;
+  const tLow = t.toLowerCase();
+  if (BAD_SINGLE_TERMS.has(tLow)) return false;
+  if (
+    tLow.startsWith("key principle #") ||
+    tLow.startsWith("to ") ||
+    tLow.startsWith("if ") ||
+    tLow.startsWith("when ") ||
+    tLow.startsWith("while ") ||
+    tLow.startsWith("because ") ||
+    tLow.startsWith("now ") ||
+    tLow.startsWith("here ") ||
+    tLow.startsWith("there ") ||
+    tLow.startsWith("it ") ||
+    tLow.startsWith("this ") ||
+    tLow.startsWith("that ") ||
+    tLow.startsWith("what ") ||
+    tLow.startsWith("which ") ||
+    tLow.startsWith("how ") ||
+    tLow.startsWith("why ")
+  ) {
+    return false;
+  }
+  const words = t.split(/\s+/);
+  if (words.length > 7) return false;
+  return true;
+}
+
+function sanitizeReviewerDeckClient(deck: GeneratedReviewerDeck): GeneratedReviewerDeck {
+  if (!deck || typeof deck !== "object") return deck;
+  const topics = Array.isArray(deck.topics) ? deck.topics : [];
+  const validTerms: Array<{ term: string; definition: string; topic: string }> = [];
+  const seenTerms = new Set<string>();
+
+  const cleanedTopics = topics.map((t) => {
+    const tName = t.topic_name || "Core Concepts";
+    const kts = (t.key_terms || []).filter((kt) => {
+      const ok = isCleanClientTerm(kt?.term || "", kt?.definition || "");
+      if (ok && !seenTerms.has(kt.term.trim().toLowerCase())) {
+        seenTerms.add(kt.term.trim().toLowerCase());
+        validTerms.push({
+          term: kt.term.trim(),
+          definition: kt.definition.trim(),
+          topic: tName,
+        });
+      }
+      return ok;
+    });
+    const bps = (t.bullet_points || []).filter(
+      (bp) => typeof bp === "string" && bp.trim() && !bp.trim().startsWith("===")
+    );
+    return { ...t, key_terms: kts, bullet_points: bps };
+  });
+
+  const seenFc = new Set<string>();
+  const cleanedFlashcards: ReviewerFlashcard[] = [];
+  for (const fc of deck.flashcards || []) {
+    const front = (fc?.front || "").trim();
+    const back = (fc?.back || "").trim();
+    if (!isCleanClientTerm(front, back)) continue;
+    const fLow = front.toLowerCase();
+    if (!seenFc.has(fLow)) {
+      seenFc.add(fLow);
+      cleanedFlashcards.push({
+        id: `fc-${cleanedFlashcards.length + 1}`,
+        front,
+        back,
+        category: fc.category || "Key Terminology",
+      });
+    }
+  }
+
+  for (const vt of validTerms) {
+    const fLow = vt.term.toLowerCase();
+    if (!seenFc.has(fLow)) {
+      seenFc.add(fLow);
+      cleanedFlashcards.push({
+        id: `fc-${cleanedFlashcards.length + 1}`,
+        front: vt.term,
+        back: vt.definition,
+        category: vt.topic,
+      });
+    }
+  }
+
+  const allTermNames = validTerms.map((v) => v.term);
+  const cleanedQuiz: ReviewerQuizCard[] = [];
+  for (const qc of deck.quiz_cards || []) {
+    const qText = (qc?.question || "").trim();
+    const opts = qc?.options || ({} as any);
+    if (!qText || (qText.startsWith("Which concept or term refers to:") && qText.includes("..."))) {
+      continue;
+    }
+    let optsValid = true;
+    for (const k of ["A", "B", "C", "D"] as const) {
+      const val = String(opts[k] || "").trim();
+      if (!val || BAD_SINGLE_TERMS.has(val.toLowerCase()) || val.startsWith("===") || val.endsWith("...")) {
+        optsValid = false;
+        break;
+      }
+    }
+    if (!optsValid) continue;
+    const cOpt = (["A", "B", "C", "D"].includes(qc.correct_option) ? qc.correct_option : "A") as "A" | "B" | "C" | "D";
+    cleanedQuiz.push({
+      ...qc,
+      id: `quiz-${cleanedQuiz.length + 1}`,
+      question_number: cleanedQuiz.length + 1,
+      correct_option: cOpt,
+      correct_answer_text: String(opts[cOpt] || qc.correct_answer_text || "").trim(),
+    });
+  }
+
+  if (cleanedQuiz.length < Math.min(10, validTerms.length)) {
+    const usedAnswers = new Set(cleanedQuiz.map((q) => q.correct_answer_text.toLowerCase()));
+    for (const vt of validTerms) {
+      if (usedAnswers.has(vt.term.toLowerCase())) continue;
+      const distractors = allTermNames.filter((n) => n.toLowerCase() !== vt.term.toLowerCase());
+      while (distractors.length < 3) {
+        distractors.push(["Data Abstraction Layer", "Transaction Control Manager", "System Catalog Schema", "Relational Integrity Constraint"][distractors.length % 4]);
+      }
+      const chosen = distractors.slice(0, 3);
+      const pool = [vt.term, ...chosen];
+      const keys = ["A", "B", "C", "D"] as const;
+      const optionsObj: Record<"A" | "B" | "C" | "D", string> = { A: "", B: "", C: "", D: "" };
+      let correctKey: "A" | "B" | "C" | "D" = "A";
+      keys.forEach((k, i) => {
+        optionsObj[k] = pool[(i + cleanedQuiz.length) % 4];
+        if (optionsObj[k] === vt.term) correctKey = k;
+      });
+      cleanedQuiz.push({
+        id: `quiz-${cleanedQuiz.length + 1}`,
+        question_number: cleanedQuiz.length + 1,
+        question: `Which concept or term best matches the following description: "${vt.definition}"?`,
+        options: optionsObj,
+        correct_option: correctKey,
+        correct_answer_text: vt.term,
+        explanation: `'${vt.term}' is defined in the study pointers as: ${vt.definition}`,
+      });
+      if (cleanedQuiz.length >= 20) break;
+    }
+  }
+
+  return {
+    ...deck,
+    topics: cleanedTopics,
+    flashcards: cleanedFlashcards,
+    quiz_cards: cleanedQuiz,
+    total_flashcards: cleanedFlashcards.length,
+    total_quiz_cards: cleanedQuiz.length,
+    total_pointers: cleanedTopics.reduce(
+      (acc, t) => acc + (t.key_terms?.length || 0) + (t.bullet_points?.length || 0),
+      0
+    ),
+  };
+}
+
 const FOLDER_COLORS: Record<
   StudyFolder["color"],
   { bg: string; text: string; border: string; activeBg: string }
@@ -289,7 +456,12 @@ export function StudentHandoutReviewer() {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setSavedDecks(parsed);
+          const sanitizedList = parsed.map((d: any) => ({
+            ...sanitizeReviewerDeckClient(d),
+            folder_id: d.folder_id || "general",
+          }));
+          setSavedDecks(sanitizedList);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitizedList));
 
           // Check if URL specified a saved deck
           const urlDeck =
@@ -297,7 +469,7 @@ export function StudentHandoutReviewer() {
               ? new URLSearchParams(window.location.search).get("deck")
               : null;
           if (urlDeck) {
-            const matchSaved = parsed.find(
+            const matchSaved = sanitizedList.find(
               (d: any) => d.title?.toLowerCase() === urlDeck.toLowerCase()
             );
             if (matchSaved) {
@@ -316,7 +488,7 @@ export function StudentHandoutReviewer() {
       if (rawSession) {
         const parsedSession = JSON.parse(rawSession);
         if (parsedSession.view === "study" && parsedSession.activeDeck) {
-          setActiveDeck(parsedSession.activeDeck);
+          setActiveDeck(sanitizeReviewerDeckClient(parsedSession.activeDeck));
           setView("study");
           if (
             parsedSession.activeTab === "pointers" ||
@@ -611,8 +783,9 @@ export function StudentHandoutReviewer() {
         result.source_text = result.source_text || rawText.trim();
       }
 
-      setActiveDeck(result);
-      saveDeckToStorage(result);
+      const cleanedResult = sanitizeReviewerDeckClient(result);
+      setActiveDeck(cleanedResult);
+      saveDeckToStorage(cleanedResult);
       fetchQuotaAndShared();
 
       // Clear generator inputs so next time "Generate from handout" is opened it is fresh

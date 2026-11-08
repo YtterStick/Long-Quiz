@@ -325,7 +325,7 @@ async def _build_monitor_payload(
             "status": status,
             "is_fullscreen": entry.is_fullscreen if (entry and online) else False,
             "is_focused": entry.is_focused if (entry and online) else False,
-            "violations": (entry.violations or 0) if entry else 0,
+            "violations": max((entry.violations or 0) if entry else 0, tab_switches + fullscreen_exits),
             "tab_switches": tab_switches,
             "fullscreen_exits": fullscreen_exits,
             "attempt_number": (sub.attempt_number or 1) if sub else (((entry.retakes_granted or 0) + 1) if entry else 1),

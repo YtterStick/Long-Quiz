@@ -482,8 +482,8 @@ REQUIRED OUTPUT STRUCTURE (Valid JSON):
   "flashcards": [
     {{
       "id": "fc-1",
-      "front": "Term, characteristic, architecture layer, or concept question",
-      "back": "Comprehensive definition, rule, or explanation",
+      "front": "Exact, Complete Term, Characteristic, Component, or Concept Name (NEVER a question, pronoun like 'It', or truncated fragment)",
+      "back": "Complete, comprehensive definition, rule, or explanation matching the study pointers",
       "category": "Specific Topic Name or Key Terminology"
     }}
   ],
@@ -491,15 +491,15 @@ REQUIRED OUTPUT STRUCTURE (Valid JSON):
     {{
       "id": "quiz-1",
       "question_number": 1,
-      "question": "Clear, exam-grade question stem (definition, distinction, or practical scenario) testing understanding",
+      "question": "Clear, complete exam-grade question stem (definition, distinction, or practical scenario) testing understanding",
       "options": {{
-        "A": "First plausible choice",
-        "B": "Second plausible choice",
-        "C": "Third plausible choice",
-        "D": "Fourth plausible choice"
+        "A": "First complete, accurate choice (never a single pronoun or cut-off fragment)",
+        "B": "Second complete, accurate choice",
+        "C": "Third complete, accurate choice",
+        "D": "Fourth complete, accurate choice"
       }},
       "correct_option": "A",
-      "correct_answer_text": "Matching correct text",
+      "correct_answer_text": "Exact matching text of the correct option",
       "explanation": "Clear explanation of why this answer is correct and why the distractors do not fit"
     }}
   ]
@@ -507,8 +507,8 @@ REQUIRED OUTPUT STRUCTURE (Valid JSON):
 
 Generate:
 - topics: 5 to 15 topic modules covering EVERY section, subtopic, enumeration, architecture, process, and comparison in the handout from start to finish.
-- flashcards: 25 to 45 flashcards evenly distributed across ALL topic modules from the beginning, middle, and end of the handout.
-- quiz_cards: 15 to 25 practice questions spanning ALL topic modules across the entire handout.
+- flashcards: 25 to 45 flashcards covering ALL key terms across ALL topic modules. Every flashcard `front` MUST be the complete Term/Concept Name and `back` MUST be its complete definition.
+- quiz_cards: 15 to 25 practice questions spanning ALL topic modules across the entire handout with 4 complete, accurate options each.
 
 Return ONLY a valid JSON object matching this schema.
 """
@@ -583,6 +583,11 @@ Return ONLY a valid JSON object matching this schema.
         result["total_quiz_cards"] = len(result.get("quiz_cards", []))
         result["source_word_count"] = len(raw_text.split())
         result["is_ai_powered"] = True
+        try:
+            from app.reviewer_generator import clean_and_repair_deck
+            result = clean_and_repair_deck(result)
+        except Exception:
+            pass
         return result
 
     return None

@@ -14,40 +14,125 @@ from typing import Dict, List, Any, Optional
 import pypdf
 
 
+def clean_extracted_term(term: str) -> str:
+    """Normalizes and strips bullet markers, quotes, and trailing filler adverbs from a term."""
+    if not term:
+        return ""
+    t = term.strip()
+    t = re.sub(r"^(?:[\-\*•▪◦‣o]\s+|\d+[\.\)]\s+|[a-zA-Z][\.\)]\s+)+", "", t).strip()
+    t = t.strip("*•-–—:;\"'`() ")
+    t = re.sub(
+        r"\s+\b(?:generally|usually|typically|often|mainly|primarily|basically|essentially|simply|also)\b$",
+        "",
+        t,
+        flags=re.IGNORECASE,
+    ).strip()
+    return t
+
+
 def is_valid_academic_term(term: str, def_text: str) -> bool:
     """
     Validates that an extracted term and definition represent legitimate academic study content,
-    strictly excluding references, bibliographies, author citations, URLs, and incomplete fragments.
+    strictly excluding pronouns ("It", "This", "Here"), clause fragments ("To check the", "If there is"),
+    JSON sample keys ("Name", "Country"), references, bibliographies, URLs, and incomplete fragments.
     """
     if not term or not def_text:
         return False
-    t_clean = term.strip()
+    t_clean = clean_extracted_term(term)
     d_clean = def_text.strip()
-    
+
     # Length checks
-    if len(t_clean) < 2 or len(t_clean) > 85 or len(d_clean) < 10:
+    if len(t_clean) < 2 or len(t_clean) > 75 or len(d_clean) < 15:
         return False
 
     lower_t = t_clean.lower()
     lower_d = d_clean.lower()
+    words = lower_t.split()
+    if not words or len(words) > 7:
+        return False
 
-    # Blacklisted reference and metadata terms (exact or metadata prefixes)
+    # Reject handout separators, quotes, or code/JSON literals
+    if "===" in t_clean or "handout" in lower_t or t_clean.startswith(("{", "[", "\"", "'", "<", "/")):
+        return False
+    if d_clean.startswith(("\"", "'", "{", "[")) and d_clean.endswith((",", "}", "]", "\";", "\".")):
+        return False
+
+    # Blacklisted pronouns, demonstratives, filler words, sample JSON keys, and metadata terms
     exact_bad = {
+        "it", "this", "that", "these", "those", "they", "them", "their", "theirs",
+        "there", "here", "where", "when", "while", "which", "what", "who", "whom", "whose",
+        "how", "why", "if", "whether", "unless", "until", "since", "because", "although",
+        "though", "even", "now", "then", "thus", "hence", "therefore", "however", "moreover",
+        "furthermore", "meanwhile", "otherwise", "instead", "also", "only", "just", "both",
+        "either", "neither", "each", "every", "some", "any", "many", "most", "much", "more",
+        "other", "others", "another", "such", "same", "different", "various", "several",
+        "one", "two", "three", "four", "five", "first", "second", "third", "next", "last",
+        "example", "examples", "for example", "note", "notes", "tip", "tips", "summary",
+        "conclusion", "introduction", "overview", "step", "steps", "part", "parts",
+        "section", "module", "chapter", "unit", "lesson", "topic",
+        # Common JSON/table sample dummy fields in database handouts
+        "name", "first name", "last name", "age", "gender", "country", "city", "address",
+        "email", "mobile", "phone", "zip", "salary", "price", "quantity", "status",
+        # Reference and syllabus metadata
         "reference", "references", "bibliography", "works cited", "suggested reading",
         "suggested readings", "further reading", "further readings", "online reference",
         "online references", "author", "authors", "isbn", "page", "figure", "chart",
         "diagram", "image", "adopted from", "courtesy", "copyright", "property of sti",
         "all rights reserved", "http", "https", "www", "syllabus", "course code",
-        "prepared by", "instructor", "faculty"
+        "prepared by", "instructor", "faculty",
     }
     if lower_t in exact_bad:
+        return False
+
+    # Reject terms that start with pronouns, prepositions, conjunctions, or imperative/clause verbs
+    bad_first_words = {
+        "it", "this", "that", "these", "those", "they", "them", "their", "there", "here",
+        "where", "when", "while", "which", "what", "who", "how", "why", "if", "unless",
+        "until", "since", "because", "although", "though", "now", "then", "thus", "hence",
+        "therefore", "however", "also", "only", "just", "each", "every", "some", "any",
+        "many", "most", "other", "another", "such", "in", "on", "at", "to", "for", "from",
+        "with", "by", "as", "of", "into", "onto", "upon", "within", "without", "between",
+        "among", "through", "during", "before", "after", "above", "below", "under", "over",
+        "make", "makes", "making", "be", "being", "been", "do", "does", "did", "have", "has",
+        "had", "can", "could", "will", "would", "shall", "should", "may", "might", "must",
+        "use", "uses", "using", "used", "check", "checks", "let", "lets", "suppose",
+        "consider", "ensure", "ensures", "provide", "provides", "allow", "allows",
+    }
+    if words[0] in bad_first_words:
+        return False
+
+    # If the first word is an article ("a", "an", "the"), require a concise noun phrase (2-4 words) without verbs
+    if words[0] in {"a", "an", "the"} and len(words) > 3:
+        return False
+
+    # Reject terms that end with a dangling preposition, article, conjunction, pronoun, or auxiliary verb
+    bad_last_words = {
+        "a", "an", "the", "of", "in", "on", "at", "to", "for", "from", "with", "by", "as",
+        "into", "about", "between", "through", "after", "before", "and", "or", "but", "nor",
+        "that", "which", "who", "whom", "whose", "where", "when", "while", "if", "than",
+        "is", "are", "was", "were", "be", "been", "being", "has", "have", "had", "do", "does",
+        "did", "can", "could", "will", "would", "shall", "should", "may", "might", "must",
+        "it", "this", "these", "those", "them", "their", "its", "generally", "usually",
+        "typically", "often", "mainly", "primarily", "damaged", "extensively",
+    }
+    if words[-1] in bad_last_words:
+        return False
+
+    # Reject multi-word terms that contain finite clause verbs/auxiliaries mid-phrase (indicating a sentence fragment)
+    clause_verbs = {
+        "is", "are", "was", "were", "has", "have", "had", "can", "could", "will", "would",
+        "should", "must", "may", "might", "does", "did", "allows", "provides", "requires",
+        "contains", "consists", "means", "refers", "represents", "involves", "describes",
+    }
+    if len(words) >= 3 and any(w in clause_verbs for w in words):
         return False
 
     bad_prefixes = [
         "references:", "bibliography:", "works cited", "suggested reading",
         "further reading", "online reference", "isbn", "page ", "figure ",
         "adopted from", "courtesy of", "copyright", "property of sti",
-        "all rights reserved", "http://", "https://", "www."
+        "all rights reserved", "http://", "https://", "www.", "key principle #",
+        "=== handout", "handout ", "module ", "chapter ",
     ]
     for bp in bad_prefixes:
         if lower_t.startswith(bp):
@@ -62,7 +147,7 @@ def is_valid_academic_term(term: str, def_text: str) -> bool:
         return False
 
     # Exclude incomplete fragments
-    if t_clean.endswith("...") or d_clean.startswith("...") or len(t_clean.split()) > 10:
+    if "..." in t_clean or "…" in t_clean or d_clean.startswith("...") or len(words) > 7:
         return False
 
     return True
@@ -166,9 +251,9 @@ def distill_handout_text(raw_text: str) -> str:
 
 
 def compute_content_hash(text: str) -> str:
-    """Computes a canonical SHA-256 fingerprint of distilled handout text (version 5)."""
+    """Computes a canonical SHA-256 fingerprint of distilled handout text (version 7)."""
     normalized = re.sub(r"\s+", " ", text.strip().lower())
-    return hashlib.sha256(f"v5:{normalized}".encode("utf-8")).hexdigest()
+    return hashlib.sha256(f"v7:{normalized}".encode("utf-8")).hexdigest()
 
 
 def extract_text_from_pdf(pdf_bytes: bytes) -> str:
@@ -372,7 +457,7 @@ def parse_and_generate_reviewer(raw_text: str, custom_title: Optional[str] = Non
         # Check colon / dash definition
         match_colon = term_colon_pattern.match(line)
         if match_colon:
-            term = match_colon.group(1).strip().strip("*•-")
+            term = clean_extracted_term(match_colon.group(1))
             def_text = match_colon.group(2).strip()
             if is_valid_academic_term(term, def_text):
                 item = {"term": term, "definition": def_text, "topic": current_topic_name}
@@ -386,14 +471,18 @@ def parse_and_generate_reviewer(raw_text: str, custom_title: Optional[str] = Non
         # Check 'is/refers to/represents/consists of' definition
         match_is = is_pattern.match(line)
         if match_is:
-            term = match_is.group(1).strip().strip("*•-")
-            def_text = re.sub(r"^(?:[\-\*•▪◦]|\d+[\.\)])\s+", "", line).strip()
+            term = clean_extracted_term(match_is.group(1))
+            raw_def = re.sub(r"^(?:[\-\*•▪◦]|\d+[\.\)])\s+", "", line).strip()
+            # Strip the leading term from the definition so the clue doesn't repeat the answer
+            def_text = re.sub(rf"^{re.escape(match_is.group(1).strip())}\s+", "", raw_def, flags=re.IGNORECASE).strip()
+            if not def_text or len(def_text) < 15:
+                def_text = raw_def
             if is_valid_academic_term(term, def_text):
                 item = {"term": term, "definition": def_text, "topic": current_topic_name}
                 definitions.append(item)
                 bucket["terms"].append({"term": term, "definition": def_text})
-                bucket["bullets"].append(def_text)
-                bullet_points.append(def_text)
+                bucket["bullets"].append(raw_def)
+                bullet_points.append(raw_def)
                 continue
 
         # Check bullet points
@@ -405,7 +494,7 @@ def parse_and_generate_reviewer(raw_text: str, custom_title: Optional[str] = Non
                 # Also extract first phrase if bullet has an internal colon or dash
                 m_sub = term_colon_pattern.match(cleaned_bullet)
                 if m_sub:
-                    t_sub = m_sub.group(1).strip()
+                    t_sub = clean_extracted_term(m_sub.group(1))
                     d_sub = m_sub.group(2).strip()
                     if is_valid_academic_term(t_sub, d_sub):
                         definitions.append({"term": t_sub, "definition": d_sub, "topic": current_topic_name})
@@ -419,30 +508,20 @@ def parse_and_generate_reviewer(raw_text: str, custom_title: Optional[str] = Non
                         bucket["sentences"].append(sent_c)
                         m_sent_is = is_pattern.match(sent_c)
                         if m_sent_is:
-                            t_s = m_sent_is.group(1).strip().strip("*•-")
-                            if is_valid_academic_term(t_s, sent_c):
-                                definitions.append({"term": t_s, "definition": sent_c, "topic": current_topic_name})
-                                bucket["terms"].append({"term": t_s, "definition": sent_c})
+                            t_s = clean_extracted_term(m_sent_is.group(1))
+                            d_s = re.sub(rf"^{re.escape(m_sent_is.group(1).strip())}\s+", "", sent_c, flags=re.IGNORECASE).strip()
+                            if not d_s or len(d_s) < 15:
+                                d_s = sent_c
+                            if is_valid_academic_term(t_s, d_s):
+                                definitions.append({"term": t_s, "definition": d_s, "topic": current_topic_name})
+                                bucket["terms"].append({"term": t_s, "definition": d_s})
 
-    # Ensure every detected topic section has key terms and bullet points from its own sentences if needed
+    # Ensure every detected topic section has bullet points from its own sentences if needed
     for t_name in topic_order:
         bucket = topic_buckets[t_name]
         if not bucket["bullets"] and bucket["sentences"]:
             bucket["bullets"].extend(bucket["sentences"][:8])
             bullet_points.extend(bucket["sentences"][:8])
-        if len(bucket["terms"]) < 2 and (bucket["sentences"] or bucket["bullets"]):
-            source_pool = bucket["sentences"] + bucket["bullets"]
-            for s_clean in source_pool:
-                if 25 < len(s_clean) < 240:
-                    words = s_clean.split()
-                    if len(words) >= 5:
-                        potential_term = " ".join(words[:3]).strip(".,;:*\"'()-")
-                        if is_valid_academic_term(potential_term, s_clean):
-                            item = {"term": potential_term, "definition": s_clean}
-                            bucket["terms"].append(item)
-                            definitions.append({"term": potential_term, "definition": s_clean, "topic": t_name})
-                            if len(bucket["terms"]) >= 5:
-                                break
 
     # 3. Structure 100% Comprehensive Topics preserving all sections
     topics_list = []
@@ -533,73 +612,63 @@ def parse_and_generate_reviewer(raw_text: str, custom_title: Optional[str] = Non
             "exam_tips": ["Review all terms and definitions thoroughly."]
         })
 
-    # 4. Generate 3D Flip Flashcards across ALL extracted definitions
+    # 4. Generate 3D Flip Flashcards strictly from complete, validated key terms (matching Pointers)
     flashcards = []
     for idx, item in enumerate(unique_defs, start=1):
         flashcards.append({
             "id": f"fc-{idx}",
             "front": item["term"],
             "back": item["definition"],
-            "category": "Key Terminology"
+            "category": item.get("topic") or "Key Terminology"
         })
 
-    # Add bullet flashcards if needed
-    for idx, bp in enumerate(bullet_points[:15], start=len(flashcards) + 1):
-        if len(bp) > 25:
-            words = bp.split()
-            front_text = " ".join(words[:4]) + "..."
-            flashcards.append({
-                "id": f"fc-{idx}",
-                "front": front_text,
-                "back": bp,
-                "category": "Core Principle"
-            })
-
-    # Ensure minimum flashcards
-    if len(flashcards) < 5:
-        sample_chunks = [p for p in paragraphs if len(p) > 40][:10]
-        for idx, sc in enumerate(sample_chunks, start=len(flashcards) + 1):
-            flashcards.append({
-                "id": f"fc-{idx}",
-                "front": f"Key Principle #{idx}",
-                "back": sc,
-                "category": "Lesson Summary"
-            })
-
-    # 5. Generate Practice Quiz Cards (MCQs)
+    # 5. Generate Practice Quiz Cards (MCQs) strictly from complete, validated key terms
     quiz_cards = []
     all_term_names = [d["term"] for d in unique_defs if len(d["term"]) > 2]
-    
-    quiz_limit = min(20, len(unique_defs))
+
+    quiz_limit = min(25, len(unique_defs))
     for idx, item in enumerate(unique_defs[:quiz_limit], start=1):
         term = item["term"]
         definition = item["definition"]
-        
-        # Pick 3 plausible distractors from other terms
+
+        # Pick 3 plausible distractors from other valid terms in the handout
         distractors = [t for t in all_term_names if t.lower() != term.lower()]
         if len(distractors) < 3:
-            distractors.extend(["None of the above", "All of the above", "Base Protocol", "System Cache", "Integrated Interface"])
-        
+            fallback_distractors = [
+                "Data Abstraction Layer",
+                "Transaction Control Manager",
+                "System Catalog Schema",
+                "Relational Integrity Constraint"
+            ]
+            for fd in fallback_distractors:
+                if fd.lower() != term.lower() and fd not in distractors:
+                    distractors.append(fd)
+
         chosen_distractors = random.sample(distractors, min(3, len(distractors)))
-        
+
         opts = [term] + chosen_distractors[:3]
         random.shuffle(opts)
-        
+
         opt_keys = ["A", "B", "C", "D"]
         options_dict = {}
         correct_key = "A"
-        
+
         for k, val in zip(opt_keys, opts):
             options_dict[k] = val
             if val == term:
                 correct_key = k
 
-        clean_def_snippet = definition
-        if len(clean_def_snippet) > 180:
-            clean_def_snippet = clean_def_snippet[:180] + "..."
+        # Keep complete sentence for definition clue (never cut mid-word)
+        clean_def_snippet = definition.strip()
+        if len(clean_def_snippet) > 260:
+            first_sent = re.split(r"(?<=[.!?])\s+", clean_def_snippet)[0]
+            clean_def_snippet = first_sent if len(first_sent) >= 25 else clean_def_snippet[:250].rsplit(" ", 1)[0] + "."
 
-        question_text = f"Which concept or term refers to: \"{clean_def_snippet}\"?"
-        
+        # Ensure the term itself isn't leaked right at the beginning of the question prompt
+        clean_def_snippet = re.sub(rf"^{re.escape(term)}\s*(?:[:\-–—]|is\b|refers to\b|means\b)\s*", "", clean_def_snippet, flags=re.IGNORECASE).strip()
+
+        question_text = f"Which concept or term best matches the following description: \"{clean_def_snippet}\"?"
+
         quiz_cards.append({
             "id": f"quiz-{idx}",
             "question_number": idx,
@@ -607,10 +676,10 @@ def parse_and_generate_reviewer(raw_text: str, custom_title: Optional[str] = Non
             "options": options_dict,
             "correct_option": correct_key,
             "correct_answer_text": term,
-            "explanation": f"'{term}' is defined as: {definition}"
+            "explanation": f"'{term}' is defined in the study pointers as: {definition}"
         })
 
-    return {
+    deck = {
         "title": detected_title,
         "total_pointers": sum(len(t.get("key_terms", [])) + len(t.get("bullet_points", [])) for t in topics_list),
         "total_flashcards": len(flashcards),
@@ -621,3 +690,183 @@ def parse_and_generate_reviewer(raw_text: str, custom_title: Optional[str] = Non
         "source_word_count": len(raw_text.split()),
         "is_ai_powered": False
     }
+    return clean_and_repair_deck(deck)
+
+
+def clean_and_repair_deck(deck: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Sanitizes and repairs any reviewer deck (whether AI-generated, fallback-generated, or cached)
+    so that:
+    1. Topics' key_terms never contain broken fragments ('It', 'Here', 'To check the', '...', etc.).
+    2. Flashcards always have a clean, complete Term on `front` and complete Definition on `back`
+       (aligned with Pointers so 'Definition First' and 'Term First' modes work accurately).
+    3. Quiz cards always have complete questions, 4 complete options, and accurate answers.
+    """
+    if not isinstance(deck, dict):
+        return deck
+
+    topics = deck.get("topics") or []
+    valid_pointer_terms: List[Dict[str, str]] = []
+    seen_pointer_terms = set()
+
+    for topic in topics:
+        t_name = topic.get("topic_name") or "Core Concepts"
+        raw_kts = topic.get("key_terms") or []
+        cleaned_kts = []
+        for kt in raw_kts:
+            if not isinstance(kt, dict):
+                continue
+            t_val = clean_extracted_term(str(kt.get("term") or ""))
+            d_val = str(kt.get("definition") or "").strip()
+            if is_valid_academic_term(t_val, d_val):
+                cleaned_kts.append({"term": t_val, "definition": d_val})
+                if t_val.lower() not in seen_pointer_terms:
+                    seen_pointer_terms.add(t_val.lower())
+                    valid_pointer_terms.append({"term": t_val, "definition": d_val, "topic": t_name})
+        topic["key_terms"] = cleaned_kts
+
+        # Clean bullet points of === Handout separators
+        raw_bps = topic.get("bullet_points") or []
+        topic["bullet_points"] = [
+            bp.strip() for bp in raw_bps
+            if isinstance(bp, str) and bp.strip() and not bp.strip().startswith("===")
+        ]
+
+    # Validate existing flashcards
+    raw_flashcards = deck.get("flashcards") or []
+    cleaned_flashcards = []
+    seen_fc_fronts = set()
+
+    for fc in raw_flashcards:
+        if not isinstance(fc, dict):
+            continue
+        front = clean_extracted_term(str(fc.get("front") or ""))
+        back = str(fc.get("back") or "").strip()
+        category = str(fc.get("category") or "Key Terminology").strip()
+
+        # Reject question-style fronts ("What is...?", "How does..."), truncated "..." fronts, or invalid terms
+        if (
+            not front
+            or not back
+            or "?" in front
+            or "..." in front
+            or front.lower().startswith(("key principle #", "what ", "which ", "how ", "why ", "when ", "where ", "explain ", "describe "))
+            or not is_valid_academic_term(front, back)
+        ):
+            continue
+
+        if front.lower() not in seen_fc_fronts:
+            seen_fc_fronts.add(front.lower())
+            cleaned_flashcards.append({
+                "id": f"fc-{len(cleaned_flashcards) + 1}",
+                "front": front,
+                "back": back,
+                "category": category
+            })
+
+    # Supplement flashcards with any valid pointer key_terms not yet included so Cards match Pointers!
+    for pt in valid_pointer_terms:
+        if pt["term"].lower() not in seen_fc_fronts:
+            seen_fc_fronts.add(pt["term"].lower())
+            cleaned_flashcards.append({
+                "id": f"fc-{len(cleaned_flashcards) + 1}",
+                "front": pt["term"],
+                "back": pt["definition"],
+                "category": pt["topic"]
+            })
+
+    deck["flashcards"] = cleaned_flashcards
+    deck["total_flashcards"] = len(cleaned_flashcards)
+
+    # Validate existing quiz_cards
+    raw_quiz = deck.get("quiz_cards") or []
+    cleaned_quiz = []
+    all_valid_term_names = [pt["term"] for pt in valid_pointer_terms]
+
+    for qc in raw_quiz:
+        if not isinstance(qc, dict):
+            continue
+        question = str(qc.get("question") or "").strip()
+        options = qc.get("options") or {}
+        correct_opt = str(qc.get("correct_option") or "A").strip().upper()
+        if correct_opt not in ("A", "B", "C", "D"):
+            correct_opt = "A"
+
+        if not question or not isinstance(options, dict) or len(options) < 4:
+            continue
+
+        # Check if any option or the correct answer is a broken fragment ('It', 'Here', '===', '...', etc.)
+        opts_valid = True
+        for k in ("A", "B", "C", "D"):
+            val = str(options.get(k) or "").strip()
+            if (
+                not val
+                or val.lower() in {"it", "this", "that", "these", "those", "here", "there", "they", "we", "you", "he", "she"}
+                or val.startswith("===")
+                or val.endswith("...")
+                or len(val) < 2
+            ):
+                opts_valid = False
+                break
+
+        # Also check if question has truncated mid-sentence "..." from old fallback
+        if not opts_valid or (question.startswith("Which concept or term refers to:") and "..." in question):
+            continue
+
+        correct_text = str(options.get(correct_opt) or qc.get("correct_answer_text") or "").strip()
+        cleaned_quiz.append({
+            "id": f"quiz-{len(cleaned_quiz) + 1}",
+            "question_number": len(cleaned_quiz) + 1,
+            "question": question,
+            "options": {k: str(options.get(k) or "").strip() for k in ("A", "B", "C", "D")},
+            "correct_option": correct_opt,
+            "correct_answer_text": correct_text,
+            "explanation": str(qc.get("explanation") or f"The correct answer is {correct_text}.").strip()
+        })
+
+    # If quiz cards were invalid or too few, build accurate quiz cards directly from valid_pointer_terms
+    if len(cleaned_quiz) < min(10, len(valid_pointer_terms)):
+        existing_correct = {q["correct_answer_text"].lower() for q in cleaned_quiz}
+        for pt in valid_pointer_terms:
+            term = pt["term"]
+            definition = pt["definition"]
+            if term.lower() in existing_correct:
+                continue
+            distractors = [t for t in all_valid_term_names if t.lower() != term.lower()]
+            if len(distractors) < 3:
+                for fd in ["Data Abstraction Layer", "Transaction Control Manager", "System Catalog Schema", "Relational Integrity Constraint"]:
+                    if fd.lower() != term.lower() and fd not in distractors:
+                        distractors.append(fd)
+            chosen_distractors = random.sample(distractors, min(3, len(distractors)))
+            opts = [term] + chosen_distractors[:3]
+            random.shuffle(opts)
+            opt_keys = ["A", "B", "C", "D"]
+            options_dict = {}
+            correct_key = "A"
+            for k, val in zip(opt_keys, opts):
+                options_dict[k] = val
+                if val == term:
+                    correct_key = k
+
+            clean_def_snippet = definition.strip()
+            if len(clean_def_snippet) > 260:
+                first_sent = re.split(r"(?<=[.!?])\s+", clean_def_snippet)[0]
+                clean_def_snippet = first_sent if len(first_sent) >= 25 else clean_def_snippet[:250].rsplit(" ", 1)[0] + "."
+            clean_def_snippet = re.sub(rf"^{re.escape(term)}\s*(?:[:\-–—]|is\b|refers to\b|means\b)\s*", "", clean_def_snippet, flags=re.IGNORECASE).strip()
+
+            cleaned_quiz.append({
+                "id": f"quiz-{len(cleaned_quiz) + 1}",
+                "question_number": len(cleaned_quiz) + 1,
+                "question": f"Which concept or term best matches the following description: \"{clean_def_snippet}\"?",
+                "options": options_dict,
+                "correct_option": correct_key,
+                "correct_answer_text": term,
+                "explanation": f"'{term}' is defined in the study pointers as: {definition}"
+            })
+            if len(cleaned_quiz) >= 25:
+                break
+
+    deck["quiz_cards"] = cleaned_quiz
+    deck["total_quiz_cards"] = len(cleaned_quiz)
+    deck["total_pointers"] = sum(len(t.get("key_terms", [])) + len(t.get("bullet_points", [])) for t in topics)
+    return deck
