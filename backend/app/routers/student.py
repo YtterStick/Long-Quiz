@@ -963,6 +963,49 @@ async def _get_monthly_usage(student_id: str, db: AsyncSession) -> int:
     return len(res.scalars().all())
 
 
+async def _save_to_student_cloud_deck(student_id: str, deck_dict: dict, db: AsyncSession) -> str:
+    """Persists or updates a reviewer deck in the student's cloud storage so it is available on any device."""
+    title = str(deck_dict.get("title") or "Study Reviewer").strip()
+    deck_id = deck_dict.get("id")
+
+    existing = None
+    if deck_id:
+        existing = (await db.execute(
+            select(CustomStudentDeck).where(
+                CustomStudentDeck.id == deck_id,
+                CustomStudentDeck.student_id == student_id,
+            )
+        )).scalar_one_or_none()
+
+    if not existing:
+        existing = (await db.execute(
+            select(CustomStudentDeck).where(
+                CustomStudentDeck.title == title,
+                CustomStudentDeck.student_id == student_id,
+            )
+        )).scalar_one_or_none()
+
+    if existing:
+        deck_dict["id"] = existing.id
+        deck_dict["cloud_id"] = existing.id
+        existing.deck_data = json.dumps(deck_dict)
+        existing.updated_at = datetime.now(timezone.utc)
+        return existing.id
+
+    new_deck = CustomStudentDeck(
+        student_id=student_id,
+        title=title,
+        description=f"Generated Reviewer • {len(deck_dict.get('flashcards', []))} cards",
+        deck_data=json.dumps(deck_dict),
+    )
+    db.add(new_deck)
+    await db.flush()
+    deck_dict["id"] = new_deck.id
+    deck_dict["cloud_id"] = new_deck.id
+    new_deck.deck_data = json.dumps(deck_dict)
+    return new_deck.id
+
+
 @router.get("/reviewer-quota")
 async def get_reviewer_quota(
     db: AsyncSession = Depends(get_db),
@@ -1021,12 +1064,14 @@ async def generate_reviewer_from_text(
         if deck_data.get("is_ai_powered", False) or len(deck_data.get("flashcards", [])) >= 5:
             cached_deck.usage_count += 1
             cached_deck.deck_data = json.dumps(deck_data)
-            await db.commit()
             if not deck_data.get("source_text"):
                 deck_data["source_text"] = distilled or payload.raw_text
             deck_data["cached"] = True
             deck_data["quota_used"] = used
             deck_data["quota_remaining"] = max(0, MAX_MONTHLY_HANDOUT_GENERATIONS - used)
+            # Ensure saved in this student's cloud storage
+            await _save_to_student_cloud_deck(student.id, deck_data, db)
+            await db.commit()
             return deck_data
         else:
             await db.delete(cached_deck)
@@ -1067,6 +1112,9 @@ async def generate_reviewer_from_text(
         title=result["title"],
     )
     db.add(log_entry)
+
+    # Persist to student's personal cloud decks in DB so it's always accessible on phone or desktop
+    await _save_to_student_cloud_deck(student.id, result, db)
     await db.commit()
 
     result["cached"] = False
@@ -1157,7 +1205,6 @@ async def generate_reviewer_from_file(
         if deck_data.get("is_ai_powered", False) or len(deck_data.get("flashcards", [])) >= 5:
             cached_deck.usage_count += 1
             cached_deck.deck_data = json.dumps(deck_data)
-            await db.commit()
             if not deck_data.get("source_text"):
                 deck_data["source_text"] = extracted_text
             if not deck_data.get("file_name") and joined_file_names:
@@ -1165,6 +1212,9 @@ async def generate_reviewer_from_file(
             deck_data["cached"] = True
             deck_data["quota_used"] = used
             deck_data["quota_remaining"] = max(0, MAX_MONTHLY_HANDOUT_GENERATIONS - used)
+            # Ensure saved in this student's cloud storage
+            await _save_to_student_cloud_deck(student.id, deck_data, db)
+            await db.commit()
             return deck_data
         else:
             await db.delete(cached_deck)
@@ -1213,6 +1263,9 @@ async def generate_reviewer_from_file(
         title=result["title"],
     )
     db.add(log_entry)
+
+    # Persist to student's personal cloud decks in DB so it's always accessible on phone or desktop
+    await _save_to_student_cloud_deck(student.id, result, db)
     await db.commit()
 
     result["cached"] = False
@@ -1662,6 +1715,11 @@ async def get_custom_decks(
             deck_parsed = clean_and_repair_deck(json.loads(d.deck_data))
         except Exception:
             deck_parsed = {}
+        if isinstance(deck_parsed, dict):
+            deck_parsed["id"] = d.id
+            deck_parsed["cloud_id"] = d.id
+            if "title" not in deck_parsed or not deck_parsed["title"]:
+                deck_parsed["title"] = d.title
         out.append({
             "id": d.id,
             "title": d.title,
@@ -1679,15 +1737,63 @@ async def create_custom_deck(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(Role.STUDENT)),
 ):
-    """Creates a new custom student flashcard/reviewer deck in cloud storage."""
+    """Creates or updates a student flashcard/reviewer deck in cloud storage."""
     student = await _get_student(current_user, db)
+    clean_title = payload.title.strip() or "Custom Study Deck"
+    deck_id = payload.deck_data.get("id") if isinstance(payload.deck_data, dict) else None
+
+    # Check if deck already exists by id or title for this student (upsert)
+    existing = None
+    if deck_id:
+        existing = (await db.execute(
+            select(CustomStudentDeck).where(
+                CustomStudentDeck.id == deck_id,
+                CustomStudentDeck.student_id == student.id,
+            )
+        )).scalar_one_or_none()
+
+    if not existing:
+        existing = (await db.execute(
+            select(CustomStudentDeck).where(
+                CustomStudentDeck.title == clean_title,
+                CustomStudentDeck.student_id == student.id,
+            )
+        )).scalar_one_or_none()
+
+    if existing:
+        existing.title = clean_title
+        if payload.description is not None:
+            existing.description = payload.description.strip()
+        if isinstance(payload.deck_data, dict):
+            payload.deck_data["id"] = existing.id
+            payload.deck_data["cloud_id"] = existing.id
+        existing.deck_data = json.dumps(payload.deck_data)
+        existing.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(existing)
+        return {
+            "id": existing.id,
+            "title": existing.title,
+            "description": existing.description,
+            "created_at": existing.created_at.isoformat(),
+            "updated_at": existing.updated_at.isoformat(),
+            "deck": payload.deck_data,
+        }
+
     new_deck = CustomStudentDeck(
         student_id=student.id,
-        title=payload.title.strip() or "Custom Study Deck",
+        title=clean_title,
         description=payload.description.strip() if payload.description else None,
         deck_data=json.dumps(payload.deck_data),
     )
     db.add(new_deck)
+    await db.flush()
+
+    if isinstance(payload.deck_data, dict):
+        payload.deck_data["id"] = new_deck.id
+        payload.deck_data["cloud_id"] = new_deck.id
+        new_deck.deck_data = json.dumps(payload.deck_data)
+
     await db.commit()
     await db.refresh(new_deck)
 
@@ -1725,6 +1831,9 @@ async def update_custom_deck(
     if payload.description is not None:
         deck.description = payload.description.strip()
     if payload.deck_data is not None:
+        if isinstance(payload.deck_data, dict):
+            payload.deck_data["id"] = deck.id
+            payload.deck_data["cloud_id"] = deck.id
         deck.deck_data = json.dumps(payload.deck_data)
 
     deck.updated_at = datetime.now(timezone.utc)
@@ -1752,21 +1861,31 @@ async def delete_custom_deck(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(Role.STUDENT)),
 ):
-    """Deletes a custom student deck."""
+    """Deletes a custom student deck by id or title."""
+    from sqlalchemy import func
     student = await _get_student(current_user, db)
     res = await db.execute(
         select(CustomStudentDeck).where(
-            CustomStudentDeck.id == deck_id,
+            (CustomStudentDeck.id == deck_id) | (CustomStudentDeck.title == deck_id),
             CustomStudentDeck.student_id == student.id,
         )
     )
     deck = res.scalar_one_or_none()
     if not deck:
-        raise HTTPException(status_code=404, detail="Custom deck not found.")
+        res_ci = await db.execute(
+            select(CustomStudentDeck).where(
+                func.lower(CustomStudentDeck.title) == deck_id.lower(),
+                CustomStudentDeck.student_id == student.id,
+            )
+        )
+        deck = res_ci.scalar_one_or_none()
+
+    if not deck:
+        return {"ok": True, "message": "Deck already removed or not found."}
 
     await db.delete(deck)
     await db.commit()
-    return {"ok": True, "message": "Deck deleted."}
+    return {"ok": True, "message": "Custom deck deleted from cloud storage."}
 
 
 @router.get("/notifications")

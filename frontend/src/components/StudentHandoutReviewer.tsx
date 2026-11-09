@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import {
   UploadCloud,
+  Cloud,
   FileText,
   Sparkles,
   BookOpen,
@@ -405,7 +406,77 @@ export function StudentHandoutReviewer() {
       if (quota) setQuotaInfo(quota);
       if (shared) setSharedSectionDecks(shared);
       if (friendShared) setFriendSharedDecks(friendShared);
-      if (customDecks) setCustomCloudDecks(customDecks);
+      if (customDecks && Array.isArray(customDecks)) {
+        setCustomCloudDecks(customDecks);
+
+        // Parse and sanitize all cloud-stored decks
+        const cloudDecksParsed: GeneratedReviewerDeck[] = customDecks.map((c: any) => {
+          const d = c.deck || {};
+          return {
+            ...sanitizeReviewerDeckClient(d),
+            id: c.id || d.id,
+            title: d.title || c.title,
+            folder_id: d.folder_id || "general",
+            folder_name: d.folder_name,
+            folder_color: d.folder_color,
+          };
+        });
+
+        // Seamlessly merge cloud decks with any locally cached decks
+        setSavedDecks((prevSaved) => {
+          const cloudTitles = new Set(cloudDecksParsed.map((d) => d.title.toLowerCase()));
+          const localOnly = prevSaved.filter((loc) => !cloudTitles.has(loc.title.toLowerCase()));
+
+          // Auto-migrate / sync any local-only decks up to the cloud database
+          if (localOnly.length > 0) {
+            localOnly.forEach((locDeck) => {
+              studentApi
+                .createCustomDeck({
+                  title: locDeck.title,
+                  description: `Study deck • ${locDeck.flashcards?.length || 0} cards`,
+                  deck_data: locDeck,
+                })
+                .then((res) => {
+                  if (res?.id) {
+                    locDeck.id = res.id;
+                  }
+                })
+                .catch(() => {});
+            });
+          }
+
+          const combined = [...cloudDecksParsed, ...localOnly].slice(0, 50);
+
+          // Restore any custom folders saved across devices
+          setFolders((prevFolders) => {
+            const existingFolderIds = new Set(prevFolders.map((f) => f.id));
+            const restoredFolders: StudyFolder[] = [];
+            combined.forEach((d: any) => {
+              if (d.folder_id && d.folder_id !== "general" && !existingFolderIds.has(d.folder_id)) {
+                existingFolderIds.add(d.folder_id);
+                restoredFolders.push({
+                  id: d.folder_id,
+                  name: d.folder_name || d.folder_id.replace("folder_", "Folder "),
+                  color: d.folder_color || "steel",
+                });
+              }
+            });
+            if (restoredFolders.length > 0) {
+              const merged = [...prevFolders, ...restoredFolders];
+              try {
+                localStorage.setItem(FOLDERS_STORAGE_KEY, JSON.stringify(merged));
+              } catch {}
+              return merged;
+            }
+            return prevFolders;
+          });
+
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(combined));
+          } catch {}
+          return combined;
+        });
+      }
 
       // Auto-activate deck if specified in URL param ?deck=...
       if (typeof window !== "undefined") {
@@ -575,19 +646,44 @@ export function StudentHandoutReviewer() {
     };
   }, [loading]);
 
-  const saveDeckToStorage = (deck: GeneratedReviewerDeck, folderId?: string) => {
+  const saveDeckToStorage = async (deck: GeneratedReviewerDeck, folderId?: string) => {
     try {
       const existing = savedDecks.filter((d) => d.title !== deck.title);
+      const targetFolderId =
+        folderId ||
+        (deck as any).folder_id ||
+        (selectedFolderId !== "all" ? selectedFolderId : "general");
+      const folderObj = folders.find((f) => f.id === targetFolderId);
       const deckWithFolder = {
         ...deck,
-        folder_id:
-          folderId ||
-          (deck as any).folder_id ||
-          (selectedFolderId !== "all" ? selectedFolderId : "general"),
+        folder_id: targetFolderId,
+        folder_name: folderObj?.name || (deck as any).folder_name || "General",
+        folder_color: folderObj?.color || (deck as any).folder_color || "steel",
       };
       const updated = [deckWithFolder, ...existing].slice(0, 50);
       setSavedDecks(updated);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      } catch {}
+
+      // Persist to database in background so it's instantly available on phone & other devices
+      try {
+        const cloudRes = await studentApi.createCustomDeck({
+          title: deckWithFolder.title,
+          description: `Study deck • ${deckWithFolder.flashcards?.length || 0} cards`,
+          deck_data: deckWithFolder,
+        });
+        if (cloudRes?.id) {
+          deckWithFolder.id = cloudRes.id;
+          const withId = updated.map((d) => (d.title === deckWithFolder.title ? { ...d, id: cloudRes.id } : d));
+          setSavedDecks(withId);
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(withId));
+          } catch {}
+        }
+      } catch (cloudErr) {
+        console.warn("Database reviewer sync deferred:", cloudErr);
+      }
     } catch (e) {
       console.error("Failed to save deck:", e);
     }
@@ -628,18 +724,41 @@ export function StudentHandoutReviewer() {
     showToast(`Folder "${folder.name}" deleted. Decks moved to General.`);
   };
 
-  const moveDeckToFolder = (deckTitle: string, targetFolderId: string) => {
+  const moveDeckToFolder = async (deckTitle: string, targetFolderId: string) => {
+    const folderObj = folders.find((f) => f.id === targetFolderId);
+    let targetDeck: any = null;
     const updated = savedDecks.map((d: any) => {
       if (d.title === deckTitle) {
-        return { ...d, folder_id: targetFolderId };
+        targetDeck = {
+          ...d,
+          folder_id: targetFolderId,
+          folder_name: folderObj?.name || "General",
+          folder_color: folderObj?.color || "steel",
+        };
+        return targetDeck;
       }
       return d;
     });
     setSavedDecks(updated);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    } catch {}
     setMovingDeck(null);
-    const folderName = folders.find((f) => f.id === targetFolderId)?.name || "folder";
+    const folderName = folderObj?.name || "folder";
     showToast(`Moved "${deckTitle}" to ${folderName}`);
+
+    // Update in database so folder organization syncs across phone and PC
+    if (targetDeck) {
+      try {
+        await studentApi.createCustomDeck({
+          title: targetDeck.title,
+          description: `Study deck • ${targetDeck.flashcards?.length || 0} cards`,
+          deck_data: targetDeck,
+        });
+      } catch (err) {
+        console.warn("Database folder sync failed:", err);
+      }
+    }
   };
 
   const requestDeleteSavedDeck = (title: string, e: React.MouseEvent) => {
@@ -647,18 +766,29 @@ export function StudentHandoutReviewer() {
     setDeleteDeckTarget(title);
   };
 
-  const confirmDeleteSavedDeck = () => {
+  const confirmDeleteSavedDeck = async () => {
     if (!deleteDeckTarget) return;
     const title = deleteDeckTarget;
+    const targetDeck = savedDecks.find((d) => d.title === title);
     const updated = savedDecks.filter((d) => d.title !== title);
     setSavedDecks(updated);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    } catch {}
     if (activeDeck?.title === title) {
       setActiveDeck(null);
       setView("library");
     }
     setDeleteDeckTarget(null);
     showToast(`Removed "${title}" from your saved decks.`);
+
+    // Persist deletion to PostgreSQL DB so it's deleted from all devices
+    const idOrTitle = targetDeck?.id || title;
+    try {
+      await studentApi.deleteCustomDeck(idOrTitle);
+    } catch (err) {
+      console.warn("Database deck deletion failed:", err);
+    }
   };
 
   const confirmRemoveFile = () => {
@@ -2279,10 +2409,16 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
             <div className="space-y-4 p-5 sm:p-6 pb-2 sm:pb-2">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
-                  <h3 className="text-lg font-bold text-text-primary">My study decks</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-bold text-text-primary">My study decks</h3>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-steel-ghost px-2 py-0.5 text-[11px] font-semibold text-steel border border-steel/20">
+                      <Cloud className="h-3 w-3" />
+                      Cloud-saved
+                    </span>
+                  </div>
                   <p className="text-sm text-text-muted">
                     {savedDecks.length} {savedDecks.length === 1 ? "deck" : "decks"} · {folders.length}{" "}
-                    {folders.length === 1 ? "folder" : "folders"}
+                    {folders.length === 1 ? "folder" : "folders"} · Accessible on phone & PC
                   </p>
                 </div>
                 <button
@@ -2446,6 +2582,14 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
                                   icon: BookOpen,
                                   onClick: () => handleSelectDeckToStudy(deck),
                                 },
+                                {
+                                  label: "Edit deck",
+                                  icon: Edit3,
+                                  onClick: () => {
+                                    setEditingDeck(deck);
+                                    setCustomModalOpen(true);
+                                  },
+                                },
                                 { label: "Move to folder", icon: MoveRight, onClick: () => setMovingDeck(deck) },
                                 {
                                   label: "Share with friends",
@@ -2606,7 +2750,7 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
           saveDeckToStorage(savedDeck);
           setView("study");
           showToast(`Saved "${savedDeck.title}" to your study library!`);
-          studentApi.getCustomDecks().then(setCustomCloudDecks).catch(() => {});
+          fetchQuotaAndShared();
         }}
       />
 

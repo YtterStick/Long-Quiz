@@ -165,6 +165,9 @@ async def lifespan(app: FastAPI):
                 "ALTER TABLE students ADD COLUMN IF NOT EXISTS is_profile_setup BOOLEAN NOT NULL DEFAULT FALSE",
                 "ALTER TABLE teachers ADD COLUMN IF NOT EXISTS avatar_config TEXT",
                 "ALTER TABLE teachers ADD COLUMN IF NOT EXISTS bio VARCHAR",
+                # Cloud-saved reviewer decks across all student devices
+                "CREATE TABLE IF NOT EXISTS custom_student_decks (id VARCHAR PRIMARY KEY, student_id VARCHAR NOT NULL REFERENCES students(id) ON DELETE CASCADE, title VARCHAR NOT NULL, description VARCHAR, deck_data TEXT NOT NULL, created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP)",
+                "CREATE INDEX IF NOT EXISTS ix_custom_student_decks_student_id ON custom_student_decks (student_id)",
                 # Security columns
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0",
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NULL DEFAULT 0",
