@@ -188,22 +188,27 @@ export function Navbar({ onOpenPasswordModal, onOpenCloset }: NavbarProps) {
 
   return (
     <>
-      <header className="sticky top-0 z-40 w-full border-b border-border-default bg-surface-raised/90 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
+      <header className="sticky top-0 z-40 w-full border-b border-border-default/70 bg-surface-raised/85 backdrop-blur-2xl transition-all shadow-xs">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-2.5 sm:px-6">
           {/* Brand */}
           <div className="flex items-center gap-3">
             <Link href={homeHref} className="flex items-center gap-2.5 group">
-              <ExamIcon className="h-8 w-8 transition-transform group-hover:scale-110 duration-200" />
-              <div>
-                <span className="text-xl font-black tracking-tight text-text-primary">
+              <div className="flex items-center justify-center h-8.5 w-8.5 rounded-xl bg-gradient-to-tr from-steel/20 to-steel/5 border border-steel/30 text-steel group-hover:scale-105 transition-all shadow-xs">
+                <ExamIcon className="h-4.5 w-4.5" />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-lg font-black tracking-tight text-text-primary leading-none">
                   Evalo
+                </span>
+                <span className="text-[9px] font-bold uppercase tracking-wider text-text-muted leading-tight mt-0.5">
+                  Portal
                 </span>
               </div>
             </Link>
 
-            {/* Teacher Desktop Navigation Links */}
+            {/* Teacher Desktop Navigation Links (Floating Capsule Segmented Dock) */}
             {user.role === "TEACHER" && (
-              <nav className="hidden sm:flex items-center gap-1.5 ml-6 border-l border-border-default pl-6">
+              <nav className="hidden md:inline-flex items-center gap-1 p-1 rounded-2xl bg-surface-subtle/80 border border-border-default/70 backdrop-blur-xl shadow-inner shadow-black/[0.02] dark:shadow-black/20 ml-6">
                 {teacherNav.map((item) => {
                   const isActive = pathname === item.href;
                   const Icon = item.icon;
@@ -211,23 +216,26 @@ export function Navbar({ onOpenPasswordModal, onOpenCloset }: NavbarProps) {
                     <Link
                       key={item.href}
                       href={item.href}
-                      className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all duration-150 ${
+                      className={`relative flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 select-none ${
                         isActive
-                          ? "bg-steel text-white shadow-sm shadow-steel/25"
-                          : "text-text-muted hover:text-text-primary hover:bg-surface-subtle/80"
+                          ? "bg-surface-overlay text-text-primary shadow-xs ring-1 ring-border-default/80 font-extrabold"
+                          : "text-text-muted hover:text-text-primary hover:bg-surface-base/60"
                       }`}
                     >
-                      <Icon className="h-3.5 w-3.5" />
-                      {item.label}
+                      <Icon className={`h-3.5 w-3.5 transition-colors ${isActive ? "text-steel" : "text-text-muted"}`} />
+                      <span>{item.label}</span>
+                      {isActive && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-steel animate-pulse shrink-0" />
+                      )}
                     </Link>
                   );
                 })}
               </nav>
             )}
 
-            {/* Student Desktop Navigation Links */}
+            {/* Student Desktop Navigation Links (Floating Capsule Segmented Dock) */}
             {user.role === "STUDENT" && (
-              <nav className="hidden sm:flex items-center gap-1.5 ml-6 border-l border-border-default pl-6">
+              <nav className="hidden md:inline-flex items-center gap-1 p-1 rounded-2xl bg-surface-subtle/80 border border-border-default/70 backdrop-blur-xl shadow-inner shadow-black/[0.02] dark:shadow-black/20 ml-6">
                 {studentNav.map((item) => {
                   const isReviewerRoute = pathname.startsWith("/student/reviewer");
                   const isActive = isReviewerRoute
@@ -251,14 +259,17 @@ export function Navbar({ onOpenPasswordModal, onOpenCloset }: NavbarProps) {
                           window.history.pushState({}, "", url);
                         }
                       }}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer ${
+                      className={`relative flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 select-none cursor-pointer ${
                         isActive
-                          ? "bg-sage text-white shadow-sm shadow-sage/25"
-                          : "text-text-muted hover:text-text-primary hover:bg-surface-subtle/80"
+                          ? "bg-surface-overlay text-text-primary shadow-xs ring-1 ring-border-default/80 font-extrabold"
+                          : "text-text-muted hover:text-text-primary hover:bg-surface-base/60"
                       }`}
                     >
-                      <Icon className="h-3.5 w-3.5" />
-                      {item.label}
+                      <Icon className={`h-3.5 w-3.5 transition-colors ${isActive ? "text-sage" : "text-text-muted"}`} />
+                      <span>{item.label}</span>
+                      {isActive && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-sage animate-pulse shrink-0" />
+                      )}
                     </Link>
                   );
                 })}
@@ -275,7 +286,7 @@ export function Navbar({ onOpenPasswordModal, onOpenCloset }: NavbarProps) {
             <div className="relative" ref={dropdownRef}>
               <button
                 onClick={() => setDropdownOpen(!dropdownOpen)}
-                className="flex items-center gap-2.5 rounded-2xl bg-surface-overlay border border-border-default px-3 py-1.5 hover:border-border-emphasis transition-all focus:outline-none"
+                className="flex items-center gap-2.5 rounded-2xl bg-surface-subtle/70 border border-border-default/80 px-2.5 py-1.5 hover:bg-surface-overlay hover:border-border-emphasis hover:shadow-xs transition-all focus:outline-none cursor-pointer"
               >
                 {(user.role === "STUDENT" || user.role === "TEACHER") && effectiveAvatar ? (
                   <div className={`flex h-7 w-7 items-center justify-center rounded-full overflow-hidden border shadow-xs shrink-0 bg-surface-base ${
