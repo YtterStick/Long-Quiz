@@ -41,6 +41,7 @@ import {
   Users,
   LayoutDashboard,
   Sparkles,
+  ListOrdered,
 } from "lucide-react";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
 import {
@@ -305,6 +306,31 @@ export default function StudentDashboard() {
   const [submittingOnlineExam, setSubmittingOnlineExam] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false);
+
+  // Question Navigator (1 - 50 sidebar progress & quick jump)
+  const [highlightedQuestionNumber, setHighlightedQuestionNumber] = useState<number | null>(null);
+  const [questionFilter, setQuestionFilter] = useState<"all" | "unanswered" | "answered">("all");
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+
+  const scrollToQuestion = (questionNumber: number) => {
+    const el = document.getElementById(`exam-question-${questionNumber}`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      setHighlightedQuestionNumber(questionNumber);
+      setTimeout(() => {
+        setHighlightedQuestionNumber((prev) => (prev === questionNumber ? null : prev));
+      }, 1800);
+    }
+    setMobileNavOpen(false);
+  };
+
+  const handleJumpToNextUnanswered = () => {
+    if (!activeTakingExam) return;
+    const unanswered = activeTakingExam.questions.find((q) => !takingAnswers[q.question_number]);
+    if (unanswered) {
+      scrollToQuestion(unanswered.question_number);
+    }
+  };
 
   // Celebration / Submission Result Modal
   const [submissionSuccessResult, setSubmissionSuccessResult] = useState<{
@@ -2841,7 +2867,7 @@ export default function StudentDashboard() {
           ref={examContainerRef}
           className="fixed inset-0 z-50 flex items-center justify-center bg-surface-base dark:bg-black p-0 sm:p-3 select-none overflow-hidden"
         >
-          <div className={`w-full max-w-4xl h-full sm:h-[96vh] flex flex-col sm:rounded-2xl border-0 sm:border border-border-default bg-surface-overlay shadow-2xl overflow-hidden transition-all duration-200 ${(!isFullscreenActive || isWindowAway) ? "filter blur-2xl opacity-10 pointer-events-none select-none" : ""}`}>
+          <div className={`w-full max-w-6xl h-full sm:h-[96vh] flex flex-col sm:rounded-2xl border-0 sm:border border-border-default bg-surface-overlay shadow-2xl overflow-hidden transition-all duration-200 ${(!isFullscreenActive || isWindowAway) ? "filter blur-2xl opacity-10 pointer-events-none select-none" : ""}`}>
             {/* Modal Header with Fullscreen Indicator */}
             <div className="flex items-center justify-between px-6 py-3.5 border-b border-border-default bg-surface-base shrink-0">
               <div>
@@ -2864,7 +2890,17 @@ export default function StudentDashboard() {
               </div>
 
               {/* Header Right: Live Countdown Timer & Progress Tracker */}
-              <div className="flex items-center gap-3 sm:gap-5">
+              <div className="flex items-center gap-2.5 sm:gap-4">
+                {/* Mobile Navigator Drawer Toggle */}
+                <button
+                  type="button"
+                  onClick={() => setMobileNavOpen((prev) => !prev)}
+                  className="md:hidden flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-steel/40 bg-steel/15 text-steel-light text-xs font-bold transition-all cursor-pointer"
+                  title="Toggle Question Navigator"
+                >
+                  <ListOrdered className="h-4 w-4" />
+                  <span>1-{activeTakingExam.questions.length}</span>
+                </button>
                 {/* Live Countdown Timer Widget */}
                 {timeRemaining !== null && (
                   <div
@@ -2913,107 +2949,249 @@ export default function StudentDashboard() {
               </div>
             </div>
 
-            {/* Questions Scrollable Body */}
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
-              {submitError && (
-                <div className="flex items-center gap-2 rounded-xl bg-burgundy-ghost border border-burgundy-border p-3 text-xs text-burgundy-light">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  <span>{submitError}</span>
-                </div>
-              )}
-
-              {activeTakingExam.questions.length === 0 ? (
-                <div className="py-12 text-center text-xs text-text-muted">
-                  No questions found in this exam.
-                </div>
-              ) : (
-                activeTakingExam.questions.map((q) => {
-                  const selectedOption = takingAnswers[q.question_number];
-                  const optionsList: Array<{ key: string; text?: string | null }> = [
-                    { key: "A", text: q.option_a },
-                    { key: "B", text: q.option_b },
-                    { key: "C", text: q.option_c },
-                    { key: "D", text: q.option_d },
-                  ];
-
-                  return (
-                    <div
-                      key={q.question_number}
-                      className="rounded-2xl border border-border-default bg-surface-base p-5 space-y-4 shadow-sm"
+            {/* Main Content Area: Left Question Navigator (1 - 50) + Right Questions Body */}
+            <div className="flex flex-1 overflow-hidden relative">
+              {/* Left Sidebar: Question Progress & 1-50 Navigator */}
+              <aside
+                className={`border-r border-border-default bg-surface-subtle/50 flex flex-col shrink-0 transition-all duration-200 ${
+                  mobileNavOpen
+                    ? "absolute inset-y-0 left-0 z-30 w-72 bg-surface-overlay shadow-2xl flex"
+                    : "hidden md:flex md:w-56 lg:w-64"
+                }`}
+              >
+                {/* Sidebar Header */}
+                <div className="p-3.5 border-b border-border-default/80 flex items-center justify-between bg-surface-base/80">
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-text-primary flex items-center gap-1.5">
+                      <ListOrdered className="h-3.5 w-3.5 text-steel-light" />
+                      <span>Questions</span>
+                    </h3>
+                    <p className="text-[11px] text-text-muted mt-0.5">
+                      <span className="font-semibold text-text-primary font-mono">{Object.keys(takingAnswers).length}</span> of {activeTakingExam.questions.length} answered
+                    </p>
+                  </div>
+                  {mobileNavOpen && (
+                    <button
+                      type="button"
+                      onClick={() => setMobileNavOpen(false)}
+                      className="p-1 rounded-lg text-text-muted hover:text-text-primary hover:bg-surface-muted md:hidden cursor-pointer"
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="font-mono text-xs font-bold text-text-muted">
-                          Question #{q.question_number}
-                        </span>
-                        {selectedOption ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-steel/15 px-2.5 py-0.5 text-[10px] font-bold text-steel-light border border-steel/30">
-                            <Check className="h-3 w-3" />
-                            Choice {selectedOption}
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Quick Filter Pills */}
+                <div className="p-2 border-b border-border-default/60 flex items-center gap-1 bg-surface-base/40 text-[10px]">
+                  <button
+                    type="button"
+                    onClick={() => setQuestionFilter("all")}
+                    className={`flex-1 py-1 rounded-lg font-bold transition-all text-center cursor-pointer ${
+                      questionFilter === "all"
+                        ? "bg-steel text-white shadow-xs"
+                        : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
+                    }`}
+                  >
+                    All ({activeTakingExam.questions.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQuestionFilter("unanswered")}
+                    className={`flex-1 py-1 rounded-lg font-bold transition-all text-center cursor-pointer ${
+                      questionFilter === "unanswered"
+                        ? "bg-amber-500 text-white shadow-xs"
+                        : "text-amber-500 dark:text-amber-400 hover:bg-amber-500/10"
+                    }`}
+                  >
+                    Missing ({activeTakingExam.questions.length - Object.keys(takingAnswers).length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQuestionFilter("answered")}
+                    className={`flex-1 py-1 rounded-lg font-bold transition-all text-center cursor-pointer ${
+                      questionFilter === "answered"
+                        ? "bg-emerald-600 text-white shadow-xs"
+                        : "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+                    }`}
+                  >
+                    Done ({Object.keys(takingAnswers).length})
+                  </button>
+                </div>
+
+                {/* Jump to Next Unanswered Button */}
+                {Object.keys(takingAnswers).length < activeTakingExam.questions.length && (
+                  <div className="p-2 border-b border-border-default/40 bg-amber-500/5">
+                    <button
+                      type="button"
+                      onClick={handleJumpToNextUnanswered}
+                      className="w-full py-1.5 px-2 rounded-xl text-[11px] font-bold bg-amber-500/15 border border-amber-500/30 text-amber-500 dark:text-amber-300 hover:bg-amber-500/25 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <span>Jump to Next Unanswered</span>
+                      <ArrowRight className="h-3 w-3" />
+                    </button>
+                  </div>
+                )}
+
+                {/* 1 - 50 Question Grid */}
+                <div className="flex-1 overflow-y-auto p-2.5">
+                  <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5">
+                    {activeTakingExam.questions.map((q) => {
+                      const isAnswered = Boolean(takingAnswers[q.question_number]);
+                      const chosen = takingAnswers[q.question_number];
+                      const isTargeted = highlightedQuestionNumber === q.question_number;
+
+                      if (questionFilter === "unanswered" && isAnswered) return null;
+                      if (questionFilter === "answered" && !isAnswered) return null;
+
+                      return (
+                        <button
+                          key={q.question_number}
+                          type="button"
+                          onClick={() => scrollToQuestion(q.question_number)}
+                          title={`Question #${q.question_number}: ${isAnswered ? `Answered (${chosen})` : "Unanswered - click to jump"}`}
+                          className={`h-9 rounded-xl text-xs font-bold flex flex-col items-center justify-center transition-all cursor-pointer select-none relative ${
+                            isTargeted
+                              ? "ring-2 ring-steel ring-offset-2 scale-105 z-10"
+                              : ""
+                          } ${
+                            isAnswered
+                              ? "bg-steel text-white shadow-xs hover:bg-steel-dark"
+                              : "bg-surface-base border border-border-emphasis text-text-muted hover:border-amber-400 hover:text-amber-500 hover:bg-surface-subtle"
+                          }`}
+                        >
+                          <span className="leading-none">{q.question_number}</span>
+                          {isAnswered ? (
+                            <span className="text-[9px] opacity-90 font-mono font-extrabold leading-none mt-0.5">
+                              {chosen}
+                            </span>
+                          ) : (
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400/90 mt-0.5" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </aside>
+
+              {/* Questions Scrollable Body */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 scroll-smooth">
+                {submitError && (
+                  <div className="flex items-center gap-2 rounded-xl bg-burgundy-ghost border border-burgundy-border p-3 text-xs text-burgundy-light">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    <span>{submitError}</span>
+                  </div>
+                )}
+
+                {activeTakingExam.questions.length === 0 ? (
+                  <div className="py-12 text-center text-xs text-text-muted">
+                    No questions found in this exam.
+                  </div>
+                ) : (
+                  activeTakingExam.questions.map((q) => {
+                    const selectedOption = takingAnswers[q.question_number];
+                    const isTargeted = highlightedQuestionNumber === q.question_number;
+                    const optionsList: Array<{ key: string; text?: string | null }> = [
+                      { key: "A", text: q.option_a },
+                      { key: "B", text: q.option_b },
+                      { key: "C", text: q.option_c },
+                      { key: "D", text: q.option_d },
+                    ];
+
+                    return (
+                      <div
+                        key={q.question_number}
+                        id={`exam-question-${q.question_number}`}
+                        className={`rounded-2xl border transition-all duration-300 p-5 space-y-4 shadow-sm ${
+                          isTargeted
+                            ? "border-steel ring-2 ring-steel/60 bg-steel/5 shadow-md shadow-steel/10"
+                            : "border-border-default bg-surface-base"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-xs font-bold text-text-muted">
+                            Question #{q.question_number}
                           </span>
-                        ) : (
-                          <span className="rounded-full bg-surface-subtle px-2.5 py-0.5 text-[10px] font-medium text-text-muted border border-border-emphasis">
-                            Unanswered
-                          </span>
-                        )}
-                      </div>
+                          {selectedOption ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-steel/15 px-2.5 py-0.5 text-[10px] font-bold text-steel-light border border-steel/30">
+                              <Check className="h-3 w-3" />
+                              Choice {selectedOption}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[10px] font-medium text-amber-500 dark:text-amber-300 border border-amber-500/30">
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                              Unanswered
+                            </span>
+                          )}
+                        </div>
 
-                      {/* Question Text Prompt */}
-                      <p className="text-sm font-semibold text-text-primary leading-relaxed">
-                        {q.question_text || `Question ${q.question_number}`}
-                      </p>
+                        {/* Question Text Prompt */}
+                        <p className="text-sm font-semibold text-text-primary leading-relaxed">
+                          {q.question_text || `Question ${q.question_number}`}
+                        </p>
 
-                      {/* Multiple Choice Options Grid */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                        {optionsList.map(({ key, text }) => {
-                          const isSelected = selectedOption === key;
+                        {/* Multiple Choice Options Grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                          {optionsList.map(({ key, text }) => {
+                            const isSelected = selectedOption === key;
 
-                          return (
-                            <button
-                              key={key}
-                              type="button"
-                              onClick={() => handleSelectOption(q.question_number, key)}
-                              className={`flex items-center gap-3 p-3.5 rounded-xl border text-left transition-all cursor-pointer select-none ${
-                                isSelected
-                                  ? "border-steel bg-steel/20 text-text-primary ring-1 ring-steel shadow-md"
-                                  : "border-border-emphasis/60 bg-surface-subtle/70 hover:bg-surface-muted hover:border-steel/50 text-text-secondary"
-                              }`}
-                            >
-                              <div
-                                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg font-mono font-bold text-xs transition-colors ${
+                            return (
+                              <button
+                                key={key}
+                                type="button"
+                                onClick={() => handleSelectOption(q.question_number, key)}
+                                className={`flex items-center gap-3 p-3.5 rounded-xl border text-left transition-all cursor-pointer select-none ${
                                   isSelected
-                                    ? "bg-steel text-white shadow-sm"
-                                    : "bg-surface-base border border-border-emphasis text-text-muted"
+                                    ? "border-steel bg-steel/20 text-text-primary ring-1 ring-steel shadow-md"
+                                    : "border-border-emphasis/60 bg-surface-subtle/70 hover:bg-surface-muted hover:border-steel/50 text-text-secondary"
                                 }`}
                               >
-                                {key}
-                              </div>
-                              <span className="text-xs font-medium leading-snug flex-1">
-                                {text || `Option ${key}`}
-                              </span>
-                              {isSelected && (
-                                <Check className="h-4 w-4 shrink-0 text-steel-light" />
-                              )}
-                            </button>
-                          );
-                        })}
+                                <div
+                                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg font-mono font-bold text-xs transition-colors ${
+                                    isSelected
+                                      ? "bg-steel text-white shadow-sm"
+                                      : "bg-surface-base border border-border-emphasis text-text-muted"
+                                  }`}
+                                >
+                                  {key}
+                                </div>
+                                <span className="text-xs font-medium leading-snug flex-1">
+                                  {text || `Option ${key}`}
+                                </span>
+                                {isSelected && (
+                                  <Check className="h-4 w-4 shrink-0 text-steel-light" />
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })
-              )}
+                    );
+                  })
+                )}
+              </div>
             </div>
 
             {/* Modal Sticky Footer */}
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-6 py-4 border-t border-border-default shrink-0 bg-surface-base">
-              <div className="text-xs text-text-muted flex items-center gap-2">
+              <div className="text-xs text-text-muted flex items-center gap-2 flex-wrap">
                 <span className="font-semibold text-text-primary font-mono">
                   {Object.keys(takingAnswers).length} / {activeTakingExam.questions.length}
                 </span>
                 <span>questions answered</span>
                 {Object.keys(takingAnswers).length < activeTakingExam.questions.length && (
-                  <span className="text-tan font-medium">
-                    ({activeTakingExam.questions.length - Object.keys(takingAnswers).length} remaining)
-                  </span>
+                  <>
+                    <span className="text-amber-500 font-medium">
+                      ({activeTakingExam.questions.length - Object.keys(takingAnswers).length} remaining)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleJumpToNextUnanswered}
+                      className="text-xs font-bold text-steel-light hover:underline cursor-pointer ml-1"
+                    >
+                      Jump to next unanswered ➔
+                    </button>
+                  </>
                 )}
               </div>
 
