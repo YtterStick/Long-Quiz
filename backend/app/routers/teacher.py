@@ -1,3 +1,4 @@
+import asyncio
 import math
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, Response, Form
@@ -1663,6 +1664,9 @@ class GenerateExamFromTextRequest(BaseModel):
     custom_instructions: Optional[str] = None
 
 
+_teacher_exam_semaphore = asyncio.Semaphore(2)
+
+
 @router.post("/exams/generate-from-handout-text")
 async def generate_exam_from_handout_text(
     body: GenerateExamFromTextRequest,
@@ -1692,13 +1696,15 @@ async def generate_exam_from_handout_text(
 
     count = max(3, min(50, body.question_count))
     from app.services.gemini_service import generate_exam_from_handout
-    result = generate_exam_from_handout(
-        body.raw_text,
-        question_count=count,
-        custom_title=body.title,
-        include_scenarios=body.include_scenarios,
-        custom_instructions=body.custom_instructions,
-    )
+    async with _teacher_exam_semaphore:
+        result = await asyncio.to_thread(
+            generate_exam_from_handout,
+            body.raw_text,
+            question_count=count,
+            custom_title=body.title,
+            include_scenarios=body.include_scenarios,
+            custom_instructions=body.custom_instructions,
+        )
 
     if result and result.get("questions"):
         log_entry = TeacherExamGenerationLog(
@@ -1758,12 +1764,14 @@ async def generate_exam_from_handout_file(
     if filename.endswith(".pdf"):
         from app.reviewer_generator import extract_text_from_pdf
         try:
-            extracted_text = extract_text_from_pdf(content_bytes)
+            extracted_text = await asyncio.to_thread(extract_text_from_pdf, content_bytes)
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Could not read PDF: {str(e)}")
     else:
         try:
-            extracted_text = content_bytes.decode("utf-8", errors="replace")
+            raw_content = content_bytes.decode("utf-8", errors="replace")
+            from app.reviewer_generator import distill_handout_text
+            extracted_text = await asyncio.to_thread(distill_handout_text, raw_content)
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"Could not decode file: {str(e)}")
 
@@ -1776,13 +1784,15 @@ async def generate_exam_from_handout_file(
     clean_file_title = title or (file.filename or "Handout Exam").rsplit(".", 1)[0].replace("_", " ").replace("-", " ").title()
     count = max(3, min(50, question_count))
     from app.services.gemini_service import generate_exam_from_handout
-    result = generate_exam_from_handout(
-        extracted_text,
-        question_count=count,
-        custom_title=clean_file_title,
-        include_scenarios=include_scenarios,
-        custom_instructions=custom_instructions,
-    )
+    async with _teacher_exam_semaphore:
+        result = await asyncio.to_thread(
+            generate_exam_from_handout,
+            extracted_text,
+            question_count=count,
+            custom_title=clean_file_title,
+            include_scenarios=include_scenarios,
+            custom_instructions=custom_instructions,
+        )
 
     if result and result.get("questions"):
         log_entry = TeacherExamGenerationLog(

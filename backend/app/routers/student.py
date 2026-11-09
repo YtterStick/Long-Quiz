@@ -1,5 +1,6 @@
 """Student routes: dashboard, grades, reviewer, exam results."""
 
+import asyncio
 from datetime import datetime, timezone
 import json
 from typing import Optional
@@ -947,6 +948,7 @@ from app.reviewer_generator import (
 )
 
 MAX_MONTHLY_HANDOUT_GENERATIONS = 10
+_student_reviewer_semaphore = asyncio.Semaphore(2)
 
 
 async def _get_monthly_usage(student_id: str, db: AsyncSession) -> int:
@@ -1037,9 +1039,14 @@ async def generate_reviewer_from_text(
             detail="The AI Reviewer generator is currently unavailable and taking a rest for this monthly cycle. You can still access all saved decks and section-shared reviewers without any limit!"
         )
 
-    # 3. Generate New Deck with Smart Distillation
+    # 3. Generate New Deck with Smart Distillation (offloaded to worker thread so event loop never freezes)
     try:
-        result = parse_and_generate_reviewer(distilled or payload.raw_text, custom_title=payload.title)
+        async with _student_reviewer_semaphore:
+            result = await asyncio.to_thread(
+                parse_and_generate_reviewer,
+                distilled or payload.raw_text,
+                custom_title=payload.title,
+            )
         result["source_text"] = distilled or payload.raw_text
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to generate reviewer: {str(e)}")
@@ -1110,13 +1117,13 @@ async def generate_reviewer_from_file(
         part_text = ""
         if filename.endswith(".pdf"):
             try:
-                part_text = extract_text_from_pdf(content_bytes)
+                part_text = await asyncio.to_thread(extract_text_from_pdf, content_bytes)
             except Exception as e:
                 raise HTTPException(status_code=400, detail=f"Could not read PDF '{raw_name}': {str(e)}")
         else:
             try:
                 raw_content = content_bytes.decode("utf-8", errors="replace")
-                part_text = distill_handout_text(raw_content)
+                part_text = await asyncio.to_thread(distill_handout_text, raw_content)
             except Exception as e:
                 raise HTTPException(status_code=400, detail=f"Could not decode text file '{raw_name}': {str(e)}")
 
@@ -1176,9 +1183,14 @@ async def generate_reviewer_from_file(
     ]
     clean_file_title = title or (" + ".join(cleaned_stems) if cleaned_stems else "Handout Reviewer")
 
-    # 3. Generate New Deck
+    # 3. Generate New Deck (offloaded to worker thread so event loop never freezes)
     try:
-        result = parse_and_generate_reviewer(extracted_text, custom_title=clean_file_title)
+        async with _student_reviewer_semaphore:
+            result = await asyncio.to_thread(
+                parse_and_generate_reviewer,
+                extracted_text,
+                custom_title=clean_file_title,
+            )
         result["source_text"] = extracted_text
         result["file_name"] = joined_file_names
     except Exception as e:

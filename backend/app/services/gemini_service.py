@@ -54,9 +54,6 @@ def call_gemini_json(
     models_to_try = [
         "gemini-2.5-flash",
         "gemini-2.0-flash",
-        "gemini-flash-latest",
-        "gemini-2.5-flash-lite",
-        "gemini-flash-lite-latest",
     ]
 
     def _build_payload(token_limit: int) -> bytes:
@@ -78,51 +75,47 @@ def call_gemini_json(
             }
         return json.dumps(payload).encode("utf-8")
 
+    token_limit = min(max_output_tokens, 16384)
+
     for model in models_to_try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-        token_limits = [max_output_tokens, 8192] if max_output_tokens > 8192 else [max_output_tokens]
-
-        for token_limit in token_limits:
-            req = urllib.request.Request(
-                url,
-                data=_build_payload(token_limit),
-                headers={"Content-Type": "application/json"},
-                method="POST"
-            )
-            try:
-                with urllib.request.urlopen(req, timeout=90) as resp:
-                    raw_bytes = resp.read()
-                    data = json.loads(raw_bytes.decode("utf-8"))
-                    candidates = data.get("candidates", [])
-                    if not candidates:
-                        break
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    if not parts:
-                        break
-                    content_text = parts[0].get("text", "").strip()
-                    # Remove any markdown code fence if present
-                    if content_text.startswith("```json"):
-                        content_text = content_text[7:]
-                    if content_text.startswith("```"):
-                        content_text = content_text[3:]
-                    if content_text.endswith("```"):
-                        content_text = content_text[:-3]
-                    parsed = json.loads(content_text.strip())
-                    return parsed
-            except urllib.error.HTTPError as e:
-                err_body = ""
-                try:
-                    err_body = e.read().decode("utf-8")
-                except Exception:
-                    pass
-                logger.warning(f"Gemini API model {model} (maxTokens={token_limit}) HTTP {e.code}: {err_body}")
-                if e.code == 400 and token_limit > 8192:
-                    # Retry same model with 8192 maxOutputTokens if 32768 was rejected
+        req = urllib.request.Request(
+            url,
+            data=_build_payload(token_limit),
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=25) as resp:
+                raw_bytes = resp.read()
+                data = json.loads(raw_bytes.decode("utf-8"))
+                candidates = data.get("candidates", [])
+                if not candidates:
                     continue
-                break
-            except Exception as e:
-                logger.warning(f"Gemini API model {model} call error: {str(e)}")
-                break
+                parts = candidates[0].get("content", {}).get("parts", [])
+                if not parts:
+                    continue
+                content_text = parts[0].get("text", "").strip()
+                # Remove any markdown code fence if present
+                if content_text.startswith("```json"):
+                    content_text = content_text[7:]
+                if content_text.startswith("```"):
+                    content_text = content_text[3:]
+                if content_text.endswith("```"):
+                    content_text = content_text[:-3]
+                parsed = json.loads(content_text.strip())
+                return parsed
+        except urllib.error.HTTPError as e:
+            err_body = ""
+            try:
+                err_body = e.read().decode("utf-8")
+            except Exception:
+                pass
+            logger.warning(f"Gemini API model {model} (maxTokens={token_limit}) HTTP {e.code}: {err_body[:250]}")
+            continue
+        except Exception as e:
+            logger.warning(f"Gemini API model {model} call error: {str(e)}")
+            continue
 
     return None
 
@@ -513,7 +506,7 @@ Generate:
 Return ONLY a valid JSON object matching this schema.
 """
 
-    result = call_gemini_json(prompt, system_instruction=system_instruction, max_output_tokens=32768)
+    result = call_gemini_json(prompt, system_instruction=system_instruction, max_output_tokens=16384)
     if result and "topics" in result and "flashcards" in result and "quiz_cards" in result:
         # Post-filter out only actual bibliography/reference citation sections (do NOT drop academic terms containing "reference" or "source")
         exact_bad_topics = {
