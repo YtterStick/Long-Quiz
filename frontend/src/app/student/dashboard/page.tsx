@@ -2951,20 +2951,20 @@ export default function StudentDashboard() {
 
             {/* Main Content Area: Left Question Navigator (1 - 50) + Right Questions Body */}
             <div className="flex flex-1 overflow-hidden relative">
-              {/* Left Sidebar: Question Progress & 1-50 Navigator */}
+              {/* Left Sidebar: Vertical Progress Stepper (1 - 50) */}
               <aside
                 className={`border-r border-border-default bg-surface-subtle/50 flex flex-col shrink-0 transition-all duration-200 ${
                   mobileNavOpen
                     ? "absolute inset-y-0 left-0 z-30 w-72 bg-surface-overlay shadow-2xl flex"
-                    : "hidden md:flex md:w-56 lg:w-64"
+                    : "hidden md:flex md:w-56 lg:w-60"
                 }`}
               >
                 {/* Sidebar Header */}
-                <div className="p-3.5 border-b border-border-default/80 flex items-center justify-between bg-surface-base/80">
+                <div className="p-3.5 border-b border-border-default/80 flex items-center justify-between bg-surface-base/80 shrink-0">
                   <div>
                     <h3 className="text-xs font-bold uppercase tracking-wider text-text-primary flex items-center gap-1.5">
                       <ListOrdered className="h-3.5 w-3.5 text-steel-light" />
-                      <span>Questions</span>
+                      <span>Exam Progress</span>
                     </h3>
                     <p className="text-[11px] text-text-muted mt-0.5">
                       <span className="font-semibold text-text-primary font-mono">{Object.keys(takingAnswers).length}</span> of {activeTakingExam.questions.length} answered
@@ -2981,8 +2981,26 @@ export default function StudentDashboard() {
                   )}
                 </div>
 
+                {/* Overall Linear Completion Bar */}
+                <div className="px-3.5 py-2.5 border-b border-border-default/60 bg-surface-base/40 shrink-0">
+                  <div className="flex items-center justify-between text-[11px] font-bold mb-1">
+                    <span className="text-text-muted">Completion</span>
+                    <span className="text-steel font-mono">
+                      {Math.round((Object.keys(takingAnswers).length / (activeTakingExam.questions.length || 1)) * 100)}%
+                    </span>
+                  </div>
+                  <div className="w-full h-2 rounded-full bg-surface-subtle border border-border-default/50 overflow-hidden">
+                    <div
+                      className="h-full bg-steel transition-all duration-300 rounded-full"
+                      style={{
+                        width: `${(Object.keys(takingAnswers).length / (activeTakingExam.questions.length || 1)) * 100}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+
                 {/* Quick Filter Pills */}
-                <div className="p-2 border-b border-border-default/60 flex items-center gap-1 bg-surface-base/40 text-[10px]">
+                <div className="p-2 border-b border-border-default/60 flex items-center gap-1 bg-surface-base/40 text-[10px] shrink-0">
                   <button
                     type="button"
                     onClick={() => setQuestionFilter("all")}
@@ -3020,7 +3038,7 @@ export default function StudentDashboard() {
 
                 {/* Jump to Next Unanswered Button */}
                 {Object.keys(takingAnswers).length < activeTakingExam.questions.length && (
-                  <div className="p-2 border-b border-border-default/40 bg-amber-500/5">
+                  <div className="p-2 border-b border-border-default/40 bg-amber-500/5 shrink-0">
                     <button
                       type="button"
                       onClick={handleJumpToNextUnanswered}
@@ -3032,45 +3050,80 @@ export default function StudentDashboard() {
                   </div>
                 )}
 
-                {/* 1 - 50 Question Grid */}
-                <div className="flex-1 overflow-y-auto p-2.5">
-                  <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5">
-                    {activeTakingExam.questions.map((q) => {
-                      const isAnswered = Boolean(takingAnswers[q.question_number]);
-                      const chosen = takingAnswers[q.question_number];
-                      const isTargeted = highlightedQuestionNumber === q.question_number;
+                {/* Vertical Progress Stepper Track (1 - 50) */}
+                <div className="flex-1 overflow-y-auto px-3.5 py-3 space-y-0.5">
+                  {activeTakingExam.questions.map((q, idx) => {
+                    const isAnswered = Boolean(takingAnswers[q.question_number]);
+                    const isTargeted = highlightedQuestionNumber === q.question_number;
+                    const isLast = idx === activeTakingExam.questions.length - 1;
 
-                      if (questionFilter === "unanswered" && isAnswered) return null;
-                      if (questionFilter === "answered" && !isAnswered) return null;
+                    if (questionFilter === "unanswered" && isAnswered) return null;
+                    if (questionFilter === "answered" && !isAnswered) return null;
 
-                      return (
+                    return (
+                      <div key={q.question_number} className="relative flex items-stretch group">
+                        {/* Connecting Vertical Stepper Line */}
+                        {!isLast && (
+                          <div
+                            className={`absolute left-3.5 top-7 bottom-0 w-0.5 -ml-[1px] transition-colors ${
+                              isAnswered ? "bg-steel/40" : "bg-border-default/70"
+                            }`}
+                          />
+                        )}
+
+                        {/* Step Button */}
                         <button
-                          key={q.question_number}
                           type="button"
                           onClick={() => scrollToQuestion(q.question_number)}
-                          title={`Question #${q.question_number}: ${isAnswered ? `Answered (${chosen})` : "Unanswered - click to jump"}`}
-                          className={`h-9 rounded-xl text-xs font-bold flex flex-col items-center justify-center transition-all cursor-pointer select-none relative ${
+                          title={`Question ${q.question_number}: ${isAnswered ? "Answered (Protected)" : "Unanswered"}`}
+                          className={`flex items-center gap-3 w-full py-1.5 px-1.5 rounded-xl text-left transition-all cursor-pointer relative z-10 ${
                             isTargeted
-                              ? "ring-2 ring-steel ring-offset-2 scale-105 z-10"
-                              : ""
-                          } ${
-                            isAnswered
-                              ? "bg-steel text-white shadow-xs hover:bg-steel-dark"
-                              : "bg-surface-base border border-border-emphasis text-text-muted hover:border-amber-400 hover:text-amber-500 hover:bg-surface-subtle"
+                              ? "bg-steel/15 text-text-primary ring-1 ring-steel/50"
+                              : "hover:bg-surface-base/80 text-text-secondary"
                           }`}
                         >
-                          <span className="leading-none">{q.question_number}</span>
-                          {isAnswered ? (
-                            <span className="text-[9px] opacity-90 font-mono font-extrabold leading-none mt-0.5">
-                              {chosen}
+                          {/* Circular Step Node (Shows Checkmark if answered, or question number if unanswered) */}
+                          <div
+                            className={`w-7 h-7 shrink-0 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                              isTargeted
+                                ? "bg-steel text-white shadow-md ring-2 ring-steel/40 ring-offset-1"
+                                : isAnswered
+                                ? "bg-steel/20 border-2 border-steel text-steel-light shadow-xs"
+                                : "bg-surface-base border-2 border-border-default text-text-muted group-hover:border-steel/60 group-hover:text-text-primary"
+                            }`}
+                          >
+                            {isAnswered ? (
+                              <Check className="h-3.5 w-3.5 text-steel stroke-[3]" />
+                            ) : (
+                              <span className="font-mono text-[11px]">{q.question_number}</span>
+                            )}
+                          </div>
+
+                          {/* Step Label (NO choices A/B/C/D shown to protect exam privacy) */}
+                          <div className="flex flex-col min-w-0">
+                            <span
+                              className={`text-xs font-semibold leading-tight truncate ${
+                                isTargeted
+                                  ? "text-steel font-bold"
+                                  : isAnswered
+                                  ? "text-text-primary"
+                                  : "text-text-muted"
+                              }`}
+                            >
+                              Question {q.question_number}
                             </span>
-                          ) : (
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400/90 mt-0.5" />
-                          )}
+                            <span
+                              className={`text-[10px] leading-tight ${
+                                isAnswered ? "text-steel-light font-medium" : "text-text-faint"
+                              }`}
+                            >
+                              {isAnswered ? "Answered" : "Unanswered"}
+                            </span>
+                          </div>
                         </button>
-                      );
-                    })}
-                  </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </aside>
 
@@ -3115,7 +3168,7 @@ export default function StudentDashboard() {
                           {selectedOption ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-steel/15 px-2.5 py-0.5 text-[10px] font-bold text-steel-light border border-steel/30">
                               <Check className="h-3 w-3" />
-                              Choice {selectedOption}
+                              Answered
                             </span>
                           ) : (
                             <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[10px] font-medium text-amber-500 dark:text-amber-300 border border-amber-500/30">
