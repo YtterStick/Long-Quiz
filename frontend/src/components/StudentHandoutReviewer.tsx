@@ -1104,24 +1104,24 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
   };
 
   const nextCard = () => {
-    if (!activeDeck) return;
+    if (!activeDeck || !activeDeck.flashcards?.length) return;
     const nextIdx = (currentCardIndex + 1) % activeDeck.flashcards.length;
     const nextCardObj = activeDeck.flashcards[nextIdx];
     const nextAttempt = nextCardObj ? cardAttempts[nextCardObj.id] : undefined;
+    setIsFlipped(false);
     setCurrentCardIndex(nextIdx);
-    setIsFlipped(Boolean(nextAttempt));
     setCardInput(nextAttempt?.answer || "");
   };
 
   const prevCard = () => {
-    if (!activeDeck) return;
+    if (!activeDeck || !activeDeck.flashcards?.length) return;
     const prevIdx =
       (currentCardIndex - 1 + activeDeck.flashcards.length) %
       activeDeck.flashcards.length;
     const prevCardObj = activeDeck.flashcards[prevIdx];
     const prevAttempt = prevCardObj ? cardAttempts[prevCardObj.id] : undefined;
+    setIsFlipped(false);
     setCurrentCardIndex(prevIdx);
-    setIsFlipped(Boolean(prevAttempt));
     setCardInput(prevAttempt?.answer || "");
   };
 
@@ -1637,7 +1637,8 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
                     className="relative h-88 sm:h-96 w-full cursor-pointer select-none perspective-1000 outline-none focus-visible:ring-2 focus-visible:ring-steel rounded-3xl"
                   >
                     <div
-                      className="relative h-full w-full rounded-3xl transition-transform duration-500 shadow-lg"
+                      key={currentCard.id || currentCardIndex}
+                      className="relative h-full w-full rounded-3xl transition-transform duration-500 shadow-lg rv-fade"
                       style={{
                         transform: isFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
                         transformStyle: "preserve-3d",
@@ -1705,19 +1706,26 @@ Subnet Mask: A 32-bit number used in IPv4 to divide an IP address into network a
                           </span>
                         </div>
                         <div className="flex flex-1 flex-col items-center justify-center overflow-y-auto py-4 text-center space-y-2">
-                          {cardPromptMode === "definition_first" ? (
-                            <>
-                              <h3 className="text-2xl sm:text-3xl font-black text-sage wrap-break-word">
-                                {currentCard.front}
-                              </h3>
-                              <p className="max-w-xl text-sm text-text-secondary leading-relaxed">
+                          {isFlipped ? (
+                            cardPromptMode === "definition_first" ? (
+                              <>
+                                <h3 className="text-2xl sm:text-3xl font-black text-sage wrap-break-word">
+                                  {currentCard.front}
+                                </h3>
+                                <p className="max-w-xl text-sm text-text-secondary leading-relaxed">
+                                  {currentCard.back}
+                                </p>
+                              </>
+                            ) : (
+                              <p className="w-full text-base sm:text-lg font-medium leading-relaxed text-text-primary">
                                 {currentCard.back}
                               </p>
-                            </>
+                            )
                           ) : (
-                            <p className="w-full text-base sm:text-lg font-medium leading-relaxed text-text-primary">
-                              {currentCard.back}
-                            </p>
+                            <div className="flex flex-col items-center justify-center text-text-muted gap-2 py-4">
+                              <Lock className="h-6 w-6 text-tan" />
+                              <p className="text-sm font-semibold">Answer prompt to reveal</p>
+                            </div>
                           )}
                         </div>
                         <p className="flex items-center justify-center gap-1.5 text-sm font-medium text-text-muted">
