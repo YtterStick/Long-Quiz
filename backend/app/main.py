@@ -176,6 +176,45 @@ async def lifespan(app: FastAPI):
             ):
                 await conn.execute(text(stmt))
 
+            # Backfill any historical generated reviewers from shared_reviewer_decks into custom_student_decks
+            try:
+                await conn.execute(text("""
+                    INSERT INTO custom_student_decks (id, student_id, title, description, deck_data, created_at, updated_at)
+                    SELECT 
+                        gen_random_uuid()::text,
+                        s.id,
+                        srd.title,
+                        COALESCE(srd.file_name, 'Generated Reviewer'),
+                        srd.deck_data,
+                        srd.created_at,
+                        srd.created_at
+                    FROM shared_reviewer_decks srd
+                    JOIN students s ON s.user_id = srd.created_by_user_id
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM custom_student_decks csd 
+                        WHERE csd.student_id = s.id AND LOWER(TRIM(csd.title)) = LOWER(TRIM(srd.title))
+                    )
+                """))
+                await conn.execute(text("""
+                    INSERT INTO custom_student_decks (id, student_id, title, description, deck_data, created_at, updated_at)
+                    SELECT 
+                        gen_random_uuid()::text,
+                        sgl.student_id,
+                        srd.title,
+                        COALESCE(srd.file_name, 'Generated Reviewer'),
+                        srd.deck_data,
+                        srd.created_at,
+                        srd.created_at
+                    FROM student_generation_logs sgl
+                    JOIN shared_reviewer_decks srd ON srd.content_hash = sgl.content_hash
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM custom_student_decks csd 
+                        WHERE csd.student_id = sgl.student_id AND LOWER(TRIM(csd.title)) = LOWER(TRIM(srd.title))
+                    )
+                """))
+            except Exception as bf_exc:
+                logger.warning("Historical deck backfill note: %s", bf_exc)
+
             # Encrypted answer keys need more than 1 character of storage
             col_type = (await conn.execute(text(
                 "SELECT data_type FROM information_schema.columns "

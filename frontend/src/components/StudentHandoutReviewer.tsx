@@ -522,15 +522,38 @@ export function StudentHandoutReviewer() {
     } catch {}
 
     try {
-      localStorage.removeItem("evalo_student_saved_decks");
+      // Load and safely migrate any historical local decks from older versions
+      let rawOldDecks: any[] = [];
+      const oldV1 = localStorage.getItem("evalo_student_saved_decks");
+      if (oldV1) {
+        try {
+          const parsedV1 = JSON.parse(oldV1);
+          if (Array.isArray(parsedV1)) rawOldDecks.push(...parsedV1);
+        } catch {}
+      }
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const sanitizedList = parsed.map((d: any) => ({
-            ...sanitizeReviewerDeckClient(d),
-            folder_id: d.folder_id || "general",
-          }));
+        try {
+          const parsedV2 = JSON.parse(stored);
+          if (Array.isArray(parsedV2)) rawOldDecks.push(...parsedV2);
+        } catch {}
+      }
+
+      if (rawOldDecks.length > 0) {
+        const seenTitles = new Set<string>();
+        const sanitizedList: any[] = [];
+        rawOldDecks.forEach((d: any) => {
+          if (!d || !d.title) return;
+          const low = d.title.trim().toLowerCase();
+          if (!seenTitles.has(low)) {
+            seenTitles.add(low);
+            sanitizedList.push({
+              ...sanitizeReviewerDeckClient(d),
+              folder_id: d.folder_id || "general",
+            });
+          }
+        });
+        if (sanitizedList.length > 0) {
           setSavedDecks(sanitizedList);
           localStorage.setItem(STORAGE_KEY, JSON.stringify(sanitizedList));
 
