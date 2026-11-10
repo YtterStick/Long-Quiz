@@ -64,6 +64,7 @@ import {
   parseAvatarConfig,
   DEFAULT_AVATAR_CONFIG,
 } from "@/types/avatar";
+import { AntiTamperScore } from "@/components/AntiTamperScore";
 
 interface QuestionItem {
   id?: string;
@@ -268,6 +269,45 @@ export default function StudentDashboard() {
       };
     }
   }, [isExamInProgress, isWaitingInLobby]);
+
+  // Continuously track document fullscreen status
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    // 1. Prevent document.designMode = "on" (used to edit webpage text in DevTools console)
+    const enforceNoDesignMode = () => {
+      try {
+        if (document.designMode === "on") {
+          document.designMode = "off";
+        }
+      } catch {
+        // ignore
+      }
+    };
+    enforceNoDesignMode();
+    const interval = setInterval(enforceNoDesignMode, 1500);
+
+    // 2. Block Inspect Element keyboard shortcuts (F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C, Ctrl+U)
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.key === "F12" ||
+        ((e.ctrlKey || e.metaKey) &&
+          e.shiftKey &&
+          (e.key === "I" || e.key === "i" || e.key === "J" || e.key === "j" || e.key === "C" || e.key === "c")) ||
+        ((e.ctrlKey || e.metaKey) && (e.key === "U" || e.key === "u"))
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("keydown", handleKeyDown, { capture: true });
+    };
+  }, []);
 
   // Continuously track document fullscreen status
   useEffect(() => {
@@ -1683,9 +1723,11 @@ export default function StudentDashboard() {
                   </div>
                 </div>
                 <div className="mt-3 flex items-baseline justify-between">
-                  <span className="text-2xl sm:text-3xl font-black text-steel font-mono">
-                    {info?.average_percentage !== undefined ? `${info.average_percentage}%` : "—"}
-                  </span>
+                  <AntiTamperScore
+                    score={info?.average_percentage !== undefined ? `${info.average_percentage}%` : "—"}
+                    variant="card"
+                    color="steel"
+                  />
                   <span className="text-[11px] font-bold text-steel flex items-center gap-0.5">
                     View grades <ArrowRight className="h-3 w-3" />
                   </span>
@@ -1862,9 +1904,13 @@ export default function StudentDashboard() {
                             }`}>
                               {isPassed ? "PASSED" : "NEEDS IMPROVEMENT"}
                             </span>
-                            <span className="text-xs font-mono font-bold text-text-muted">
-                              {grade.total_score} / {grade.max_score}
-                            </span>
+                            <AntiTamperScore
+                              score={grade.total_score}
+                              maxScore={grade.max_score}
+                              variant="inline"
+                              studentId={user?.id || info?.full_student_id}
+                              examId={grade.exam_id}
+                            />
                           </div>
                           <h3 className="text-sm sm:text-base font-bold text-text-primary leading-snug">
                             {grade.exam_title}
@@ -1872,9 +1918,13 @@ export default function StudentDashboard() {
                         </div>
 
                         <div className="pt-3 border-t border-border-subtle flex items-center justify-between gap-3">
-                          <span className="text-lg font-black font-mono text-text-primary">
-                            {Math.round(pct)}%
-                          </span>
+                          <AntiTamperScore
+                            score={`${Math.round(pct)}%`}
+                            variant="badge"
+                            color={isPassed ? "sage" : "default"}
+                            studentId={user?.id || info?.full_student_id}
+                            examId={grade.exam_id}
+                          />
                           <button
                             type="button"
                             onClick={() => handleTabSelect("grades")}
@@ -2044,9 +2094,18 @@ export default function StudentDashboard() {
                         {exam.has_submitted && exam.is_grades_released && exam.percentage !== null && (
                           <>
                             <span>•</span>
-                            <span className="text-sage font-bold font-mono">
-                              Score: {exam.total_score}/{exam.max_score} ({exam.percentage}%)
-                            </span>
+                            <div className="inline-flex items-center gap-1">
+                              <span className="text-[11px] font-bold text-sage">Score:</span>
+                              <AntiTamperScore
+                                score={exam.total_score ?? 0}
+                                maxScore={exam.max_score ?? 0}
+                                percentage={exam.percentage}
+                                variant="inline"
+                                color="sage"
+                                studentId={user?.id || info?.full_student_id}
+                                examId={exam.id}
+                              />
+                            </div>
                           </>
                         )}
                       </div>
@@ -2202,14 +2261,17 @@ export default function StudentDashboard() {
                         </div>
 
                         <div className="flex items-center justify-between sm:justify-end gap-4 sm:gap-6 pt-2.5 sm:pt-0 border-t sm:border-0 border-border-default/40">
-                          <div className="text-left sm:text-right">
-                            <p className="text-xl sm:text-2xl font-extrabold text-tan">
-                              {grade.total_score}{" "}
-                              <span className="text-sm text-text-faint">/ {grade.max_score}</span>
-                            </p>
-                            <p className="text-xs font-semibold text-sage">
-                              {grade.percentage}%
-                            </p>
+                          <div className="text-left sm:text-right flex flex-col items-start sm:items-end">
+                            <AntiTamperScore
+                              score={grade.total_score}
+                              maxScore={grade.max_score}
+                              percentage={grade.percentage}
+                              variant="card"
+                              color="tan"
+                              showVerificationSeal={true}
+                              studentId={user?.id || info?.full_student_id}
+                              examId={grade.exam_id}
+                            />
                           </div>
 
                           {grade.release_mode === "SCORES_ONLY" ? (
@@ -2282,8 +2344,18 @@ export default function StudentDashboard() {
                           <div className="rounded-xl bg-surface-overlay p-3 border border-border-default flex items-center justify-between text-xs">
                             <div className="flex items-center gap-2 text-text-secondary">
                               <Lock className="h-4 w-4 text-sage" />
-                              <span>
-                                <strong>Confidential Review:</strong> Showing your score ({grade.total_score}/{grade.max_score}), your shaded choices, and the teacher&apos;s correct answer keys.
+                              <span className="inline-flex items-center flex-wrap gap-1">
+                                <strong>Confidential Review:</strong> Showing your verified score (
+                                <AntiTamperScore
+                                  score={grade.total_score}
+                                  maxScore={grade.max_score}
+                                  variant="inline"
+                                  color="tan"
+                                  className="align-middle inline-block mx-0.5"
+                                  studentId={user?.id || info?.full_student_id}
+                                  examId={grade.exam_id}
+                                />
+                                ), your shaded choices, and the teacher&apos;s correct answer keys.
                               </span>
                             </div>
                             <span className="text-[11px] font-mono text-text-muted">
@@ -3399,16 +3471,16 @@ export default function StudentDashboard() {
                 <span className="text-[10px] uppercase font-bold text-text-muted tracking-wider">
                   Your Online Score
                 </span>
-                <div className="flex items-baseline justify-center gap-2">
-                  <span className="text-3xl font-extrabold text-sage font-mono">
-                    {submissionSuccessResult.total_score}
-                  </span>
-                  <span className="text-sm text-text-muted font-mono font-semibold">
-                    / {submissionSuccessResult.max_score}
-                  </span>
-                  <span className="text-sm font-bold text-tan ml-2">
-                    ({submissionSuccessResult.percentage}%)
-                  </span>
+                <div className="flex flex-col items-center justify-center py-2">
+                  <AntiTamperScore
+                    score={submissionSuccessResult.total_score ?? 0}
+                    maxScore={submissionSuccessResult.max_score ?? 0}
+                    percentage={submissionSuccessResult.percentage}
+                    variant="hero"
+                    color="sage"
+                    showVerificationSeal={true}
+                    studentId={user?.id || info?.full_student_id}
+                  />
                 </div>
               </div>
             ) : (
