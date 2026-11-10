@@ -15,7 +15,7 @@ from app.config import get_settings
 from app.database import engine
 from app.models import Base
 from app.routers import auth, admin, teacher, student, lobby
-from app.security import SecurityHeadersMiddleware, validate_password_strength
+from app.security import SecurityHeadersMiddleware, GlobalRateLimitMiddleware, validate_password_strength
 from app import crypto
 
 settings = get_settings()
@@ -300,6 +300,7 @@ _allowed_origins = list(set([
 _allowed_origin_regex = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$|^https://.*\.vercel\.app$"
 
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(GlobalRateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,

@@ -687,6 +687,12 @@ async def ws_student_lobby(
             await websocket.close(code=4403)
             return
 
+        token_tv = payload.get("tv", 0)
+        user_tv = user.token_version or 0
+        if token_tv != user_tv:
+            await websocket.close(code=4401)
+            return
+
         st_res = await db.execute(select(Student).where(Student.user_id == user.id))
         student = st_res.scalar_one_or_none()
         if not student:
@@ -814,6 +820,12 @@ async def ws_teacher_monitor(
         user = u_res.scalar_one_or_none()
         if not user or user.role != Role.TEACHER:
             await websocket.close(code=4403)
+            return
+
+        token_tv = payload.get("tv", 0)
+        user_tv = user.token_version or 0
+        if token_tv != user_tv:
+            await websocket.close(code=4401)
             return
 
         try:

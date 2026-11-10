@@ -879,20 +879,31 @@ async def submit_exam_online(
 
     total_score = 0
     student_answers_to_create = []
+    seen_q_nums = set()
 
     for item in body.answers:
+        q_num = item.question_number
+        if q_num in seen_q_nums:
+            continue
+        seen_q_nums.add(q_num)
+
+        # Ensure question exists in the exam permutation map if map is non-empty
+        if student_key_map and q_num not in student_key_map:
+            continue
+
         chosen = item.selected_option.upper().strip()
-        correct_key = student_key_map.get(item.question_number)
+        correct_key = student_key_map.get(q_num)
         is_correct = (chosen == correct_key) if correct_key else False
         if is_correct:
             total_score += 1
         student_answers_to_create.append({
-            "question_number": item.question_number,
+            "question_number": q_num,
             "shaded_option": chosen,
             "is_correct": is_correct,
         })
 
     max_score = len(student_key_map) if len(student_key_map) > 0 else (len(student_answers_to_create) or exam.total_questions)
+    total_score = min(total_score, max_score)
 
     submission = ExamSubmission(
         exam_id=exam.id,

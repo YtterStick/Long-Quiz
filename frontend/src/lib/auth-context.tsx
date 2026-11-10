@@ -131,6 +131,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => {
+    try {
+      authApi.logout();
+    } catch {
+      // ignore
+    }
     if (typeof window !== "undefined") {
       // Clear persisted credentials, then hard-navigate away. We intentionally do NOT
       // null out React state first: doing so re-renders every mounted page with

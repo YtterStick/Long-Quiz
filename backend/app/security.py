@@ -7,6 +7,7 @@ from collections import defaultdict, deque
 from typing import Deque, Dict
 
 from fastapi import HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 # ─── Password policy ──────────────────────────────────────────
@@ -37,11 +38,23 @@ def validate_password_strength(password: str) -> str:
 # ─── Client IP ────────────────────────────────────────────────
 
 def get_client_ip(request: Request) -> str:
-    """Best-effort client IP behind a reverse proxy (Cloud Run / Render / Vercel).
-
-    The right-most X-Forwarded-For entry is appended by our own proxy and cannot
-    be spoofed by the client (left-most entries can).
+    """Best-effort client IP behind a reverse proxy (Cloudflare / Cloud Run / Render / Vercel).
+    
+    Checks CF-Connecting-IP first for Cloudflare proxy protection, followed by
+    standard X-Forwarded-For and socket client host.
     """
+    cf_ip = request.headers.get("cf-connecting-ip")
+    if cf_ip:
+        return cf_ip.strip()
+
+    true_ip = request.headers.get("true-client-ip")
+    if true_ip:
+        return true_ip.strip()
+
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip.strip()
+
     xff = request.headers.get("x-forwarded-for")
     if xff:
         parts = [p.strip() for p in xff.split(",") if p.strip()]
@@ -120,3 +133,39 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                     "Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'"
                 )
         return response
+
+
+class GlobalRateLimitMiddleware(BaseHTTPMiddleware):
+    """Application-level DDoS and flood mitigation middleware.
+    
+    Throttles rapid automated scripts and floods across API endpoints.
+    Allows 180 requests/minute for general API routes, with a strict 15 req/min
+    for compute-heavy AI generation endpoints.
+    """
+    def __init__(self, app, general_limit: int = 180, window: int = 60):
+        super().__init__(app)
+        self.general_limiter = RateLimiter(general_limit, window)
+        self.ai_limiter = RateLimiter(15, window)
+
+    async def dispatch(self, request: Request, call_next):
+        # Only rate-limit API routes; skip CORS preflight OPTIONS, static files, and WebSocket upgrades
+        if request.method == "OPTIONS" or not request.url.path.startswith("/api/"):
+            return await call_next(request)
+
+        if request.url.path.startswith("/api/ws/"):
+            return await call_next(request)
+
+        ip = get_client_ip(request)
+
+        try:
+            if "generate-reviewer" in request.url.path:
+                self.ai_limiter.hit(f"ai_{ip}")
+            self.general_limiter.hit(f"gen_{ip}")
+        except HTTPException as exc:
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail},
+                headers=exc.headers or {},
+            )
+
+        return await call_next(request)

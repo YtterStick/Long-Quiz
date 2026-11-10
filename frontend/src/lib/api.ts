@@ -96,6 +96,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   const config: RequestInit = {
     method,
     headers: requestHeaders,
+    credentials: "include",
   };
 
   if (body) {
@@ -175,6 +176,13 @@ export const auth = {
     role: string;
     must_change_password: boolean;
   }>("/api/auth/me"),
+
+  logout: () =>
+    request<{ message: string }>("/api/auth/logout", {
+      method: "POST",
+    }).catch(() => {
+      // ignore network errors on logout
+    }),
 };
 
 // ─── Admin ────────────────────────────────────────────────────

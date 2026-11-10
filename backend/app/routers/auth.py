@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import joinedload
@@ -34,7 +34,12 @@ def issue_token(user: User) -> str:
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends(get_db)):
+async def login(
+    body: LoginRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+):
     """Authenticate user and return JWT token."""
     client_ip = get_client_ip(request)
     _login_ip_limiter.hit(client_ip)
@@ -103,6 +108,19 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
     token = issue_token(user)
     logger.info("Successful login user=%s role=%s ip=%s", user.id, user.role.value, client_ip)
 
+    # Set secure HttpOnly cookie for web browsers alongside Bearer token return
+    max_age_sec = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    is_secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+    response.set_cookie(
+        key="access_token",
+        value=token,
+        max_age=max_age_sec,
+        httponly=True,
+        secure=is_secure,
+        samesite="lax",
+        path="/",
+    )
+
     return TokenResponse(
         access_token=token,
         role=user.role,
@@ -114,6 +132,8 @@ async def login(body: LoginRequest, request: Request, db: AsyncSession = Depends
 @router.post("/change-password")
 async def change_password(
     body: PasswordChangeRequest,
+    request: Request,
+    response: Response,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -143,7 +163,32 @@ async def change_password(
     logger.info("Password changed user=%s", current_user.id)
 
     # Hand the current device a fresh token so it stays logged in
-    return {"message": "Password changed successfully", "access_token": issue_token(current_user)}
+    fresh_token = issue_token(current_user)
+    max_age_sec = settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    is_secure = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+    response.set_cookie(
+        key="access_token",
+        value=fresh_token,
+        max_age=max_age_sec,
+        httponly=True,
+        secure=is_secure,
+        samesite="lax",
+        path="/",
+    )
+    return {"message": "Password changed successfully", "access_token": fresh_token}
+
+
+@router.post("/logout")
+async def logout(
+    response: Response,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Log out user, invalidate all existing tokens across devices by incrementing token_version."""
+    current_user.token_version = (current_user.token_version or 0) + 1
+    await db.flush()
+    response.delete_cookie(key="access_token", path="/")
+    return {"message": "Logged out successfully"}
 
 
 @router.get("/me", response_model=dict)
