@@ -105,6 +105,8 @@ async def login(
     user.failed_login_attempts = 0
     user.locked_until = None
     user.last_login_at = now
+    # Single active session enforcement: bumps token_version on login so only one active session exists at a time
+    user.token_version = (user.token_version or 0) + 1
     token = issue_token(user)
     logger.info("Successful login user=%s role=%s ip=%s", user.id, user.role.value, client_ip)
 

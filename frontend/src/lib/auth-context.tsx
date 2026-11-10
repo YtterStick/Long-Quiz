@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { auth as authApi, ApiError } from "@/lib/api";
 
 const TOKEN_KEY = "token";
@@ -30,6 +30,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const userRef = useRef<User | null>(null);
+  userRef.current = user;
 
   const clearSession = useCallback(() => {
     setUser(null);
@@ -61,52 +63,122 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     if (!storedToken) {
       setLoading(false);
-      return;
-    }
+    } else {
+      setToken(storedToken);
 
-    setToken(storedToken);
-
-    // Hydrate user immediately from cached storage on client mount
-    const storedUser = typeof window !== "undefined" ? localStorage.getItem(USER_KEY) : null;
-    if (storedUser) {
-      try {
-        setUser(JSON.parse(storedUser));
-        setLoading(false);
-      } catch {
-        // ignore malformed cached json
-      }
-    }
-
-    // Stale-while-revalidate verification with backend
-    authApi
-      .getMe()
-      .then((me) => {
-        if (!ignore) {
-          setUser(me as User);
-          if (typeof window !== "undefined") {
-            localStorage.setItem(USER_KEY, JSON.stringify(me));
-          }
-        }
-      })
-      .catch((err) => {
-        if (!ignore) {
-          // CRITICAL: Only log out if credentials are fundamentally invalid (401).
-          // Do NOT log out on connection aborts from spam-refreshing or network drops!
-          if (err instanceof ApiError && err.status === 401) {
-            clearSession();
-          } else {
-            console.warn("Auth verification network hiccup; preserving existing session:", err);
-          }
-        }
-      })
-      .finally(() => {
-        if (!ignore) {
+      // Hydrate user immediately from cached storage on client mount
+      const storedUser = typeof window !== "undefined" ? localStorage.getItem(USER_KEY) : null;
+      if (storedUser) {
+        try {
+          setUser(JSON.parse(storedUser));
           setLoading(false);
+        } catch {
+          // ignore malformed cached json
         }
-      });
+      }
+
+      // Stale-while-revalidate verification with backend
+      authApi
+        .getMe()
+        .then((me) => {
+          if (!ignore) {
+            setUser(me as User);
+            if (typeof window !== "undefined") {
+              localStorage.setItem(USER_KEY, JSON.stringify(me));
+            }
+          }
+        })
+        .catch((err) => {
+          if (!ignore) {
+            // CRITICAL: Only log out if credentials are fundamentally invalid (401).
+            // Do NOT log out on connection aborts from spam-refreshing or network drops!
+            if (err instanceof ApiError && err.status === 401) {
+              clearSession();
+            } else {
+              console.warn("Auth verification network hiccup; preserving existing session:", err);
+            }
+          }
+        })
+        .finally(() => {
+          if (!ignore) {
+            setLoading(false);
+          }
+        });
+    }
+
+    // ── Cross-Tab Session Synchronization & Conflict Prevention ──
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === TOKEN_KEY || e.key === USER_KEY) {
+        const latestToken = localStorage.getItem(TOKEN_KEY);
+        const latestUserStr = localStorage.getItem(USER_KEY);
+
+        if (!latestToken || !latestUserStr) {
+          // Another tab logged out -> log out this tab immediately
+          setUser(null);
+          setToken(null);
+          window.location.replace("/");
+          return;
+        }
+
+        try {
+          const latestUser: User = JSON.parse(latestUserStr);
+          // If another tab logged in as a different account, sync session and redirect cleanly
+          if (latestUser.id !== userRef.current?.id) {
+            setToken(latestToken);
+            setUser(latestUser);
+            const target =
+              latestUser.role === "ADMIN"
+                ? "/admin/dashboard"
+                : latestUser.role === "TEACHER"
+                  ? "/teacher/dashboard"
+                  : "/student/dashboard";
+            window.location.replace(target);
+          }
+        } catch {
+          // ignore parse errors
+        }
+      }
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+
+    let authChannel: BroadcastChannel | null = null;
+    try {
+      authChannel = new BroadcastChannel("evalo_auth_sync");
+      authChannel.onmessage = (event) => {
+        const data = event.data;
+        if (!data || !data.type) return;
+
+        if (data.type === "LOGOUT") {
+          setUser(null);
+          setToken(null);
+          window.location.replace("/");
+        } else if (data.type === "LOGIN" && data.user) {
+          if (data.user.id !== userRef.current?.id) {
+            setToken(data.token);
+            setUser(data.user);
+            const target =
+              data.user.role === "ADMIN"
+                ? "/admin/dashboard"
+                : data.user.role === "TEACHER"
+                  ? "/teacher/dashboard"
+                  : "/student/dashboard";
+            window.location.replace(target);
+          }
+        }
+      };
+    } catch {
+      // BroadcastChannel unsupported in rare browsers
+    }
 
     return () => {
       ignore = true;
+      window.removeEventListener("storage", handleStorageChange);
+      if (authChannel) {
+        try {
+          authChannel.close();
+        } catch {}
+      }
     };
   }, [clearSession]);
 
@@ -121,6 +193,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(me as User);
     if (typeof window !== "undefined") {
       localStorage.setItem(USER_KEY, JSON.stringify(me));
+      try {
+        const channel = new BroadcastChannel("evalo_auth_sync");
+        channel.postMessage({ type: "LOGIN", user: me, token: result.access_token });
+        channel.close();
+      } catch {
+        // ignore
+      }
     }
     setLoading(false);
 
@@ -137,10 +216,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // ignore
     }
     if (typeof window !== "undefined") {
-      // Clear persisted credentials, then hard-navigate away. We intentionally do NOT
-      // null out React state first: doing so re-renders every mounted page with
-      // `user === null` before the navigation completes, which can crash pages that
-      // assume an authenticated user and surface the "This page couldn't load" screen.
+      try {
+        const channel = new BroadcastChannel("evalo_auth_sync");
+        channel.postMessage({ type: "LOGOUT" });
+        channel.close();
+      } catch {
+        // ignore
+      }
       localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(USER_KEY);
       window.location.replace("/");
