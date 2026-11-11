@@ -19,15 +19,30 @@ const securityHeaders = [
   },
 ];
 
+// Enable static HTML export automatically on Cloudflare Pages / Workers Builds
+const isStaticExport =
+  process.env.CF_PAGES === "1" ||
+  process.env.WORKERS_CI === "1" ||
+  process.env.STATIC_EXPORT === "true";
+
 const nextConfig: NextConfig = {
-  async headers() {
-    return [
-      {
-        source: "/:path*",
-        headers: securityHeaders,
-      },
-    ];
-  },
+  ...(isStaticExport
+    ? {
+        output: "export",
+        images: {
+          unoptimized: true,
+        },
+      }
+    : {
+        async headers() {
+          return [
+            {
+              source: "/:path*",
+              headers: securityHeaders,
+            },
+          ];
+        },
+      }),
 };
 
 export default nextConfig;

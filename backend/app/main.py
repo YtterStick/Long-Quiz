@@ -297,7 +297,7 @@ _allowed_origins = list(set([
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]))
-_allowed_origin_regex = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$|^https://.*\.vercel\.app$"
+_allowed_origin_regex = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$|^https://.*\.(vercel\.app|pages\.dev|workers\.dev)$"
 
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(GlobalRateLimitMiddleware)

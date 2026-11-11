@@ -123,7 +123,8 @@ export function MobileNav() {
       <div className="flex items-center justify-around px-2 py-1.5">
         {items.map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href;
+          const normalizedPath = pathname.replace(/\/+$/, "") || "/";
+          const isActive = normalizedPath === item.href;
           return (
             <Link
               key={item.href}

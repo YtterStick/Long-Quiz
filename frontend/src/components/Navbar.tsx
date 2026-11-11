@@ -210,7 +210,8 @@ export function Navbar({ onOpenPasswordModal, onOpenCloset }: NavbarProps) {
             {user.role === "TEACHER" && (
               <nav className="hidden md:inline-flex items-center gap-1 p-1 rounded-2xl bg-surface-subtle/80 border border-border-default/70 backdrop-blur-xl shadow-inner shadow-black/[0.02] dark:shadow-black/20 ml-6">
                 {teacherNav.map((item) => {
-                  const isActive = pathname === item.href;
+                  const normalizedPath = pathname.replace(/\/+$/, "") || "/";
+                  const isActive = normalizedPath === item.href;
                   const Icon = item.icon;
                   return (
                     <Link
