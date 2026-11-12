@@ -306,6 +306,38 @@ def get_student_exam_permutation(
     return student_questions, student_key_map, orig_map
 
 
+def _build_complete_answers_out(
+    sub: ExamSubmission,
+    disp_questions: list,
+    disp_keys: list,
+) -> list[SubmissionAnswerOut]:
+    """Return sorted answers for all questions in the exam, filling blanks for unanswered items."""
+    existing_by_q = {a.question_number: a for a in (sub.answers or [])}
+    all_q_nums = (
+        {q.question_number for q in disp_questions}
+        | {k.question_number for k in disp_keys}
+        | set(existing_by_q.keys())
+    )
+    expected_total = sub.max_score or ((sub.exam.total_questions or 0) if sub.exam else 0)
+    if expected_total > 0 and len(all_q_nums) < expected_total:
+        all_q_nums |= set(range(1, expected_total + 1))
+
+    complete_answers: list[SubmissionAnswerOut] = []
+    for q_num in sorted(all_q_nums):
+        if q_num in existing_by_q:
+            complete_answers.append(SubmissionAnswerOut.model_validate(existing_by_q[q_num]))
+        else:
+            complete_answers.append(
+                SubmissionAnswerOut(
+                    id=f"unanswered-{sub.id}-{q_num}",
+                    question_number=q_num,
+                    shaded_option=None,
+                    is_correct=False,
+                )
+            )
+    return complete_answers
+
+
 @router.get("/grades", response_model=list[GradeItem])
 async def get_grades(
     db: AsyncSession = Depends(get_db),
@@ -319,9 +351,10 @@ async def get_grades(
     student = await _get_student(current_user, db)
     sec_ids = await _get_student_enrolled_section_ids(student, db)
 
-    # Get section-level grade release settings across all enrolled courses
+    # Get section-level grade release and shuffle settings across all enrolled courses
     section_exam_status = {}
     section_release_mode = {}
+    section_exam_by_id: dict[str, SectionExam] = {}
     if sec_ids:
         se_res = await db.execute(
             select(SectionExam).where(SectionExam.section_id.in_(sec_ids))
@@ -330,8 +363,10 @@ async def get_grades(
             section_exam_status[se.exam_id] = bool(section_exam_status.get(se.exam_id, False) or se.is_grades_released)
             if se.is_grades_released:
                 section_release_mode[se.exam_id] = se.release_mode or "FULL"
+                section_exam_by_id[se.exam_id] = se
             elif se.exam_id not in section_release_mode:
                 section_release_mode[se.exam_id] = se.release_mode or "FULL"
+                section_exam_by_id[se.exam_id] = se
 
     light_res = await db.execute(
         select(ExamSubmission)
@@ -381,8 +416,21 @@ async def get_grades(
         disp_questions = []
 
         if full:
-            shuffle_q = sub.exam.shuffle_questions
-            shuffle_opt = sub.exam.shuffle_options
+            se_cfg = section_exam_by_id.get(sub.exam_id)
+            if sub.scanned_image_url:
+                shuffle_q = False
+                shuffle_opt = False
+            else:
+                shuffle_q = (
+                    se_cfg.shuffle_questions
+                    if (se_cfg and se_cfg.shuffle_questions is not None)
+                    else bool(sub.exam.shuffle_questions)
+                )
+                shuffle_opt = (
+                    se_cfg.shuffle_options
+                    if (se_cfg and se_cfg.shuffle_options is not None)
+                    else bool(sub.exam.shuffle_options)
+                )
             if shuffle_q or shuffle_opt:
                 perm_qs, perm_keys_map, _ = get_student_exam_permutation(
                     student_id=student.id,
@@ -409,9 +457,15 @@ async def get_grades(
                     correct_option=opt,
                 ) for q_num, opt in sorted(perm_keys_map.items())]
             else:
-                disp_questions = [QuestionOut.model_validate(q) for q in sub.exam.questions]
-                disp_keys = [AnswerKeyOut.model_validate(k) for k in sub.exam.answer_keys]
-            disp_answers = [SubmissionAnswerOut.model_validate(a) for a in sub.answers]
+                disp_questions = sorted(
+                    [QuestionOut.model_validate(q) for q in sub.exam.questions],
+                    key=lambda x: x.question_number,
+                )
+                disp_keys = sorted(
+                    [AnswerKeyOut.model_validate(k) for k in sub.exam.answer_keys],
+                    key=lambda x: x.question_number,
+                )
+            disp_answers = _build_complete_answers_out(sub, disp_questions, disp_keys)
 
         grades.append(GradeItem(
             exam_id=sub.exam.id,
@@ -891,9 +945,9 @@ async def submit_exam_online(
         if student_key_map and q_num not in student_key_map:
             continue
 
-        chosen = item.selected_option.upper().strip()
+        chosen = (item.selected_option or "").upper().strip() or None
         correct_key = student_key_map.get(q_num)
-        is_correct = (chosen == correct_key) if correct_key else False
+        is_correct = bool(chosen and correct_key and chosen == correct_key)
         if is_correct:
             total_score += 1
         student_answers_to_create.append({
@@ -902,7 +956,22 @@ async def submit_exam_online(
             "is_correct": is_correct,
         })
 
-    max_score = len(student_key_map) if len(student_key_map) > 0 else (len(student_answers_to_create) or exam.total_questions)
+    expected_q_nums = (
+        sorted(student_key_map.keys())
+        if student_key_map
+        else list(range(1, (exam.total_questions or len(seen_q_nums)) + 1))
+    )
+    for q_num in expected_q_nums:
+        if q_num not in seen_q_nums:
+            seen_q_nums.add(q_num)
+            student_answers_to_create.append({
+                "question_number": q_num,
+                "shaded_option": None,
+                "is_correct": False,
+            })
+
+    student_answers_to_create.sort(key=lambda a: a["question_number"])
+    max_score = len(student_key_map) if len(student_key_map) > 0 else (exam.total_questions or len(student_answers_to_create))
     total_score = min(total_score, max_score)
 
     submission = ExamSubmission(

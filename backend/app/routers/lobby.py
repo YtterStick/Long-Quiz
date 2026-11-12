@@ -559,13 +559,15 @@ async def get_student_submission_answers(
     sub = sub_res.scalar_one_or_none()
     if not sub:
         return []
+    answers_by_q = {a.question_number: a for a in (sub.answers or []) if a.question_number}
+    total_q = max(sub.max_score or 0, max(answers_by_q.keys(), default=0))
     return [
         {
-            "question_number": a.question_number,
-            "shaded_option": a.shaded_option,
-            "is_correct": a.is_correct,
+            "question_number": q_num,
+            "shaded_option": answers_by_q[q_num].shaded_option if q_num in answers_by_q else None,
+            "is_correct": answers_by_q[q_num].is_correct if q_num in answers_by_q else False,
         }
-        for a in sorted(sub.answers or [], key=lambda x: x.question_number or 0)
+        for q_num in range(1, total_q + 1)
     ]
 
 

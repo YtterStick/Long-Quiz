@@ -2242,6 +2242,39 @@ export default function StudentDashboard() {
                     });
                   }
 
+                  const answerByQNum: Record<number, (typeof grade.answers)[number]> = {};
+                  grade.answers.forEach((a) => {
+                    answerByQNum[a.question_number] = a;
+                  });
+
+                  const allQNums = new Set<number>();
+                  grade.questions?.forEach((q) => allQNums.add(q.question_number));
+                  grade.answer_keys.forEach((k) => allQNums.add(k.question_number));
+                  grade.answers.forEach((a) => allQNums.add(a.question_number));
+                  if (grade.max_score && allQNums.size < grade.max_score) {
+                    for (let qn = 1; qn <= grade.max_score; qn++) {
+                      allQNums.add(qn);
+                    }
+                  }
+
+                  const completeAnswers = Array.from(allQNums)
+                    .sort((a, b) => a - b)
+                    .map(
+                      (qNum) =>
+                        answerByQNum[qNum] || {
+                          id: `unanswered-${grade.exam_id}-${qNum}`,
+                          question_number: qNum,
+                          shaded_option: null,
+                          is_correct: false,
+                        }
+                    );
+
+                  const correctCount = completeAnswers.filter((a) => a.is_correct).length;
+                  const unansweredCount = completeAnswers.filter(
+                    (a) => !a.is_correct && !a.shaded_option
+                  ).length;
+                  const wrongCount = completeAnswers.length - correctCount - unansweredCount;
+
                   const hasQuestions = grade.questions && grade.questions.some((q) => q.question_text?.trim());
                   const currentMode = feedbackViewMode[idx] || (hasQuestions ? "reviewer" : "grid");
 
@@ -2341,9 +2374,9 @@ export default function StudentDashboard() {
                           </div>
 
                           {/* Confidentiality Reminder Banner */}
-                          <div className="rounded-xl bg-surface-overlay p-3 border border-border-default flex items-center justify-between text-xs">
+                          <div className="rounded-xl bg-surface-overlay p-3 border border-border-default flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                             <div className="flex items-center gap-2 text-text-secondary">
-                              <Lock className="h-4 w-4 text-sage" />
+                              <Lock className="h-4 w-4 text-sage shrink-0" />
                               <span className="inline-flex items-center flex-wrap gap-1">
                                 <strong>Confidential Review:</strong> Showing your verified score (
                                 <AntiTamperScore
@@ -2358,18 +2391,20 @@ export default function StudentDashboard() {
                                 ), your shaded choices, and the teacher&apos;s correct answer keys.
                               </span>
                             </div>
-                            <span className="text-[11px] font-mono text-text-muted">
-                              {grade.answers.filter((a) => a.is_correct).length} Correct • {grade.answers.filter((a) => !a.is_correct).length} Incorrect
+                            <span className="text-[11px] font-mono text-text-muted shrink-0">
+                              {correctCount} Correct • {wrongCount} Incorrect
+                              {unansweredCount > 0 ? ` • ${unansweredCount} Unanswered` : ""}
                             </span>
                           </div>
 
                           {/* MODE 1: STUDY REVIEWER MODE */}
                           {currentMode === "reviewer" && (
                             <div className="space-y-4">
-                              {grade.answers.map((ans) => {
+                              {completeAnswers.map((ans) => {
                                 const qObj = questionMap[ans.question_number];
                                 const correctOpt = keyMap[ans.question_number];
                                 const promptText = qObj?.question_text?.trim() || `Question #${ans.question_number}`;
+                                const isUnanswered = !ans.is_correct && !ans.shaded_option;
 
                                 return (
                                   <div
@@ -2377,6 +2412,8 @@ export default function StudentDashboard() {
                                     className={`rounded-2xl p-4 border transition-all ${
                                       ans.is_correct
                                         ? "bg-surface-overlay border-border-default"
+                                        : isUnanswered
+                                        ? "bg-tan-ghost/10 border-tan-border/50"
                                         : "bg-burgundy-ghost/20 border-burgundy-border/50"
                                     }`}
                                   >
@@ -2396,6 +2433,11 @@ export default function StudentDashboard() {
                                           <span className="inline-flex items-center gap-1 rounded-full bg-sage-ghost border border-sage-border px-2.5 py-0.5 text-[11px] font-bold text-sage">
                                             <CheckCircle2 className="h-3.5 w-3.5" />
                                             Correct (+1)
+                                          </span>
+                                        ) : isUnanswered ? (
+                                          <span className="inline-flex items-center gap-1 rounded-full bg-tan-ghost border border-tan-border px-2.5 py-0.5 text-[11px] font-bold text-tan">
+                                            <Clock className="h-3.5 w-3.5" />
+                                            Unanswered (0)
                                           </span>
                                         ) : (
                                           <span className="inline-flex items-center gap-1 rounded-full bg-burgundy-ghost border border-burgundy-border px-2.5 py-0.5 text-[11px] font-bold text-burgundy-light">
@@ -2481,7 +2523,7 @@ export default function StudentDashboard() {
                           {/* MODE 2: OMR SHEET BUBBLE GRID */}
                           {currentMode === "grid" && (
                             <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-5 font-mono text-xs">
-                              {grade.answers.map((ans) => {
+                              {completeAnswers.map((ans) => {
                                 const correctOpt = keyMap[ans.question_number];
                                 return (
                                   <div
