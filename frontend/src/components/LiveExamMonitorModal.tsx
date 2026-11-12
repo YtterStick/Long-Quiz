@@ -506,11 +506,11 @@ export function LiveExamMonitorModal({
   const offlinePercent = Math.max(0, 100 - inLobbyPercent - takingPercent - submittedPercent);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-2 sm:p-6 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-2 sm:p-4 overflow-y-auto">
       <div className="w-full max-w-5xl rounded-3xl border border-border-default bg-surface-raised shadow-2xl flex flex-col max-h-[94vh] overflow-hidden animate-in fade-in zoom-in-95 transition-all">
         {/* ── Top Header ─────────────────────────────────────────────── */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-5 sm:p-6 border-b border-border-default/80 bg-surface-base shrink-0">
-          <div>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 px-4 py-3.5 sm:p-5 border-b border-border-default/80 bg-surface-base shrink-0">
+          <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap mb-1">
               <span className="rounded-full bg-steel-ghost px-3 py-0.5 text-[11px] font-bold text-steel border border-steel-border">
                 Section: {sectionName}
@@ -539,11 +539,11 @@ export function LiveExamMonitorModal({
               )}
             </div>
 
-            <h2 className="text-xl sm:text-2xl font-black tracking-tight text-text-primary flex items-center gap-2">
-              <Monitor className="h-5 w-5 text-steel" />
-              {examTitle}
+            <h2 className="text-lg sm:text-2xl font-black tracking-tight text-text-primary flex items-center gap-2">
+              <Monitor className="h-5 w-5 text-steel shrink-0" />
+              <span className="truncate">{examTitle}</span>
             </h2>
-            <p className="text-xs text-text-muted mt-0.5">
+            <p className="text-[11px] sm:text-xs text-text-muted mt-0.5">
               Live attendance, proctored focus detection, student answers, and instant gradebook records.
             </p>
           </div>
@@ -662,8 +662,10 @@ export function LiveExamMonitorModal({
           </div>
         </div>
 
-        {/* ── Live Visual Activity Bar & Key Metrics ──────────────────── */}
-        <div className="p-4 sm:p-5 bg-surface-base/70 border-b border-border-default/70 shrink-0 space-y-3">
+        {/* ── Unified Scrollable Body (Metrics, Toolbar & Student Roster) ─ */}
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          {/* ── Live Visual Activity Bar & Key Metrics ──────────────────── */}
+          <div className="p-4 sm:p-5 bg-surface-base/70 border-b border-border-default/70 space-y-3">
           {/* Segmented Visual Progress Bar */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-[11px] font-bold">
@@ -703,7 +705,7 @@ export function LiveExamMonitorModal({
           </div>
 
           {/* Metric Chips: Adapts to Active Exam vs Final Gradebook */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
             <div
               onClick={() => setStatusFilter("present")}
               className={`rounded-2xl border p-3 flex items-center justify-between cursor-pointer transition-all ${
@@ -825,7 +827,7 @@ export function LiveExamMonitorModal({
 
             <div
               onClick={() => setStatusFilter("submitted")}
-              className={`rounded-2xl border p-3 flex items-center justify-between cursor-pointer transition-all ${
+              className={`col-span-2 sm:col-span-1 rounded-2xl border p-3 flex items-center justify-between cursor-pointer transition-all ${
                 statusFilter === "submitted"
                   ? "border-sage bg-sage-ghost shadow-sm"
                   : "border-border-default bg-surface-base hover:border-sage-border"
@@ -837,7 +839,7 @@ export function LiveExamMonitorModal({
                   {data?.counts.submitted || 0}
                 </strong>
               </div>
-              <div className="h-8 w-8 rounded-xl bg-sage-ghost text-sage border border-sage-border flex items-center justify-center">
+              <div className="h-8 w-8 shrink-0 rounded-xl bg-sage-ghost text-sage border border-sage-border flex items-center justify-center">
                 <CheckCircle2 className="h-4 w-4" />
               </div>
             </div>
@@ -846,9 +848,9 @@ export function LiveExamMonitorModal({
 
         {/* ── Lobby Lock Alert Banner ──────────────── */}
         {data?.is_lobby_locked && (
-          <div className="mx-4 sm:mx-6 mt-3 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs flex items-center justify-between gap-3 animate-in fade-in">
-            <div className="flex items-center gap-2.5 text-amber-300 font-semibold">
-              <Lock className="h-4 w-4 shrink-0 text-amber-400" />
+          <div className="mx-4 sm:mx-6 mt-3 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 animate-in fade-in">
+            <div className="flex items-start sm:items-center gap-2.5 text-amber-300 font-semibold">
+              <Lock className="h-4 w-4 shrink-0 mt-0.5 sm:mt-0 text-amber-400" />
               <span>
                 <strong>Lobby Locked:</strong> Late students who are not already inside the lobby will be blocked from joining this exam.
               </span>
@@ -856,7 +858,7 @@ export function LiveExamMonitorModal({
             <button
               type="button"
               onClick={handleToggleLockLobby}
-              className="shrink-0 text-[11px] font-bold text-amber-300 underline hover:text-white transition-colors cursor-pointer"
+              className="shrink-0 self-end sm:self-auto text-[11px] font-bold text-amber-300 underline hover:text-white transition-colors cursor-pointer"
             >
               Unlock Lobby
             </button>
@@ -865,9 +867,9 @@ export function LiveExamMonitorModal({
 
         {/* ── Active Incident / Violation Alert Banner ──────────────── */}
         {violationStudents.length > 0 && (
-          <div className="mx-4 sm:mx-6 mt-3 p-3 rounded-2xl bg-burgundy-ghost border border-burgundy-border text-xs flex items-center justify-between gap-3 animate-in fade-in">
-            <div className="flex items-center gap-2.5 text-burgundy-light font-semibold">
-              <ShieldAlert className="h-4 w-4 shrink-0 text-burgundy-light" />
+          <div className="mx-4 sm:mx-6 mt-3 p-3 rounded-2xl bg-burgundy-ghost border border-burgundy-border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3 animate-in fade-in">
+            <div className="flex items-start sm:items-center gap-2.5 text-burgundy-light font-semibold">
+              <ShieldAlert className="h-4 w-4 shrink-0 mt-0.5 sm:mt-0 text-burgundy-light" />
               <span>
                 <strong>Proctoring Notice:</strong> {totalTabSwitches} alt-tab switch{totalTabSwitches === 1 ? "" : "es"} detected across {violationStudents.length} student{violationStudents.length === 1 ? "" : "s"}.
               </span>
@@ -875,7 +877,7 @@ export function LiveExamMonitorModal({
             <button
               type="button"
               onClick={() => setStatusFilter(statusFilter === "violations" ? "all" : "violations")}
-              className="shrink-0 text-[11px] font-bold text-burgundy-light underline hover:text-white transition-colors cursor-pointer"
+              className="shrink-0 self-end sm:self-auto text-[11px] font-bold text-burgundy-light underline hover:text-white transition-colors cursor-pointer"
             >
               {statusFilter === "violations" ? "Show All Students" : "Filter Violations"}
             </button>
@@ -890,7 +892,7 @@ export function LiveExamMonitorModal({
         )}
 
         {/* ── Filter Toolbar, Search, & Export Tools ────────────────── */}
-        <div className="flex flex-col gap-2.5 px-4 sm:px-6 pt-3 pb-2.5 shrink-0 border-b border-border-default/50">
+        <div className="flex flex-col gap-2.5 px-4 sm:px-6 pt-3 pb-2.5 border-b border-border-default/50">
           {/* Row 1: Status Filter Chips - full width with flex-wrap to prevent any cut-off */}
           <div className="flex items-center gap-1.5 flex-wrap">
             {[
@@ -923,7 +925,7 @@ export function LiveExamMonitorModal({
 
           {/* Row 2: Search Input + View Toggle + Quick Copy for Excel + Export Excel */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-            <div className="relative flex-1 max-w-xs">
+            <div className="relative w-full sm:flex-1 sm:max-w-xs">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted" />
               <input
                 type="text"
@@ -985,7 +987,7 @@ export function LiveExamMonitorModal({
                 </button>
 
                 {copyMenuOpen && (
-                  <div className="absolute right-0 mt-1.5 w-64 rounded-2xl border border-border-default bg-surface-raised shadow-xl p-1.5 z-30 animate-in fade-in zoom-in-95 space-y-1">
+                  <div className="absolute left-0 sm:left-auto sm:right-0 mt-1.5 w-64 rounded-2xl border border-border-default bg-surface-raised shadow-xl p-1.5 z-30 animate-in fade-in zoom-in-95 space-y-1">
                     <button
                       type="button"
                       onClick={() => handleCopyGrades("scores")}
@@ -1043,7 +1045,7 @@ export function LiveExamMonitorModal({
         </div>
 
         {/* ── Main Content Body ─────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+        <div className="p-4 sm:p-6 space-y-4 min-h-[240px]">
           {loading && !data ? (
             <SkeletonLiveRoster count={5} />
           ) : fetchError && !data ? (
@@ -1107,7 +1109,7 @@ export function LiveExamMonitorModal({
                     {/* Top Row: Avatar + Info + Status */}
                     <div>
                       <div className="flex items-start justify-between gap-2 mb-3">
-                        <div className="flex items-center gap-2.5">
+                        <div className="flex items-center gap-2.5 min-w-0">
                           <div
                             className={`h-10 w-10 rounded-2xl flex items-center justify-center font-bold text-xs shadow-inner shrink-0 ${
                               isAbsent
@@ -1123,18 +1125,18 @@ export function LiveExamMonitorModal({
                           >
                             {initials || "ST"}
                           </div>
-                          <div>
-                            <div className="font-bold text-sm text-text-primary leading-tight">
+                          <div className="min-w-0">
+                            <div className="font-bold text-sm text-text-primary leading-tight truncate">
                               {student.name}
                             </div>
-                            <div className="font-mono text-[10px] text-text-muted mt-0.5">
+                            <div className="font-mono text-[10px] text-text-muted mt-0.5 truncate">
                               ID: 02000{String(student.student_number).padStart(6, "0")}
                             </div>
                           </div>
                         </div>
 
                         {/* Status Pill */}
-                        <div>
+                        <div className="shrink-0">
                           {isAbsent ? (
                             <span className="inline-flex items-center gap-1 rounded-full bg-burgundy-ghost px-2.5 py-0.5 text-[10px] font-bold text-burgundy-light border border-burgundy-border">
                               <UserX className="h-3 w-3" />
@@ -1282,7 +1284,7 @@ export function LiveExamMonitorModal({
           ) : (
             /* ── DETAILED GRADEBOOK & AUDIT TABLE VIEW ───────────────── */
             <div className="overflow-x-auto rounded-2xl border border-border-default">
-              <table className="w-full text-left text-xs">
+              <table className="w-full min-w-[720px] text-left text-xs">
                 <thead className="bg-surface-base border-b border-border-default text-[11px] font-bold text-text-secondary uppercase tracking-wider">
                   <tr>
                     <th className="py-3 px-3 text-center w-10">#</th>
@@ -1459,10 +1461,11 @@ export function LiveExamMonitorModal({
               </table>
             </div>
           )}
+          </div>
         </div>
 
         {/* ── Footer note ────────────────────────────────────────────── */}
-        <div className="p-4 border-t border-border-default bg-surface-base flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs text-text-muted shrink-0">
+        <div className="px-4 py-3 sm:px-5 sm:py-3.5 border-t border-border-default bg-surface-base flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 text-xs text-text-muted shrink-0">
           <div className="flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-steel shrink-0" />
             <span>
