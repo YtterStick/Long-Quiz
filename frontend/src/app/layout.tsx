@@ -3,7 +3,6 @@ import "./globals.css";
 import { AuthProvider } from "@/lib/auth-context";
 import { ThemeProvider } from "@/lib/theme-context";
 import { GlobalLoadingBar } from "@/components/ui/GlobalLoadingBar";
-import { Analytics } from "@vercel/analytics/react";
 
 export const viewport: Viewport = {
   width: "device-width",
@@ -31,7 +30,6 @@ export default function RootLayout({
         <ThemeProvider>
           <GlobalLoadingBar />
           <AuthProvider>{children}</AuthProvider>
-          <Analytics />
         </ThemeProvider>
       </body>
     </html>
