@@ -3,7 +3,7 @@
 import asyncio
 from datetime import datetime, timezone
 import json
-from typing import Optional
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Body
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1296,7 +1296,8 @@ class FriendRequestAction(BaseModel):
 
 
 class ShareDeckRequest(BaseModel):
-    receiver_student_id: str
+    receiver_student_id: Optional[str] = None
+    receiver_student_ids: Optional[List[str]] = None
     title: str
     deck_data: dict
     note: Optional[str] = None
@@ -1617,33 +1618,55 @@ async def share_deck_with_friend(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_role(Role.STUDENT)),
 ):
-    """Shares an AI reviewer or custom deck directly with an accepted friend."""
+    """Shares an AI reviewer or custom deck with one or more accepted friends in one request."""
     student = await _get_student(current_user, db)
 
-    # Verify friend status
+    target_ids: list[str] = []
+    if payload.receiver_student_ids:
+        target_ids.extend([tid.strip() for tid in payload.receiver_student_ids if tid and tid.strip()])
+    if payload.receiver_student_id and payload.receiver_student_id.strip():
+        target_ids.append(payload.receiver_student_id.strip())
+    # Deduplicate preserving order
+    target_ids = list(dict.fromkeys(target_ids))
+
+    if not target_ids:
+        raise HTTPException(status_code=400, detail="Please select at least one study friend to share with.")
+
+    # Verify all selected recipients are accepted friends in a single query
     f_res = await db.execute(
         select(Friendship).where(
             Friendship.status == FriendshipStatus.ACCEPTED,
             or_(
-                and_(Friendship.sender_student_id == student.id, Friendship.receiver_student_id == payload.receiver_student_id),
-                and_(Friendship.receiver_student_id == student.id, Friendship.sender_student_id == payload.receiver_student_id),
+                and_(Friendship.sender_student_id == student.id, Friendship.receiver_student_id.in_(target_ids)),
+                and_(Friendship.receiver_student_id == student.id, Friendship.sender_student_id.in_(target_ids)),
             )
         )
     )
-    is_friend = f_res.scalar_one_or_none()
-    if not is_friend:
+    accepted_friend_ids = {
+        (f.receiver_student_id if f.sender_student_id == student.id else f.sender_student_id)
+        for f in f_res.scalars().all()
+    }
+    if any(tid not in accepted_friend_ids for tid in target_ids):
         raise HTTPException(status_code=403, detail="You can only share decks with accepted study friends.")
 
-    shared_deck = FriendSharedDeck(
-        sender_student_id=student.id,
-        receiver_student_id=payload.receiver_student_id,
-        title=payload.title,
-        deck_data=json.dumps(payload.deck_data),
-        note=payload.note,
-    )
-    db.add(shared_deck)
+    deck_json = json.dumps(payload.deck_data)
+    for rid in target_ids:
+        db.add(FriendSharedDeck(
+            sender_student_id=student.id,
+            receiver_student_id=rid,
+            title=payload.title,
+            deck_data=deck_json,
+            note=payload.note,
+        ))
     await db.commit()
-    return {"ok": True, "message": f"Successfully shared '{payload.title}' with your friend."}
+
+    count = len(target_ids)
+    msg = (
+        f"Successfully shared '{payload.title}' with your friend."
+        if count == 1
+        else f"Successfully shared '{payload.title}' with {count} friends."
+    )
+    return {"ok": True, "shared_count": count, "message": msg}
 
 
 @router.get("/reviewer/shared-with-me")

@@ -47,7 +47,7 @@ export function ShareDeckModal({
   const [mode, setMode] = useState<"links" | "friends">("links");
   const [friends, setFriends] = useState<StudentFriendCard[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
+  const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>([]);
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -87,7 +87,8 @@ export function ShareDeckModal({
     if (isOpen) {
       setLoading(true);
       setStatusMessage(null);
-      setSelectedFriendId(null);
+      setSelectedFriendIds([]);
+      setSearchQuery("");
       setCopiedLink(false);
       setNote("");
       studentApi
@@ -221,11 +222,34 @@ export function ShareDeckModal({
       f.full_student_id.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const selectedFriend = friends.find((f) => f.student_id === selectedFriendId);
+  const selectedFriends = friends.filter((f) => selectedFriendIds.includes(f.student_id));
+  const visibleIds = filteredFriends.map((f) => f.student_id);
+  const allVisibleSelected =
+    visibleIds.length > 0 && visibleIds.every((id) => selectedFriendIds.includes(id));
 
-  const handleSendToFriend = async () => {
-    if (!selectedFriendId) {
-      setStatusMessage({ type: "error", text: "Please select a friend to share with." });
+  const toggleFriendSelection = (studentId: string) => {
+    setSelectedFriendIds((prev) =>
+      prev.includes(studentId)
+        ? prev.filter((id) => id !== studentId)
+        : [...prev, studentId]
+    );
+  };
+
+  const handleToggleSelectAllVisible = () => {
+    if (allVisibleSelected) {
+      const visibleSet = new Set(visibleIds);
+      setSelectedFriendIds((prev) => prev.filter((id) => !visibleSet.has(id)));
+    } else {
+      setSelectedFriendIds((prev) => Array.from(new Set([...prev, ...visibleIds])));
+    }
+  };
+
+  const handleSendToFriends = async () => {
+    if (selectedFriendIds.length === 0) {
+      setStatusMessage({
+        type: "error",
+        text: "Please select at least one friend to share with.",
+      });
       return;
     }
 
@@ -233,18 +257,23 @@ export function ShareDeckModal({
       setSubmitting(true);
       setStatusMessage(null);
       await studentApi.shareDeck({
-        receiver_student_id: selectedFriendId,
+        receiver_student_ids: selectedFriendIds,
         title: deck.title,
         deck_data: deck,
         note: note.trim() || undefined,
       });
 
+      const recipientLabel =
+        selectedFriends.length === 1
+          ? selectedFriends[0].full_name
+          : `${selectedFriendIds.length} friends`;
+
       setStatusMessage({
         type: "success",
-        text: `Successfully sent to ${selectedFriend?.full_name || "friend"}!`,
+        text: `Successfully sent to ${recipientLabel}!`,
       });
-      if (onSharedSuccess && selectedFriend) {
-        onSharedSuccess(selectedFriend.full_name);
+      if (onSharedSuccess) {
+        onSharedSuccess(recipientLabel);
       }
       setTimeout(() => {
         onClose();
@@ -536,53 +565,102 @@ export function ShareDeckModal({
                     />
                   </div>
 
+                  {/* Multi-select Controls Bar */}
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="text-[11px] font-semibold text-text-muted">
+                      {selectedFriendIds.length > 0 ? (
+                        <span className="text-steel font-bold">
+                          {selectedFriendIds.length}{" "}
+                          {selectedFriendIds.length === 1 ? "friend" : "friends"} selected
+                        </span>
+                      ) : (
+                        "Tap friends below to select one or more"
+                      )}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      {selectedFriendIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedFriendIds([])}
+                          className="text-[11px] font-semibold text-text-muted hover:text-text-primary transition cursor-pointer"
+                        >
+                          Clear
+                        </button>
+                      )}
+                      {filteredFriends.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleToggleSelectAllVisible}
+                          className="px-2.5 py-1 rounded-lg bg-surface-subtle hover:bg-surface-overlay border border-border-default text-[11px] font-bold text-text-primary transition cursor-pointer"
+                        >
+                          {allVisibleSelected ? "Deselect All" : "Select All"}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
                   {/* Friends Selector List */}
                   <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
-                    {filteredFriends.map((friend) => {
-                      const isSelected = selectedFriendId === friend.student_id;
-                      return (
-                        <div
-                          key={friend.student_id}
-                          onClick={() => setSelectedFriendId(friend.student_id)}
-                          className={`flex items-center justify-between p-3 rounded-2xl border transition cursor-pointer ${
-                            isSelected
-                              ? "bg-steel-ghost/30 border-steel"
-                              : "bg-surface-base border-border-default hover:border-border-emphasis"
-                          }`}
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <StudentAvatar
-                              config={parseAvatarConfig(friend.avatar_config)}
-                              size={40}
-                            />
-                            <div className="min-w-0">
-                              <p className="text-xs font-bold text-text-primary truncate">
-                                {friend.full_name}
-                              </p>
-                              <p className="text-[11px] text-text-muted truncate">
-                                {friend.full_student_id}{" "}
-                                {friend.section_name ? `• ${friend.section_name}` : ""}
-                              </p>
-                            </div>
-                          </div>
+                    {filteredFriends.length === 0 ? (
+                      <p className="py-6 text-center text-xs text-text-muted">
+                        No friends match &quot;{searchQuery}&quot;.
+                      </p>
+                    ) : (
+                      filteredFriends.map((friend) => {
+                        const isSelected = selectedFriendIds.includes(friend.student_id);
+                        return (
                           <div
-                            className={`flex h-5 w-5 items-center justify-center rounded-full border transition ${
+                            key={friend.student_id}
+                            role="checkbox"
+                            aria-checked={isSelected}
+                            tabIndex={0}
+                            onClick={() => toggleFriendSelection(friend.student_id)}
+                            onKeyDown={(e) => {
+                              if (e.key === " " || e.key === "Enter") {
+                                e.preventDefault();
+                                toggleFriendSelection(friend.student_id);
+                              }
+                            }}
+                            className={`flex items-center justify-between p-3 rounded-2xl border transition cursor-pointer select-none ${
                               isSelected
-                                ? "bg-steel border-steel text-white"
-                                : "border-border-default"
+                                ? "bg-steel-ghost/30 border-steel"
+                                : "bg-surface-base border-border-default hover:border-border-emphasis"
                             }`}
                           >
-                            {isSelected && <Check className="h-3 w-3" />}
+                            <div className="flex items-center gap-3 min-w-0">
+                              <StudentAvatar
+                                config={parseAvatarConfig(friend.avatar_config)}
+                                size={40}
+                              />
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-text-primary truncate">
+                                  {friend.full_name}
+                                </p>
+                                <p className="text-[11px] text-text-muted truncate">
+                                  {friend.full_student_id}{" "}
+                                  {friend.section_name ? `• ${friend.section_name}` : ""}
+                                </p>
+                              </div>
+                            </div>
+                            <div
+                              className={`flex h-5 w-5 items-center justify-center rounded-md border transition shrink-0 ${
+                                isSelected
+                                  ? "bg-steel border-steel text-white"
+                                  : "border-border-emphasis bg-surface-raised"
+                              }`}
+                            >
+                              {isSelected && <Check className="h-3.5 w-3.5" />}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })
+                    )}
                   </div>
 
                   {/* Optional Note */}
                   <div>
                     <label className="block text-xs font-bold text-text-secondary mb-1.5">
-                      Optional Study Note for Friend
+                      Optional Study Note for Friends
                     </label>
                     <textarea
                       rows={2}
@@ -615,8 +693,8 @@ export function ShareDeckModal({
             {mode === "friends" && (
               <button
                 type="button"
-                onClick={handleSendToFriend}
-                disabled={!selectedFriendId || submitting || friends.length === 0}
+                onClick={handleSendToFriends}
+                disabled={selectedFriendIds.length === 0 || submitting || friends.length === 0}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-steel hover:bg-steel-light text-white shadow-xs transition disabled:opacity-50 cursor-pointer"
               >
                 {submitting ? (
@@ -624,7 +702,13 @@ export function ShareDeckModal({
                 ) : (
                   <Send className="h-4 w-4" />
                 )}
-                <span>Send to Friend</span>
+                <span>
+                  {selectedFriendIds.length === 0
+                    ? "Send to Friends"
+                    : selectedFriendIds.length === 1
+                      ? "Send to 1 Friend"
+                      : `Send to ${selectedFriendIds.length} Friends`}
+                </span>
               </button>
             )}
             {mode === "links" && (

@@ -1366,8 +1366,14 @@ export const student = {
     }),
 
   // Deck Sharing
-  shareDeck: (data: { receiver_student_id: string; title: string; deck_data: GeneratedReviewerDeck; note?: string }) =>
-    request<{ ok: boolean; message: string }>("/api/student/reviewer/share", {
+  shareDeck: (data: {
+    receiver_student_id?: string;
+    receiver_student_ids?: string[];
+    title: string;
+    deck_data: GeneratedReviewerDeck;
+    note?: string;
+  }) =>
+    request<{ ok: boolean; shared_count?: number; message: string }>("/api/student/reviewer/share", {
       method: "POST",
       body: data,
     }),
