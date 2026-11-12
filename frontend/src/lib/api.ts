@@ -2,7 +2,7 @@
  * API client for communicating with the FastAPI backend.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").replace(/\/+$/, "");
 
 /** What students see once grades are released for a class exam. */
 export type ReleaseMode = "FULL" | "SCORES_ONLY";

@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef, useMemo } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { useRouter } from "next/navigation";
 import { Navbar } from "@/components/Navbar";
-import { teacher as teacherApi } from "@/lib/api";
+import { teacher as teacherApi, API_BASE } from "@/lib/api";
 import { Pagination } from "@/components/ui/Pagination";
 import {
   FileSpreadsheet,
@@ -435,9 +435,8 @@ export default function TeacherExamsPage() {
     setPreviewLoading(true);
     try {
       const token = localStorage.getItem("token");
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || "https://evalo-backend.onrender.com";
       const res = await fetch(
-        `${apiBase}/api/teacher/blank-bubble-sheet?questions=${blankQuestions}`,
+        `${API_BASE}/api/teacher/blank-bubble-sheet?questions=${blankQuestions}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       if (!res.ok) throw new Error("Failed");
