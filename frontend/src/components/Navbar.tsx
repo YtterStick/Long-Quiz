@@ -293,7 +293,7 @@ export function Navbar({ onOpenPasswordModal, onOpenCloset }: NavbarProps) {
                   <div className={`flex h-7 w-7 items-center justify-center rounded-full overflow-hidden border shadow-xs shrink-0 bg-surface-base ${
                     user.role === "TEACHER" ? "border-steel-border ring-1 ring-steel/25" : "border-sage-border ring-1 ring-sage/25"
                   }`}>
-                    <StudentAvatar config={effectiveAvatar} size={28} showBackdrop={false} />
+                    <StudentAvatar config={effectiveAvatar} size="100%" showBackdrop={true} />
                   </div>
                 ) : (
                   <div className={`flex h-6 w-6 items-center justify-center rounded-full border ${roleColors[user.role]}`}>
@@ -319,7 +319,7 @@ export function Navbar({ onOpenPasswordModal, onOpenCloset }: NavbarProps) {
                       <div className={`flex h-9 w-9 items-center justify-center rounded-full overflow-hidden border shadow-xs shrink-0 bg-surface-base ${
                         user.role === "TEACHER" ? "border-steel-border" : "border-sage-border"
                       }`}>
-                        <StudentAvatar config={effectiveAvatar} size={36} showBackdrop={false} />
+                        <StudentAvatar config={effectiveAvatar} size="100%" showBackdrop={true} />
                       </div>
                     ) : (
                       <div className={`flex h-8 w-8 items-center justify-center rounded-full border ${roleColors[user.role]}`}>

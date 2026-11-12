@@ -106,9 +106,9 @@ export function StudentAvatar({
 
           {/* Backdrop radial glow */}
           <radialGradient id={glowId} cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor={backdrop.ringColor} stopOpacity="0.45" />
-            <stop offset="70%" stopColor={backdrop.ringColor} stopOpacity="0.15" />
-            <stop offset="100%" stopColor={backdrop.ringColor} stopOpacity="0.0" />
+            <stop offset="0%" stopColor={backdrop.ringColor} stopOpacity="0.48" />
+            <stop offset="70%" stopColor={backdrop.ringColor} stopOpacity="0.22" />
+            <stop offset="100%" stopColor={backdrop.ringColor} stopOpacity="0.06" />
           </radialGradient>
 
           {/* Clean Buzz Cut Fade Gradient */}
@@ -134,10 +134,10 @@ export function StudentAvatar({
         {/* ── 1. Backdrop Canvas ──────────────────────────────────── */}
         {drawBackdrop && (
           <g>
-            <circle cx="100" cy="100" r="98" className="fill-surface-base" />
+            <circle cx="100" cy="100" r="100" className="fill-surface-base" />
             {/* Ambient Studio Key Light across upper canvas */}
-            <circle cx="100" cy="100" r="98" fill={`url(#${studioLightId})`} />
-            <circle cx="100" cy="100" r="98" fill={`url(#${glowId})`} />
+            <circle cx="100" cy="100" r="100" fill={`url(#${studioLightId})`} />
+            <circle cx="100" cy="100" r="100" fill={`url(#${glowId})`} />
             {/* Soft hair separation rim light */}
             <ellipse cx="100" cy="72" rx="58" ry="48" fill={`url(#${hairBacklightId})`} />
 
