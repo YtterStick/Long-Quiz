@@ -757,6 +757,8 @@ export const teacher = {
       shuffle_options?: boolean;
       has_time_limit?: boolean;
       time_limit_minutes?: number;
+      submission_count?: number;
+      assigned_student_count?: number;
       created_at: string;
       answer_keys: Array<{ id: string; question_number: number; correct_option: string }>;
       questions?: Array<{
@@ -1222,6 +1224,8 @@ export const student = {
       shuffle_options?: boolean;
       has_time_limit?: boolean;
       time_limit_minutes?: number;
+      submission_count?: number;
+      assigned_student_count?: number;
       created_at: string;
       teacher_name: string;
       question_count: number;

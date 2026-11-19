@@ -149,7 +149,7 @@ export function NotificationBell() {
         >
           <Bell className="h-4 w-4" />
           {pendingCount > 0 && (
-            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-burgundy-light text-[10px] font-bold text-white shadow ring-2 ring-surface-raised animate-pulse">
+            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-burgundy-light text-[10px] font-bold text-white shadow ring-2 ring-surface-raised dark:ring-[#0f1419] animate-pulse">
               {pendingCount > 9 ? "9+" : pendingCount}
             </span>
           )}

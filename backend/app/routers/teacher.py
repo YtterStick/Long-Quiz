@@ -1600,10 +1600,58 @@ async def list_exams(
         query = query.offset((page - 1) * page_size).limit(page_size)
     result = await db.execute(query)
     exams = result.scalars().all()
+
+    exam_ids = [e.id for e in exams]
+    sub_counts: dict[str, int] = {}
+    assigned_student_counts: dict[str, int] = {}
+
+    if exam_ids:
+        sub_res = await db.execute(
+            select(ExamSubmission.exam_id, func.count(ExamSubmission.id))
+            .where(ExamSubmission.exam_id.in_(exam_ids))
+            .group_by(ExamSubmission.exam_id)
+        )
+        sub_counts = {row[0]: row[1] for row in sub_res.all()}
+
+        se_res = await db.execute(
+            select(SectionExam.exam_id, SectionExam.section_id)
+            .where(SectionExam.exam_id.in_(exam_ids))
+        )
+        exam_sections: dict[str, set[str]] = {}
+        all_sec_ids: set[str] = set()
+        for ex_id, sec_id in se_res.all():
+            exam_sections.setdefault(ex_id, set()).add(sec_id)
+            all_sec_ids.add(sec_id)
+
+        if all_sec_ids:
+            sec_students: dict[str, set[str]] = {}
+            p_res = await db.execute(
+                select(Student.section_id, Student.id).where(Student.section_id.in_(all_sec_ids))
+            )
+            for sec_id, stu_id in p_res.all():
+                if sec_id:
+                    sec_students.setdefault(sec_id, set()).add(stu_id)
+
+            a_res = await db.execute(
+                select(StudentSection.section_id, StudentSection.student_id).where(
+                    StudentSection.section_id.in_(all_sec_ids)
+                )
+            )
+            for sec_id, stu_id in a_res.all():
+                sec_students.setdefault(sec_id, set()).add(stu_id)
+
+            for ex_id, sec_ids in exam_sections.items():
+                unique_stu: set[str] = set()
+                for sec_id in sec_ids:
+                    unique_stu.update(sec_students.get(sec_id, ()))
+                assigned_student_counts[ex_id] = len(unique_stu)
+
     out = []
     for exam in exams:
         item = ExamOut.model_validate(exam)
         item.is_owner = (exam.teacher_id == teacher.id)
+        item.submission_count = sub_counts.get(exam.id, 0)
+        item.assigned_student_count = assigned_student_counts.get(exam.id, 0)
         out.append(item)
     return out
 

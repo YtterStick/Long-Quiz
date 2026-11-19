@@ -32,6 +32,7 @@ import { StudentNotificationBell } from "@/components/StudentNotificationBell";
 import { useTheme } from "@/lib/theme-context";
 import { StudentAvatar } from "@/components/avatar/StudentAvatar";
 import { CharacterCreatorModal } from "@/components/avatar/CharacterCreatorModal";
+import { toTitleCaseName } from "@/lib/format";
 import {
   StudentAvatarConfig,
   parseAvatarConfig,
@@ -219,7 +220,7 @@ export function Navbar({ onOpenPasswordModal, onOpenCloset }: NavbarProps) {
                       href={item.href}
                       className={`relative flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 select-none ${
                         isActive
-                          ? "bg-surface-overlay text-text-primary shadow-xs ring-1 ring-border-default/80 font-extrabold"
+                          ? "bg-surface-overlay text-text-primary dark:bg-white/10 dark:text-white shadow-xs ring-1 ring-border-default/80 dark:ring-white/15 font-extrabold"
                           : "text-text-muted hover:text-text-primary hover:bg-surface-base/60"
                       }`}
                     >
@@ -262,7 +263,7 @@ export function Navbar({ onOpenPasswordModal, onOpenCloset }: NavbarProps) {
                       }}
                       className={`relative flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 select-none cursor-pointer ${
                         isActive
-                          ? "bg-surface-overlay text-text-primary shadow-xs ring-1 ring-border-default/80 font-extrabold"
+                          ? "bg-surface-overlay text-text-primary dark:bg-white/10 dark:text-white shadow-xs ring-1 ring-border-default/80 dark:ring-white/15 font-extrabold"
                           : "text-text-muted hover:text-text-primary hover:bg-surface-base/60"
                       }`}
                     >
@@ -302,7 +303,7 @@ export function Navbar({ onOpenPasswordModal, onOpenCloset }: NavbarProps) {
                 )}
                 <div className="hidden text-left md:block">
                   <p className="text-xs font-semibold text-text-secondary">
-                    {user.first_name} {user.last_name}
+                    {toTitleCaseName(`${user.first_name || ""} ${user.last_name || ""}`)}
                   </p>
                 </div>
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase border ${roleColors[user.role]}`}>
@@ -328,7 +329,7 @@ export function Navbar({ onOpenPasswordModal, onOpenCloset }: NavbarProps) {
                     )}
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-bold text-text-primary truncate">
-                        {user.first_name} {user.last_name}
+                        {toTitleCaseName(`${user.first_name || ""} ${user.last_name || ""}`)}
                       </p>
                       <p className="text-[11px] text-text-muted font-mono truncate">{user.username}</p>
                     </div>
@@ -425,7 +426,7 @@ export function Navbar({ onOpenPasswordModal, onOpenCloset }: NavbarProps) {
           isOpen={closetModalOpen}
           onClose={() => setClosetModalOpen(false)}
           initialConfig={effectiveAvatar || undefined}
-          studentName={`${user.first_name} ${user.last_name || ""}`.trim()}
+          studentName={toTitleCaseName(`${user.first_name || ""} ${user.last_name || ""}`)}
           role={user.role as "STUDENT" | "TEACHER"}
           onSave={async (config) => {
             if (user.role === "TEACHER") {

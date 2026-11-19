@@ -281,6 +281,8 @@ class ExamOut(BaseModel):
     has_time_limit: bool = False
     time_limit_minutes: int = 60
     is_owner: bool = True
+    submission_count: int = 0
+    assigned_student_count: int = 0
     created_at: datetime
     answer_keys: List[AnswerKeyOut] = []
     questions: List[QuestionOut] = []

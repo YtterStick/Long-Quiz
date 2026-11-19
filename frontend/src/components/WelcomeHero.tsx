@@ -1,6 +1,7 @@
 import React from "react";
 import { GraduationCap, Quote, School, Shield } from "lucide-react";
 import { ROLE_THEME, type RoleKey } from "@/lib/role-theme";
+import { toTitleCaseName } from "@/lib/format";
 import {
   AdminCampusIllustration,
   StudentStudyIllustration,
@@ -50,7 +51,7 @@ function getDayIndex(): number {
   return Math.floor(Date.now() / 86_400_000);
 }
 
-function pickDailyQuote(role: RoleKey): DailyQuoteItem {
+export function pickDailyQuote(role: RoleKey): DailyQuoteItem {
   const pool = [...ROLE_QUOTES[role], ...SHARED_QUOTES];
   return pool[getDayIndex() % pool.length];
 }
@@ -85,6 +86,10 @@ interface WelcomeHeroProps {
   aside?: React.ReactNode;
   /** Custom illustration/avatar override (e.g. customized Student Avatar) */
   customIllustration?: React.ReactNode;
+  /** Whether to display the daily quote footer bar inside the hero (default true) */
+  showQuote?: boolean;
+  /** Tighter hero padding for compact above-the-fold layout */
+  compact?: boolean;
 }
 
 export function WelcomeHero({
@@ -98,6 +103,8 @@ export function WelcomeHero({
   actions,
   aside,
   customIllustration,
+  showQuote = true,
+  compact = false,
 }: WelcomeHeroProps) {
   const t = ROLE_THEME[role];
   const RoleIcon = ROLE_ICON[role];
@@ -118,8 +125,8 @@ export function WelcomeHero({
       <div className={`pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full blur-3xl ${t.heroGlowA}`} />
       <div className={`pointer-events-none absolute -left-16 -bottom-28 h-64 w-64 rounded-full blur-3xl ${t.heroGlowB}`} />
 
-      <div className="relative z-10 p-5 sm:p-8">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 sm:gap-6">
+      <div className={`relative z-10 ${compact ? "p-4 sm:px-7 sm:py-5" : "p-5 sm:p-8"}`}>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-5">
           {/* Header row on mobile: avatar + text side-by-side */}
           <div className="flex items-start gap-4 flex-1 min-w-0">
             {customIllustration && (
@@ -147,7 +154,7 @@ export function WelcomeHero({
                 {loading || !name ? (
                   <span className="inline-block h-7 sm:h-8 w-32 sm:w-36 animate-pulse rounded-lg bg-surface-muted align-middle" />
                 ) : (
-                  <span className="gradient-text">{name}</span>
+                  <span className="gradient-text">{toTitleCaseName(name)}</span>
                 )}
               </h1>
 
@@ -177,19 +184,21 @@ export function WelcomeHero({
       </div>
 
       {/* ── Quote of the day ── */}
-      <figure className="relative z-10 flex items-center gap-2.5 sm:gap-3 border-t border-border-default/70 bg-surface-base/50 px-5 py-2.5 sm:px-8 text-xs text-text-secondary">
-        <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border ${t.badge}`}>
-          <Quote className="h-3 w-3" />
-        </span>
-        <div className="min-w-0 flex-1 truncate">
-          <blockquote suppressHydrationWarning className="truncate italic text-xs leading-relaxed text-text-secondary">
-            &ldquo;{quote.text}&rdquo;
-            {quote.author && quote.author.toLowerCase() !== "unknown" && (
-              <cite className={`ml-1.5 not-italic font-semibold ${t.text}`}>— {quote.author}</cite>
-            )}
-          </blockquote>
-        </div>
-      </figure>
+      {showQuote && (
+        <figure className="relative z-10 flex items-center gap-2.5 sm:gap-3 border-t border-border-default/70 bg-surface-base/50 px-5 py-2.5 sm:px-8 text-xs text-text-secondary">
+          <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border ${t.badge}`}>
+            <Quote className="h-3 w-3" />
+          </span>
+          <div className="min-w-0 flex-1 truncate">
+            <blockquote suppressHydrationWarning className="truncate italic text-xs leading-relaxed text-text-secondary">
+              &ldquo;{quote.text}&rdquo;
+              {quote.author && quote.author.toLowerCase() !== "unknown" && (
+                <cite className={`ml-1.5 not-italic font-semibold ${t.text}`}>— {quote.author}</cite>
+              )}
+            </blockquote>
+          </div>
+        </figure>
+      )}
     </section>
   );
 }
