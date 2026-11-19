@@ -1647,8 +1647,7 @@ export default function TeacherSectionsPage() {
                               </div>
                             </div>
 
-                            <div className="flex items-center justify-between pt-3 border-t border-border-default/60 text-[11px] text-text-muted group-hover:text-text-secondary transition-colors">
-                              <span>OMR: {String(s.student_number).padStart(6, "0")}</span>
+                            <div className="flex items-center justify-end pt-3 border-t border-border-default/60 text-[11px] text-text-muted group-hover:text-text-secondary transition-colors">
                               <span className="font-semibold text-steel-light group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
                                 Student Info &rarr;
                               </span>
@@ -1666,7 +1665,6 @@ export default function TeacherSectionsPage() {
                             <thead>
                               <tr className="border-b border-border-default bg-surface-base/80 text-[11px] uppercase font-bold text-text-muted tracking-wider">
                                 <th className="py-3.5 px-4">Student ID</th>
-                                <th className="py-3.5 px-4">OMR Code</th>
                                 <th className="py-3.5 px-4">Student Name</th>
                                 <th className="py-3.5 px-4">Username</th>
                                 <th className="py-3.5 px-4">Status</th>
@@ -1683,13 +1681,6 @@ export default function TeacherSectionsPage() {
                                   {/* Student ID */}
                                   <td className="py-3.5 px-4 font-mono font-bold text-text-primary group-hover:text-steel transition-colors whitespace-nowrap">
                                     02000{String(s.student_number).padStart(6, "0")}
-                                  </td>
-
-                                  {/* OMR Code */}
-                                  <td className="py-3.5 px-4 font-mono whitespace-nowrap">
-                                    <span className="rounded-md bg-surface-subtle px-2 py-0.5 border border-border-default text-[11px] text-text-secondary">
-                                      {String(s.student_number).padStart(6, "0")}
-                                    </span>
                                   </td>
 
                                   {/* Student Name */}
@@ -1803,10 +1794,8 @@ export default function TeacherSectionsPage() {
                                 </div>
                                 <div className="flex items-center gap-2 mt-0.5 text-[11px] text-text-muted">
                                   <span className="font-mono font-semibold text-text-secondary">
-                                    02000{String(s.student_number).padStart(6, "0")}
+                                    ID: 02000{String(s.student_number).padStart(6, "0")}
                                   </span>
-                                  <span>•</span>
-                                  <span>OMR: {String(s.student_number).padStart(6, "0")}</span>
                                 </div>
                               </div>
                             </div>
@@ -2506,7 +2495,7 @@ export default function TeacherSectionsPage() {
                       onClick={() => handleExportDirectoryCsv(false)}
                       disabled={sortedDirectoryStudents.length === 0}
                       className="inline-flex items-center gap-1.5 rounded-xl border border-border-emphasis bg-surface-subtle/60 hover:bg-surface-subtle px-3 py-1.5 text-xs font-bold text-text-secondary hover:text-text-primary transition-colors cursor-pointer disabled:opacity-40"
-                      title="Export visible student directory & OMR codes to CSV"
+                      title="Export visible student directory to CSV"
                     >
                       <Download className="h-3.5 w-3.5 text-tan shrink-0" />
                       <span>Export CSV</span>
@@ -2605,7 +2594,7 @@ export default function TeacherSectionsPage() {
                                         className="inline-flex items-center gap-1 font-mono text-[11px] font-bold text-text-secondary hover:text-steel transition-colors cursor-pointer truncate"
                                         title="Click to copy Student ID"
                                       >
-                                        <span>ID: {fullId} · OMR: {omrCode}</span>
+                                        <span>ID: {fullId}</span>
                                         {copiedStudentId === s.id ? (
                                           <Check className="h-3 w-3 text-sage shrink-0" />
                                         ) : (
@@ -2754,7 +2743,7 @@ export default function TeacherSectionsPage() {
                                       onClick={() => handleSortDirectory("id")}
                                       className="inline-flex items-center gap-1 hover:text-text-primary transition-colors cursor-pointer uppercase"
                                     >
-                                      <span>Student / OMR ID</span>
+                                      <span>Student ID</span>
                                       {directorySort.field === "id" ? (
                                         directorySort.dir === "asc" ? (
                                           <ArrowUp className="h-3 w-3 text-steel" />
@@ -2858,8 +2847,6 @@ export default function TeacherSectionsPage() {
                                           title="Click to copy Student ID"
                                         >
                                           <span className="font-semibold text-text-primary">ID: {fullId}</span>
-                                          <span className="text-text-faint">·</span>
-                                          <span className="text-text-muted">OMR: {omrCode}</span>
                                           {copiedStudentId === s.id ? (
                                             <Check className="h-3 w-3 text-sage shrink-0" />
                                           ) : (
@@ -3034,8 +3021,6 @@ export default function TeacherSectionsPage() {
                                       title="Click to copy Student ID"
                                     >
                                       <span className="font-semibold text-text-secondary">ID: {fullId}</span>
-                                      <span>·</span>
-                                      <span>OMR: {omrCode}</span>
                                       {copiedStudentId === s.id ? (
                                         <Check className="h-3 w-3 text-sage shrink-0" />
                                       ) : (
@@ -3210,7 +3195,7 @@ export default function TeacherSectionsPage() {
                         className="inline-flex items-center gap-1.5 rounded-xl border border-border-default bg-surface-subtle hover:bg-surface-muted px-3 py-1.5 text-xs font-bold text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
                       >
                         <Download className="h-3.5 w-3.5 text-tan" />
-                        <span>Export CSV/OMR</span>
+                        <span>Export CSV</span>
                       </button>
 
                       <button
