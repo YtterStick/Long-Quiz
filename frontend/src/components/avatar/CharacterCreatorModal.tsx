@@ -605,6 +605,8 @@ export function CharacterCreatorModal({
   const [showAllOutfits, setShowAllOutfits] = useState(false);
   const [showAllPresets, setShowAllPresets] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [previewYaw, setPreviewYaw] = useState(0);
+  const [autoSpin, setAutoSpin] = useState(false);
 
   React.useEffect(() => {
     if (isOpen) {
@@ -888,7 +890,15 @@ export function CharacterCreatorModal({
             {/* Live Compact Avatar Preview */}
             <div className="relative shrink-0">
               <div className="p-1 rounded-full bg-surface-raised border border-border-emphasis/70 shadow-md">
-                <StudentAvatar config={{ ...config, gender: selectedGender }} size={64} animate={true} />
+                <StudentAvatar
+                  config={{ ...config, gender: selectedGender }}
+                  size={68}
+                  animate={true}
+                  interactive={true}
+                  yaw={previewYaw}
+                  autoRotate={autoSpin}
+                  onYawChange={setPreviewYaw}
+                />
               </div>
               <div
                 className={`absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full text-white shadow-xs border border-surface-raised ${
@@ -989,7 +999,15 @@ export function CharacterCreatorModal({
                 <div className="absolute -inset-2 rounded-full bg-linear-to-r from-steel/20 via-cream/20 to-sage/20 blur-xl opacity-75 group-hover:opacity-100 transition-opacity" />
 
                 <div className="relative p-2 rounded-full bg-surface-raised border border-border-emphasis/60 shadow-xl">
-                  <StudentAvatar config={{ ...config, gender: selectedGender }} size={165} animate={true} />
+                  <StudentAvatar
+                    config={{ ...config, gender: selectedGender }}
+                    size={175}
+                    animate={true}
+                    interactive={true}
+                    yaw={previewYaw}
+                    autoRotate={autoSpin}
+                    onYawChange={setPreviewYaw}
+                  />
                 </div>
 
                 <div className={`absolute -bottom-2 -right-2 flex h-8 w-8 items-center justify-center rounded-full text-white shadow-md border-2 border-surface-raised ${
@@ -997,6 +1015,51 @@ export function CharacterCreatorModal({
                 }`}>
                   {role === "TEACHER" ? <School className="h-4 w-4" /> : <GraduationCap className="h-4 w-4" />}
                 </div>
+              </div>
+
+              {/* 3D Camera Angle Controls (Front / Side / Back / 360 Spin) */}
+              <div className="mt-1 flex flex-col items-center gap-1">
+                <div className="inline-flex items-center gap-1 rounded-xl bg-surface-raised/90 p-1 border border-border-default shadow-xs">
+                  {[
+                    { label: "Front", yaw: 0 },
+                    { label: "Side", yaw: Math.PI * 0.45 },
+                    { label: "Back", yaw: Math.PI },
+                  ].map((view) => {
+                    const norm = ((previewYaw % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+                    const isActive = !autoSpin && Math.abs(norm - view.yaw) < 0.35;
+                    return (
+                      <button
+                        key={view.label}
+                        type="button"
+                        onClick={() => {
+                          setAutoSpin(false);
+                          setPreviewYaw(view.yaw);
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                          isActive
+                            ? "bg-steel text-white shadow-xs"
+                            : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
+                        }`}
+                      >
+                        {view.label}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => setAutoSpin((v) => !v)}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                      autoSpin
+                        ? "bg-sage text-white shadow-xs"
+                        : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
+                    }`}
+                  >
+                    360° Spin
+                  </button>
+                </div>
+                <span className="text-[10px] text-text-faint">
+                  Drag character to rotate 360° • Full body &amp; shoes
+                </span>
               </div>
 
               {/* User Name & Official School Record */}
