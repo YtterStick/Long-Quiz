@@ -103,7 +103,6 @@ export function DashboardBackdrop({ role }: { role: RoleKey }) {
         <Starburst x={176} y={800} size={22} className="text-tan" pulse="4.6s" />
 
         {/* Scattered constellation dots */}
-        <circle cx="120" cy="80" r="3" fill="currentColor" className="text-tan/80" />
         <circle cx="90" cy="270" r="2.5" fill="currentColor" className="text-steel/70" />
         <circle cx="230" cy="400" r="3" fill="currentColor" className="text-sage/70" />
         <circle cx="60" cy="540" r="2.5" fill="currentColor" className="text-cream" />

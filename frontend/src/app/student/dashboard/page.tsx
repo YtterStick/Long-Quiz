@@ -42,6 +42,7 @@ import {
   LayoutDashboard,
   Sparkles,
   ListOrdered,
+  Copy,
 } from "lucide-react";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
 import {
@@ -203,6 +204,7 @@ export default function StudentDashboard() {
   const [loading, setLoading] = useState(true);
   const [loadingReviewers, setLoadingReviewers] = useState(false);
   const [reviewerSectionMode, setReviewerSectionMode] = useState<"ai_handout" | "public_exams">("ai_handout");
+  const [copiedHeroId, setCopiedHeroId] = useState(false);
 
   // Pagination States
   const [examsPage, setExamsPage] = useState(1);
@@ -1630,64 +1632,91 @@ export default function StudentDashboard() {
         }`}
       >
         {/* WelcomeHero is shown ONLY in the Dashboard overview tab (clean view for exams, grades, reviewers, friends) */}
-        {activeTab === "dashboard" && (
-          <WelcomeHero
-            role="student"
-            showRoleBadge={false}
-            name={user?.first_name ? `${user.first_name} ${user.last_name || ""}`.trim() : "Student"}
-            description={
-              info?.bio || avatarConfig?.bio || "Take live proctored online exams, review graded bubble sheet results, and explore study reviewers."
-            }
-            actions={
-              <button
-                type="button"
-                onClick={() => setClosetModalOpen(true)}
-                className="group inline-flex items-center gap-2 rounded-2xl bg-sage hover:bg-sage-light text-white px-4 py-2.5 text-xs font-black shadow-lg shadow-sage/25 hover:shadow-sage/35 transition-all active:scale-95 cursor-pointer"
-              >
-                <Shirt className="h-4 w-4" />
-                Open Wardrobe Studio
-              </button>
-            }
-            aside={
-              info && info.average_percentage !== undefined ? (
-                <div className="flex items-center gap-3 rounded-2xl bg-surface-base/80 border border-border-default p-3.5 shadow-sm shrink-0">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-sage-ghost text-sage border border-sage-border shadow-inner">
-                    <Award className="h-5 w-5" />
+        {activeTab === "dashboard" && (() => {
+          const heroSectionName = info?.section_name || info?.enrolled_courses?.[0]?.section_name || null;
+          const heroStudentId =
+            info?.full_student_id ||
+            (info?.student_number ? `02000${String(info.student_number).padStart(6, "0")}` : null);
+
+          return (
+            <WelcomeHero
+              role="student"
+              showRoleBadge={false}
+              compact={true}
+              name={user?.first_name ? `${user.first_name} ${user.last_name || ""}`.trim() : "Student"}
+              description={
+                info?.bio || avatarConfig?.bio || "Take live proctored online exams, review graded bubble sheet results, and explore study reviewers."
+              }
+              badges={
+                (heroSectionName || heroStudentId) ? (
+                  <>
+                    {heroSectionName && (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-sage-ghost border border-sage-border px-2.5 py-0.5 text-[11px] font-bold text-sage">
+                        Section: {heroSectionName}
+                      </span>
+                    )}
+                    {heroStudentId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (typeof navigator !== "undefined" && navigator.clipboard) {
+                            navigator.clipboard.writeText(heroStudentId);
+                          }
+                          setCopiedHeroId(true);
+                          setTimeout(() => setCopiedHeroId(false), 1500);
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-steel-ghost border border-steel-border px-2.5 py-0.5 text-[11px] font-mono font-bold text-steel hover:bg-steel/20 transition-colors cursor-pointer"
+                        title="Click to copy Student ID"
+                      >
+                        <span>ID: {heroStudentId}</span>
+                        {copiedHeroId ? (
+                          <Check className="h-3 w-3 text-sage" />
+                        ) : (
+                          <Copy className="h-3 w-3 opacity-75" />
+                        )}
+                      </button>
+                    )}
+                  </>
+                ) : undefined
+              }
+              actions={
+                <button
+                  type="button"
+                  onClick={() => setClosetModalOpen(true)}
+                  className="group inline-flex items-center gap-2 rounded-2xl bg-sage hover:bg-sage-light text-white px-4 py-2 text-xs font-black shadow-lg shadow-sage/25 hover:shadow-sage/35 transition-all active:scale-95 cursor-pointer"
+                >
+                  <Shirt className="h-4 w-4" />
+                  Open Wardrobe Studio
+                </button>
+              }
+              customIllustration={
+                <button
+                  type="button"
+                  onClick={() => setClosetModalOpen(true)}
+                  className="group relative cursor-pointer flex flex-col items-center focus:outline-none"
+                  title="Click to customize your student character in the Closet Studio!"
+                >
+                  <div className="relative p-1.5 rounded-full bg-surface-raised border border-border-emphasis/70 shadow-lg group-hover:shadow-xl group-hover:border-sage transition-all duration-300 group-hover:scale-105">
+                    <div className="hidden sm:block">
+                      <StudentAvatar config={avatarConfig} size={120} animate={true} />
+                    </div>
+                    <div className="sm:hidden">
+                      <StudentAvatar config={avatarConfig} size={76} animate={true} />
+                    </div>
+                    <div className="absolute -bottom-1 -right-1 flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-full bg-sage text-white shadow-md border-2 border-surface-raised group-hover:scale-110 transition-transform">
+                      <Shirt className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                    </div>
                   </div>
-                  <div className="text-left">
-                    <span className="block text-[10px] font-bold uppercase tracking-wider text-text-muted">Overall Average</span>
-                    <span className="text-lg font-black text-sage font-mono">{info.average_percentage}%</span>
-                  </div>
-                </div>
-              ) : null
-            }
-            customIllustration={
-              <button
-                type="button"
-                onClick={() => setClosetModalOpen(true)}
-                className="group relative cursor-pointer flex flex-col items-center focus:outline-none"
-                title="Click to customize your student character in the Closet Studio!"
-              >
-                <div className="relative p-1.5 rounded-full bg-surface-raised border border-border-emphasis/70 shadow-lg group-hover:shadow-xl group-hover:border-sage transition-all duration-300 group-hover:scale-105">
-                  <div className="hidden sm:block">
-                    <StudentAvatar config={avatarConfig} size={135} animate={true} />
-                  </div>
-                  <div className="sm:hidden">
-                    <StudentAvatar config={avatarConfig} size={82} animate={true} />
-                  </div>
-                  <div className="absolute -bottom-1 -right-1 flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-full bg-sage text-white shadow-md border-2 border-surface-raised group-hover:scale-110 transition-transform">
-                    <Shirt className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-                  </div>
-                </div>
-                <span className="mt-1.5 text-[10px] font-bold text-text-muted group-hover:text-sage transition-colors flex items-center gap-1">
-                  <Shirt className="h-2.5 w-2.5" />
-                  <span className="hidden sm:inline">Customize Character</span>
-                  <span className="sm:hidden">Wardrobe</span>
-                </span>
-              </button>
-            }
-          />
-        )}
+                  <span className="mt-1.5 text-[10px] font-bold text-text-muted group-hover:text-sage transition-colors flex items-center gap-1">
+                    <Shirt className="h-2.5 w-2.5" />
+                    <span className="hidden sm:inline">Customize Character</span>
+                    <span className="sm:hidden">Wardrobe</span>
+                  </span>
+                </button>
+              }
+            />
+          );
+        })()}
 
         {/* TAB: Dashboard Overview */}
         {activeTab === "dashboard" && (
@@ -1772,89 +1801,108 @@ export default function StudentDashboard() {
             </div>
 
             {/* Section 1: Available Exams Quick Overview */}
-            <div className="rounded-[28px] border border-border-default bg-surface-raised p-5 sm:p-7 shadow-xs space-y-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className="text-base sm:text-lg font-bold text-text-primary flex items-center gap-2">
-                    <PenTool className="h-4.5 w-4.5 text-sage" />
-                    Available Online Exams
-                  </h2>
-                  <p className="text-xs text-text-muted mt-0.5">
-                    Live exams ready for your section. Take them on desktop with instant automatic grading.
-                  </p>
+            {!loading && availableExams.length === 0 ? (
+              <div className="rounded-2xl border border-border-default bg-surface-raised px-4 py-3 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-sage-ghost text-sage border border-sage-border">
+                    <PenTool className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-text-primary">
+                      No Online Exams Currently Open
+                    </p>
+                    <p className="text-[11px] text-text-muted truncate">
+                      Questionnaires opened by your instructors for your section will appear here immediately.
+                    </p>
+                  </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => handleTabSelect("available")}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold text-sage hover:text-sage-light transition shrink-0 cursor-pointer"
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-sage hover:text-sage-light transition shrink-0 self-end sm:self-auto cursor-pointer"
                 >
-                  <span>View All ({availableExams.length})</span>
+                  <span>View All (0)</span>
                   <ArrowRight className="h-3.5 w-3.5" />
                 </button>
               </div>
-
-              {loading ? (
-                <SkeletonStudentExamGrid count={2} />
-              ) : availableExams.length === 0 ? (
-                <div className="py-8 text-center border-2 border-dashed border-border-default rounded-2xl p-4 space-y-1">
-                  <p className="text-xs font-semibold text-text-secondary">No Online Exams Currently Open</p>
-                  <p className="text-[11px] text-text-muted">
-                    When your instructors open questionnaires for your section, they will immediately appear here.
-                  </p>
+            ) : (
+              <div className="rounded-[28px] border border-border-default bg-surface-raised p-5 sm:p-6 shadow-xs space-y-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-base sm:text-lg font-bold text-text-primary flex items-center gap-2">
+                      <PenTool className="h-4.5 w-4.5 text-sage" />
+                      Available Online Exams
+                    </h2>
+                    <p className="text-xs text-text-muted mt-0.5">
+                      Live exams ready for your section. Take them on desktop with instant automatic grading.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleTabSelect("available")}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-sage hover:text-sage-light transition shrink-0 cursor-pointer"
+                  >
+                    <span>View All ({availableExams.length})</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </button>
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {availableExams.slice(0, 2).map((exam) => (
-                    <div
-                      key={exam.id}
-                      className="rounded-2xl border border-border-default bg-surface-base p-4 sm:p-5 flex flex-col justify-between space-y-3.5 shadow-xs"
-                    >
-                      <div>
-                        <div className="flex items-center justify-end gap-2 mb-2">
-                          <span className="text-[11px] font-mono font-bold text-text-muted">
-                            {exam.total_questions} Questions
-                          </span>
+
+                {loading ? (
+                  <SkeletonStudentExamGrid count={2} />
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {availableExams.slice(0, 2).map((exam) => (
+                      <div
+                        key={exam.id}
+                        className="rounded-2xl border border-border-default bg-surface-base p-4 sm:p-5 flex flex-col justify-between space-y-3.5 shadow-xs"
+                      >
+                        <div>
+                          <div className="flex items-center justify-end gap-2 mb-2">
+                            <span className="text-[11px] font-mono font-bold text-text-muted">
+                              {exam.total_questions} Questions
+                            </span>
+                          </div>
+                          <h3 className="text-sm sm:text-base font-bold text-text-primary leading-snug">
+                            {exam.title}
+                          </h3>
+                          <p className="text-xs text-text-muted mt-1">
+                            Teacher: <span className="font-semibold text-text-secondary">{exam.teacher_name || "Instructor"}</span>
+                          </p>
                         </div>
-                        <h3 className="text-sm sm:text-base font-bold text-text-primary leading-snug">
-                          {exam.title}
-                        </h3>
-                        <p className="text-xs text-text-muted mt-1">
-                          Teacher: <span className="font-semibold text-text-secondary">{exam.teacher_name || "Instructor"}</span>
-                        </p>
-                      </div>
 
-                      <div className="pt-3 border-t border-border-subtle flex items-center justify-between gap-3">
-                        <span className="text-[11px] text-text-muted font-mono">
-                          {exam.has_submitted ? "✓ Completed" : "Open for your section"}
-                        </span>
-                        {exam.has_submitted ? (
-                          <button
-                            type="button"
-                            onClick={() => handleTabSelect("grades")}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sage-ghost border border-sage-border text-sage text-xs font-bold transition hover:bg-sage hover:text-white cursor-pointer"
-                          >
-                            <Award className="h-3.5 w-3.5" />
-                            <span>View Score</span>
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleOpenTakeExam(exam.id)}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl gradient-bg-primary text-text-primary text-xs font-bold shadow-xs hover:opacity-95 transition cursor-pointer"
-                          >
-                            <Play className="h-3.5 w-3.5 fill-current" />
-                            <span>Take Exam</span>
-                          </button>
-                        )}
+                        <div className="pt-3 border-t border-border-subtle flex items-center justify-between gap-3">
+                          <span className="text-[11px] text-text-muted font-mono">
+                            {exam.has_submitted ? "✓ Completed" : "Open for your section"}
+                          </span>
+                          {exam.has_submitted ? (
+                            <button
+                              type="button"
+                              onClick={() => handleTabSelect("grades")}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sage-ghost border border-sage-border text-sage text-xs font-bold transition hover:bg-sage hover:text-white cursor-pointer"
+                            >
+                              <Award className="h-3.5 w-3.5" />
+                              <span>View Score</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenTakeExam(exam.id)}
+                              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl gradient-bg-primary text-text-primary text-xs font-bold shadow-xs hover:opacity-95 transition cursor-pointer"
+                            >
+                              <Play className="h-3.5 w-3.5 fill-current" />
+                              <span>Take Exam</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Section 2: Recent Graded Exam Results */}
-            <div className="rounded-[28px] border border-border-default bg-surface-raised p-5 sm:p-7 shadow-xs space-y-4">
+            <div className="rounded-[28px] border border-border-default bg-surface-raised p-5 sm:p-6 shadow-xs space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-base sm:text-lg font-bold text-text-primary flex items-center gap-2">
@@ -1888,7 +1936,9 @@ export default function StudentDashboard() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {grades.slice(0, 2).map((grade, gIdx) => {
                     const pct = grade.percentage ?? (grade.max_score > 0 ? (grade.total_score / grade.max_score) * 100 : 0);
+                    const roundedPct = Math.round(pct);
                     const isPassed = pct >= 75;
+                    const isZeroOrPending = grade.total_score === 0 || roundedPct === 0;
 
                     return (
                       <div
@@ -1897,34 +1947,39 @@ export default function StudentDashboard() {
                       >
                         <div>
                           <div className="flex items-center justify-between gap-2 mb-2">
-                            <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold border ${
-                              isPassed
-                                ? "bg-sage-ghost text-sage border-sage-border"
-                                : "bg-burgundy-ghost text-burgundy-light border-burgundy-border"
-                            }`}>
-                              {isPassed ? "PASSED" : "NEEDS IMPROVEMENT"}
+                            {isPassed ? (
+                              <span className="rounded-full px-2.5 py-0.5 text-[10px] font-bold border bg-sage-ghost text-sage border-sage-border">
+                                PASSED
+                              </span>
+                            ) : isZeroOrPending ? (
+                              <span className="rounded-full px-2.5 py-0.5 text-[10px] font-bold border bg-surface-subtle text-text-secondary border-border-default">
+                                No Score / Pending
+                              </span>
+                            ) : (
+                              <span className="rounded-full px-2.5 py-0.5 text-[10px] font-bold border bg-burgundy-ghost text-burgundy-light border-burgundy-border">
+                                Needs Improvement
+                              </span>
+                            )}
+                            <span className="inline-flex items-center gap-1.5 font-mono text-xs font-bold text-text-primary">
+                              <AntiTamperScore
+                                score={grade.total_score}
+                                maxScore={grade.max_score}
+                                variant="inline"
+                                studentId={user?.id || info?.full_student_id}
+                                examId={grade.exam_id}
+                              />
+                              <span className="text-text-faint">·</span>
+                              <span className={isPassed ? "text-sage" : isZeroOrPending ? "text-text-muted" : "text-burgundy-light"}>
+                                {roundedPct}%
+                              </span>
                             </span>
-                            <AntiTamperScore
-                              score={grade.total_score}
-                              maxScore={grade.max_score}
-                              variant="inline"
-                              studentId={user?.id || info?.full_student_id}
-                              examId={grade.exam_id}
-                            />
                           </div>
                           <h3 className="text-sm sm:text-base font-bold text-text-primary leading-snug">
                             {grade.exam_title}
                           </h3>
                         </div>
 
-                        <div className="pt-3 border-t border-border-subtle flex items-center justify-between gap-3">
-                          <AntiTamperScore
-                            score={`${Math.round(pct)}%`}
-                            variant="badge"
-                            color={isPassed ? "sage" : "default"}
-                            studentId={user?.id || info?.full_student_id}
-                            examId={grade.exam_id}
-                          />
+                        <div className="pt-3 border-t border-border-subtle flex items-center justify-end gap-2 flex-wrap">
                           <button
                             type="button"
                             onClick={() => handleTabSelect("grades")}
@@ -1933,20 +1988,22 @@ export default function StudentDashboard() {
                             <Eye className="h-3.5 w-3.5 text-steel" />
                             <span>View Breakdown</span>
                           </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              router.push(
+                                `/student/reviewer${grade.exam_title ? `?topic=${encodeURIComponent(grade.exam_title)}` : ""}`
+                              )
+                            }
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-steel-border bg-steel-ghost text-xs font-bold text-steel hover:bg-steel hover:text-white transition cursor-pointer"
+                          >
+                            <Sparkles className="h-3.5 w-3.5" />
+                            <span>Practice Missed Items</span>
+                          </button>
                         </div>
                       </div>
                     );
                   })}
-                  <Pagination
-                    currentPage={reviewersPage}
-                    totalPages={Math.ceil(publicReviewers.length / reviewersPageSize)}
-                    totalItems={publicReviewers.length}
-                    pageSize={reviewersPageSize}
-                    onPageChange={setReviewersPage}
-                    onPageSizeChange={setReviewersPageSize}
-                    pageSizeOptions={[6, 12]}
-                    itemLabel="public reviewers"
-                  />
                 </div>
               )}
             </div>

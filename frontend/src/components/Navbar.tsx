@@ -218,13 +218,13 @@ export function Navbar({ onOpenPasswordModal, onOpenCloset }: NavbarProps) {
                     <Link
                       key={item.href}
                       href={item.href}
-                      className={`relative flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 select-none ${
+                      className={`relative flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all duration-200 select-none ${
                         isActive
                           ? "bg-surface-overlay text-text-primary dark:bg-white/10 dark:text-white shadow-xs ring-1 ring-border-default/80 dark:ring-white/15 font-extrabold"
                           : "text-text-muted hover:text-text-primary hover:bg-surface-base/60"
                       }`}
                     >
-                      <Icon className={`h-3.5 w-3.5 transition-colors ${isActive ? "text-steel" : "text-text-muted"}`} />
+                      <Icon className={`h-3.5 w-3.5 shrink-0 transition-colors ${isActive ? "text-steel" : "text-text-muted"}`} />
                       <span>{item.label}</span>
                       {isActive && (
                         <span className="w-1.5 h-1.5 rounded-full bg-steel animate-pulse shrink-0" />
@@ -261,13 +261,13 @@ export function Navbar({ onOpenPasswordModal, onOpenCloset }: NavbarProps) {
                           window.history.pushState({}, "", url);
                         }
                       }}
-                      className={`relative flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 select-none cursor-pointer ${
+                      className={`relative flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all duration-200 select-none cursor-pointer ${
                         isActive
                           ? "bg-surface-overlay text-text-primary dark:bg-white/10 dark:text-white shadow-xs ring-1 ring-border-default/80 dark:ring-white/15 font-extrabold"
                           : "text-text-muted hover:text-text-primary hover:bg-surface-base/60"
                       }`}
                     >
-                      <Icon className={`h-3.5 w-3.5 transition-colors ${isActive ? "text-sage" : "text-text-muted"}`} />
+                      <Icon className={`h-3.5 w-3.5 shrink-0 transition-colors ${isActive ? "text-sage" : "text-text-muted"}`} />
                       <span>{item.label}</span>
                       {isActive && (
                         <span className="w-1.5 h-1.5 rounded-full bg-sage animate-pulse shrink-0" />
