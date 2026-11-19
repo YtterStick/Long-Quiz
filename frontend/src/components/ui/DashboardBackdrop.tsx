@@ -56,9 +56,6 @@ export function DashboardBackdrop({ role }: { role: RoleKey }) {
         <Starburst x={34} y={100} size={40} className={t.star} pulse="4s" />
         <Starburst x={190} y={120} size={18} className="text-cream" pulse="5.2s" />
 
-        {/* Cross sparkle */}
-        <Cross x={182} y={300} size={18} className="text-steel" />
-
         {/* Floating mini note card */}
         <g transform="translate(28, 360)">
           <rect

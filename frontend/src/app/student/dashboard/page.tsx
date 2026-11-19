@@ -205,6 +205,7 @@ export default function StudentDashboard() {
   const [loadingReviewers, setLoadingReviewers] = useState(false);
   const [reviewerSectionMode, setReviewerSectionMode] = useState<"ai_handout" | "public_exams">("ai_handout");
   const [copiedHeroId, setCopiedHeroId] = useState(false);
+  const [friendCount, setFriendCount] = useState<number>(0);
 
   // Pagination States
   const [examsPage, setExamsPage] = useState(1);
@@ -415,11 +416,16 @@ export default function StudentDashboard() {
       setInfo(infoData);
       setAvailableExams(availableData);
 
-      // Background fetch of past exam grades so dashboard renders instantly for waiting students
+      // Background fetch of past exam grades & friend count so dashboard renders instantly
       studentApi.getGrades().then((gradesData) => {
         setGrades(gradesData);
       }).catch((err) => {
         console.warn("Background grades fetch error:", err);
+      });
+      studentApi.getFriends().then((friendsData) => {
+        setFriendCount(friendsData.friends?.length ?? 0);
+      }).catch(() => {
+        // Ignore if offline
       });
 
       // Handle avatar loading
@@ -1719,7 +1725,24 @@ export default function StudentDashboard() {
         })()}
 
         {/* TAB: Dashboard Overview */}
-        {activeTab === "dashboard" && (
+        {activeTab === "dashboard" && (() => {
+          const validGradedExams = grades.filter(
+            (g) => g.total_score > 0 || Boolean(g.scanned_image_url)
+          );
+          const averageScoreDisplay =
+            validGradedExams.length > 0
+              ? `${Math.round(
+                  validGradedExams.reduce(
+                    (sum, g) =>
+                      sum + (g.percentage ?? (g.max_score > 0 ? (g.total_score / g.max_score) * 100 : 0)),
+                    0
+                  ) / validGradedExams.length
+                )}%`
+              : info?.average_percentage != null && info.average_percentage > 0
+              ? `${info.average_percentage}%`
+              : "—";
+
+          return (
           <div className="space-y-6">
             {/* 4 Summary Stat Cards */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
@@ -1729,14 +1752,14 @@ export default function StudentDashboard() {
               >
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted">Available Exams</span>
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sage-ghost text-sage group-hover:scale-105 transition-transform">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sage-ghost text-sage group-hover:scale-105 transition-transform">
                     <PenTool className="h-4.5 w-4.5" />
                   </div>
                 </div>
-                <div className="mt-3 flex items-baseline justify-between">
+                <div className="mt-3 flex items-baseline justify-between gap-2">
                   <span className="text-2xl sm:text-3xl font-black text-text-primary font-mono">{availableExams.length}</span>
-                  <span className="text-[11px] font-bold text-sage flex items-center gap-0.5">
-                    Take now <ArrowRight className="h-3 w-3" />
+                  <span className="text-[11px] font-bold text-sage inline-flex items-center gap-0.5 whitespace-nowrap shrink-0">
+                    Take now <ArrowRight className="h-3 w-3 shrink-0" />
                   </span>
                 </div>
               </div>
@@ -1747,18 +1770,18 @@ export default function StudentDashboard() {
               >
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted">Average Score</span>
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-steel-ghost text-steel group-hover:scale-105 transition-transform">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-steel-ghost text-steel group-hover:scale-105 transition-transform">
                     <Award className="h-4.5 w-4.5" />
                   </div>
                 </div>
-                <div className="mt-3 flex items-baseline justify-between">
+                <div className="mt-3 flex items-baseline justify-between gap-2">
                   <AntiTamperScore
-                    score={info?.average_percentage !== undefined ? `${info.average_percentage}%` : "—"}
+                    score={averageScoreDisplay}
                     variant="card"
                     color="steel"
                   />
-                  <span className="text-[11px] font-bold text-steel flex items-center gap-0.5">
-                    View grades <ArrowRight className="h-3 w-3" />
+                  <span className="text-[11px] font-bold text-steel inline-flex items-center gap-0.5 whitespace-nowrap shrink-0">
+                    Grades <ArrowRight className="h-3 w-3 shrink-0" />
                   </span>
                 </div>
               </div>
@@ -1769,14 +1792,14 @@ export default function StudentDashboard() {
               >
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted">Graded Exams</span>
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cream-ghost text-cream group-hover:scale-105 transition-transform">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cream-ghost text-cream group-hover:scale-105 transition-transform">
                     <CheckCircle2 className="h-4.5 w-4.5" />
                   </div>
                 </div>
-                <div className="mt-3 flex items-baseline justify-between">
+                <div className="mt-3 flex items-baseline justify-between gap-2">
                   <span className="text-2xl sm:text-3xl font-black text-text-primary font-mono">{grades.length}</span>
-                  <span className="text-[11px] font-bold text-cream flex items-center gap-0.5">
-                    History <ArrowRight className="h-3 w-3" />
+                  <span className="text-[11px] font-bold text-cream inline-flex items-center gap-0.5 whitespace-nowrap shrink-0">
+                    History <ArrowRight className="h-3 w-3 shrink-0" />
                   </span>
                 </div>
               </div>
@@ -1787,14 +1810,14 @@ export default function StudentDashboard() {
               >
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-text-muted">Study Circle</span>
-                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-tan-ghost text-tan group-hover:scale-105 transition-transform">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-tan-ghost text-tan group-hover:scale-105 transition-transform">
                     <Users className="h-4.5 w-4.5" />
                   </div>
                 </div>
-                <div className="mt-3 flex items-baseline justify-between">
-                  <span className="text-2xl sm:text-3xl font-black text-text-primary font-mono">Friends</span>
-                  <span className="text-[11px] font-bold text-tan flex items-center gap-0.5">
-                    Circle <ArrowRight className="h-3 w-3" />
+                <div className="mt-3 flex items-baseline justify-between gap-2">
+                  <span className="text-2xl sm:text-3xl font-black text-text-primary font-mono">{friendCount}</span>
+                  <span className="text-[11px] font-bold text-tan inline-flex items-center gap-0.5 whitespace-nowrap shrink-0">
+                    Circle <ArrowRight className="h-3 w-3 shrink-0" />
                   </span>
                 </div>
               </div>
@@ -1916,10 +1939,10 @@ export default function StudentDashboard() {
                 <button
                   type="button"
                   onClick={() => handleTabSelect("grades")}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold text-steel hover:text-steel-light transition shrink-0 cursor-pointer"
+                  className="inline-flex items-center gap-1 text-xs font-bold text-steel hover:text-steel-light transition shrink-0 cursor-pointer whitespace-nowrap"
                 >
-                  <span>View All ({grades.length})</span>
-                  <ArrowRight className="h-3.5 w-3.5" />
+                  <span className="tabular-nums">{`View All (${grades.length})`}</span>
+                  <ArrowRight className="h-3.5 w-3.5 shrink-0" />
                 </button>
               </div>
 
@@ -1960,7 +1983,7 @@ export default function StudentDashboard() {
                                 Needs Improvement
                               </span>
                             )}
-                            <span className="inline-flex items-center gap-1.5 font-mono text-xs font-bold text-text-primary">
+                            <div className="inline-flex items-center gap-1 font-mono text-xs font-bold text-text-primary shrink-0">
                               <AntiTamperScore
                                 score={grade.total_score}
                                 maxScore={grade.max_score}
@@ -1972,7 +1995,7 @@ export default function StudentDashboard() {
                               <span className={isPassed ? "text-sage" : isZeroOrPending ? "text-text-muted" : "text-burgundy-light"}>
                                 {roundedPct}%
                               </span>
-                            </span>
+                            </div>
                           </div>
                           <h3 className="text-sm sm:text-base font-bold text-text-primary leading-snug">
                             {grade.exam_title}
@@ -2075,7 +2098,8 @@ export default function StudentDashboard() {
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
 
         {/* TAB 0: Available Online Exams */}
         {activeTab === "available" && (

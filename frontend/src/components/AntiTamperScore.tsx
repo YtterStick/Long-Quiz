@@ -82,33 +82,49 @@ export const AntiTamperScore: React.FC<AntiTamperScoreProps> = ({
     // Detect device pixel ratio for crystal clear Retina rendering
     const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
 
-    // Determine dimensions based on variant
-    let logicalWidth = 120;
+    // Determine height and font sizes based on variant, then size width dynamically to fit text tightly
     let logicalHeight = 36;
     let fontSize = 22;
     let maxFontSize = 13;
 
     if (variant === "hero") {
-      logicalWidth = 240;
       logicalHeight = 64;
       fontSize = 42;
       maxFontSize = 18;
     } else if (variant === "card") {
-      logicalWidth = 140;
       logicalHeight = 40;
       fontSize = 24;
       maxFontSize = 14;
     } else if (variant === "inline") {
-      logicalWidth = 90;
-      logicalHeight = 26;
-      fontSize = 15;
+      logicalHeight = 24;
+      fontSize = 14;
       maxFontSize = 11;
     } else if (variant === "badge") {
-      logicalWidth = 110;
       logicalHeight = 28;
       fontSize = 16;
       maxFontSize = 12;
     }
+
+    const scoreStr = String(score ?? "—");
+    const hasMax = maxScore !== undefined && maxScore !== null;
+    const maxStr = hasMax ? ` / ${maxScore}` : "";
+    const showPct = percentage !== undefined && percentage !== null && variant !== "inline";
+    const pctStr = showPct ? ` (${Math.round(Number(percentage))}%)` : "";
+
+    ctx.font = `900 ${fontSize}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace`;
+    const scoreWidth = ctx.measureText(scoreStr).width;
+    let totalWidth = 2 + scoreWidth + 2;
+
+    if (hasMax) {
+      ctx.font = `700 ${maxFontSize}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace`;
+      totalWidth += 2 + ctx.measureText(maxStr).width;
+    }
+    if (showPct) {
+      ctx.font = `700 ${Math.max(10, maxFontSize - 1)}px ui-sans-serif, system-ui, sans-serif`;
+      totalWidth += 4 + ctx.measureText(pctStr).width;
+    }
+
+    const logicalWidth = Math.max(20, Math.ceil(totalWidth) + 2);
 
     canvas.width = Math.round(logicalWidth * dpr);
     canvas.height = Math.round(logicalHeight * dpr);
@@ -145,12 +161,7 @@ export const AntiTamperScore: React.FC<AntiTamperScoreProps> = ({
       }
     }
 
-    // 2. Format the score string
-    const scoreStr = String(score ?? "—");
-    const hasMax = maxScore !== undefined && maxScore !== null;
-    const maxStr = hasMax ? ` / ${maxScore}` : "";
-
-    // 3. Draw primary score
+    // 2. Draw primary score
     ctx.textBaseline = "middle";
     ctx.font = `900 ${fontSize}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace`;
     ctx.fillStyle = scoreColor;
@@ -158,24 +169,21 @@ export const AntiTamperScore: React.FC<AntiTamperScoreProps> = ({
     const yPos = logicalHeight / 2;
     ctx.fillText(scoreStr, 2, yPos);
 
-    const scoreMetrics = ctx.measureText(scoreStr);
-    let nextX = scoreMetrics.width + 4;
+    let nextX = 2 + scoreWidth + 2;
 
-    // 4. Draw separator and max score if present
+    // 3. Draw separator and max score if present
     if (hasMax) {
       ctx.font = `700 ${maxFontSize}px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace`;
       ctx.fillStyle = secondaryColor;
-      ctx.fillText(maxStr, nextX, yPos + (variant === "hero" ? 4 : 2));
-      const maxMetrics = ctx.measureText(maxStr);
-      nextX += maxMetrics.width + 4;
+      ctx.fillText(maxStr, nextX, yPos + (variant === "hero" ? 4 : 1));
+      nextX += ctx.measureText(maxStr).width + 4;
     }
 
-    // 5. Draw percentage if present
-    if (percentage !== undefined && percentage !== null && variant !== "inline") {
-      const pctStr = ` (${Math.round(Number(percentage))}%)`;
+    // 4. Draw percentage if present
+    if (showPct) {
       ctx.font = `700 ${Math.max(10, maxFontSize - 1)}px ui-sans-serif, system-ui, sans-serif`;
       ctx.fillStyle = scoreColor;
-      ctx.fillText(pctStr, nextX, yPos + (variant === "hero" ? 4 : 2));
+      ctx.fillText(pctStr, nextX, yPos + (variant === "hero" ? 4 : 1));
     }
 
     ctx.restore();

@@ -173,6 +173,11 @@ async def get_student_dashboard(
     )
     submissions = result.scalars().all()
 
+    graded_subs = [
+        s for s in submissions
+        if (s.total_score or 0) > 0 or bool(s.scanned_image_url)
+    ]
+
     return {
         "student_number": student.student_number,
         "full_student_id": format_full_student_id(student.student_number),
@@ -187,8 +192,8 @@ async def get_student_dashboard(
         "bio": student.bio,
         "is_profile_setup": student.is_profile_setup,
         "average_percentage": round(
-            sum(s.total_score / s.max_score * 100 for s in submissions) / len(submissions), 1
-        ) if submissions else 0,
+            sum(s.total_score / s.max_score * 100 for s in graded_subs if s.max_score) / len(graded_subs), 1
+        ) if graded_subs else None,
     }
 
 
