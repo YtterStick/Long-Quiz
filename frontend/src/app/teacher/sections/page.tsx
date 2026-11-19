@@ -424,7 +424,10 @@ export default function TeacherSectionsPage() {
           }
 
           if (restore.sectionId) {
-            const matchedSec = sectionsData.find((s) => s.id === restore.sectionId);
+            const target = restore.sectionId.toLowerCase();
+            const matchedSec = sectionsData.find(
+              (s) => s.id === restore.sectionId || s.name.toLowerCase() === target
+            );
             if (matchedSec) {
               setSelectedSection(matchedSec);
               setStudentsLoading(true);

@@ -250,12 +250,51 @@ async def list_sections(
             if sec_id in sec_members:
                 sec_members[sec_id].add(st_id)
 
+    sec_avg_pct: dict[str, Optional[float]] = {sid: None for sid in sec_ids}
+    sec_last_exam: dict[str, Optional[str]] = {sid: None for sid in sec_ids}
+    if sec_ids:
+        all_member_ids = {st_id for members in sec_members.values() for st_id in members}
+        if all_member_ids:
+            sub_res = await db.execute(
+                select(
+                    ExamSubmission.student_id,
+                    ExamSubmission.total_score,
+                    ExamSubmission.max_score,
+                ).where(
+                    ExamSubmission.student_id.in_(all_member_ids),
+                    ExamSubmission.max_score > 0,
+                )
+            )
+            stu_pcts: dict[str, list[float]] = {}
+            for st_id, score, max_score in sub_res.all():
+                if max_score and max_score > 0:
+                    stu_pcts.setdefault(st_id, []).append((score / max_score) * 100.0)
+
+            for sid, members in sec_members.items():
+                pcts: list[float] = []
+                for st_id in members:
+                    pcts.extend(stu_pcts.get(st_id, ()))
+                if pcts:
+                    sec_avg_pct[sid] = round(sum(pcts) / len(pcts), 1)
+
+        se_res = await db.execute(
+            select(SectionExam.section_id, Exam.title)
+            .join(Exam, SectionExam.exam_id == Exam.id)
+            .where(SectionExam.section_id.in_(sec_ids))
+            .order_by(SectionExam.created_at.desc())
+        )
+        for sid, ex_title in se_res.all():
+            if sec_last_exam.get(sid) is None:
+                sec_last_exam[sid] = ex_title
+
     out = []
     for s in sections:
         out.append(SectionOut(
             id=s.id, name=s.name, subject=s.subject,
             teacher_id=s.teacher_id, created_at=s.created_at,
             student_count=len(sec_members.get(s.id, set())),
+            average_score_pct=sec_avg_pct.get(s.id),
+            last_exam_title=sec_last_exam.get(s.id),
         ))
     return out
 

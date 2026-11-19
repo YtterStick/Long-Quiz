@@ -24,6 +24,8 @@ import {
   ExternalLink,
   ChevronRight,
   Quote,
+  Download,
+  Loader2,
 } from "lucide-react";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
 import {
@@ -46,6 +48,8 @@ interface SectionSummary {
   name: string;
   subject: string;
   student_count: number;
+  average_score_pct?: number | null;
+  last_exam_title?: string | null;
 }
 
 interface ExamSummary {
@@ -99,6 +103,38 @@ export default function TeacherDashboard() {
   const [closetModalOpen, setClosetModalOpen] = useState(false);
   const [teacherAvatar, setTeacherAvatar] = useState<StudentAvatarConfig>(DEFAULT_TEACHER_AVATAR_CONFIG);
   const [teacherBio, setTeacherBio] = useState<string>("");
+  const [exportingExamId, setExportingExamId] = useState<string | null>(null);
+
+  const handleExportExamCsv = async (exam: ExamSummary) => {
+    setExportingExamId(exam.id);
+    try {
+      const subs = await teacherApi.listSubmissions(exam.id);
+      const esc = (val: string) => `"${String(val).replace(/"/g, '""')}"`;
+      const header = ["Student ID", "Student Name", "Score", "Max Score", "Percentage", "Submitted At"].join(",");
+      const lines = subs.map((s) => {
+        const omr = s.student ? String(s.student.student_number).padStart(6, "0") : "";
+        const fullId = omr ? `02000${omr}` : s.student_id;
+        const name = s.student?.user
+          ? toTitleCaseName(`${s.student.user.first_name} ${s.student.user.last_name}`)
+          : "Student";
+        const pct = s.max_score ? `${Math.round((s.total_score / s.max_score) * 100)}%` : "0%";
+        const dt = s.scanned_at ? new Date(s.scanned_at).toLocaleString() : "";
+        return [esc(fullId), esc(name), s.total_score, s.max_score, esc(pct), esc(dt)].join(",");
+      });
+      const blob = new Blob([[header, ...lines].join("\n")], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const slug = exam.title.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+      a.download = `${slug || "exam"}_grades.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Failed to export exam CSV:", err);
+    } finally {
+      setExportingExamId(null);
+    }
+  };
 
   useEffect(() => {
     if (!authLoading && (!user || user.role !== "TEACHER")) {
@@ -165,7 +201,7 @@ export default function TeacherDashboard() {
         onOpenCloset={() => setClosetModalOpen(true)}
       />
 
-      <main className="mx-auto max-w-7xl px-3 sm:px-6 py-4 sm:py-6 pb-24 sm:pb-10 space-y-5 sm:space-y-6">
+      <main className="mx-auto max-w-7xl px-3 sm:px-6 py-3.5 sm:py-4.5 pb-24 sm:pb-10 space-y-4 sm:space-y-5">
         {/* Modern Faculty Hero */}
         <WelcomeHero
           role="teacher"
@@ -179,10 +215,10 @@ export default function TeacherDashboard() {
             "Manage class rosters, build questionnaires, launch live proctored lobbies, and grade bubble sheets."
           }
           actions={
-            <div className="flex items-center gap-2.5 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
               <Link
                 href="/teacher/exams"
-                className="inline-flex items-center gap-1.5 rounded-xl bg-steel px-4 py-2 text-xs font-bold text-white shadow-sm hover:bg-steel-light transition-all active:scale-95"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-steel px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-steel-light transition-all active:scale-95"
               >
                 <Plus className="h-3.5 w-3.5 shrink-0" />
                 <span>Create Exam</span>
@@ -191,7 +227,7 @@ export default function TeacherDashboard() {
               <button
                 type="button"
                 onClick={() => setClosetModalOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-surface-subtle/60 border border-border-default hover:border-border-emphasis px-3.5 py-2 text-xs font-bold text-text-secondary hover:text-text-primary hover:bg-surface-subtle transition-all active:scale-95 cursor-pointer"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-surface-subtle/60 border border-border-default hover:border-border-emphasis px-3 py-1.5 text-xs font-bold text-text-secondary hover:text-text-primary hover:bg-surface-subtle transition-all active:scale-95 cursor-pointer"
                 title="Customize Faculty Character & Wardrobe"
               >
                 <Shirt className="h-3.5 w-3.5 shrink-0 text-sage" />
@@ -208,16 +244,16 @@ export default function TeacherDashboard() {
             >
               <div className="relative p-1 rounded-full bg-surface-raised border border-border-emphasis/70 shadow-lg group-hover:shadow-xl group-hover:border-steel transition-all duration-300 group-hover:scale-105">
                 <div className="hidden sm:block">
-                  <StudentAvatar config={teacherAvatar} size={102} animate={true} />
+                  <StudentAvatar config={teacherAvatar} size={86} animate={true} />
                 </div>
                 <div className="sm:hidden">
-                  <StudentAvatar config={teacherAvatar} size={64} animate={true} />
+                  <StudentAvatar config={teacherAvatar} size={56} animate={true} />
                 </div>
-                <div className="absolute -bottom-1 -right-1 flex h-6 w-6 sm:h-7 sm:w-7 items-center justify-center rounded-full bg-steel text-white shadow-md border-2 border-surface-raised group-hover:scale-110 transition-transform">
-                  <Shirt className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-steel text-white shadow-md border-2 border-surface-raised group-hover:scale-110 transition-transform">
+                  <Shirt className="h-3 w-3" />
                 </div>
               </div>
-              <span className="hidden sm:flex mt-1.5 text-[10px] font-bold text-text-muted group-hover:text-steel transition-colors items-center gap-1">
+              <span className="hidden sm:flex mt-1 text-[10px] font-bold text-text-muted group-hover:text-steel transition-colors items-center gap-1">
                 <Shirt className="h-2.5 w-2.5" />
                 Edit Look
               </span>
@@ -227,8 +263,8 @@ export default function TeacherDashboard() {
 
         {/* ── Key Metrics Overview ──────────────────────────────────── */}
         <section aria-labelledby="metrics-title">
-          <div className="flex items-center justify-between mb-3 px-1">
-            <h2 id="metrics-title" className="text-xs font-bold text-text-muted uppercase tracking-wider">
+          <div className="flex items-center justify-between mb-2 px-1">
+            <h2 id="metrics-title" className="text-[11px] font-bold text-text-muted uppercase tracking-wider">
               Faculty Overview
             </h2>
             <span className="text-[11px] text-text-faint font-mono">Academic Year 2026</span>
@@ -237,13 +273,14 @@ export default function TeacherDashboard() {
           {loading ? (
             <SkeletonStatCards count={4} />
           ) : (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <StatCard
                 title="My Sections"
                 value={stats.total_sections}
                 subtitle="Active class sections"
                 icon={School}
                 color="tan"
+                compact={true}
               />
               <StatCard
                 title="Enrolled Students"
@@ -251,6 +288,7 @@ export default function TeacherDashboard() {
                 subtitle="Total student roster"
                 icon={GraduationCap}
                 color="steel"
+                compact={true}
               />
               <StatCard
                 title="Created Exams"
@@ -258,6 +296,7 @@ export default function TeacherDashboard() {
                 subtitle="Questionnaires & keys"
                 icon={FileSpreadsheet}
                 color="sage"
+                compact={true}
               />
               <StatCard
                 title="Graded Submissions"
@@ -265,6 +304,7 @@ export default function TeacherDashboard() {
                 subtitle="Bubble sheets scored"
                 icon={ScanLine}
                 color="cream"
+                compact={true}
               />
             </div>
           )}
@@ -407,45 +447,55 @@ export default function TeacherDashboard() {
               </Link>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              {sections.slice(0, 4).map((section, idx) => {
-                const accent = SECTION_ACCENTS[idx % SECTION_ACCENTS.length];
-                return (
-                  <div
-                    key={section.id}
-                    className={`glass-card rounded-2xl p-4 border border-border-default ${accent.borderLeft} ${accent.hover} flex flex-col justify-between space-y-3 transition-all shadow-xs`}
-                  >
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <span
-                          className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider truncate max-w-[75%] ${accent.pill}`}
-                          title={formatCourseLabel(section.subject)}
-                        >
-                          {formatCourseLabel(section.subject)}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              {[...sections]
+                .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+                .map((section, idx) => {
+                  const accent = SECTION_ACCENTS[idx % SECTION_ACCENTS.length];
+                  return (
+                    <Link
+                      key={section.id}
+                      href={`/teacher/sections?section=${encodeURIComponent(section.name)}`}
+                      className={`glass-card glass-card-hover rounded-2xl p-3.5 border border-border-default ${accent.borderLeft} ${accent.hover} flex flex-col justify-between space-y-2.5 transition-all shadow-xs group`}
+                    >
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span
+                            className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider truncate max-w-[74%] ${accent.pill}`}
+                            title={formatCourseLabel(section.subject)}
+                          >
+                            {formatCourseLabel(section.subject)}
+                          </span>
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-text-muted shrink-0">
+                            <Users className="h-3 w-3 shrink-0" />
+                            {section.student_count}
+                          </span>
+                        </div>
+                        <h3 className="text-sm font-bold text-text-primary truncate group-hover:text-steel transition-colors">
+                          {section.name}
+                        </h3>
+                      </div>
+
+                      <div className="pt-2 border-t border-border-subtle flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-medium text-text-muted truncate">
+                          {section.average_score_pct !== null && section.average_score_pct !== undefined ? (
+                            <>
+                              Avg: <strong className="text-text-primary">{Math.round(section.average_score_pct)}%</strong>
+                            </>
+                          ) : section.last_exam_title ? (
+                            section.last_exam_title
+                          ) : (
+                            "No graded exams"
+                          )}
                         </span>
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-text-muted shrink-0">
-                          <Users className="h-3 w-3 shrink-0" />
-                          {section.student_count}
+                        <span className="inline-flex items-center gap-0.5 text-[11px] font-bold text-steel group-hover:translate-x-0.5 transition-transform shrink-0">
+                          <span>Roster</span>
+                          <ChevronRight className="h-3 w-3 shrink-0" />
                         </span>
                       </div>
-                      <h3 className="text-sm font-bold text-text-primary truncate">{section.name}</h3>
-                    </div>
-
-                    <div className="pt-2 border-t border-border-subtle flex items-center justify-between">
-                      <span className="text-[11px] text-text-muted font-medium">
-                        {section.student_count} {section.student_count === 1 ? "Student" : "Students"}
-                      </span>
-                      <Link
-                        href="/teacher/sections"
-                        className="inline-flex items-center gap-1 rounded-lg border border-border-default bg-surface-subtle/50 hover:bg-surface-subtle px-2.5 py-1 text-[11px] font-bold text-text-secondary hover:text-text-primary transition-colors"
-                      >
-                        <span>Roster</span>
-                        <ChevronRight className="h-3 w-3 shrink-0" />
-                      </Link>
-                    </div>
-                  </div>
-                );
-              })}
+                    </Link>
+                  );
+                })}
             </div>
           )}
         </section>
@@ -516,6 +566,8 @@ export default function TeacherDashboard() {
                   exam.assigned_student_count && exam.assigned_student_count > 0
                     ? exam.assigned_student_count
                     : stats.total_students;
+                const remainingCount = targetCount > 0 ? Math.max(0, targetCount - gradedCount) : 0;
+                const hasRemaining = targetCount > 0 && remainingCount > 0;
                 const progressPct =
                   targetCount > 0 ? Math.min(100, Math.round((gradedCount / targetCount) * 100)) : 0;
 
@@ -543,15 +595,24 @@ export default function TeacherDashboard() {
                       </div>
                       <h3 className="text-sm font-bold text-text-primary line-clamp-1">{exam.title}</h3>
 
-                      {/* Compact Grading Progress Bar */}
-                      <div className="space-y-1 pt-0.5">
-                        <div className="flex items-center justify-between text-[11px] font-mono">
-                          <span className="text-text-muted font-sans font-medium">Grading progress</span>
-                          <span className="font-bold text-text-secondary">
+                      {/* Compact Grading Progress Bar + Remaining Status Pill */}
+                      <div className="space-y-1.5 pt-0.5">
+                        <div className="flex items-center justify-between gap-2 text-[11px]">
+                          <span className="font-mono font-semibold text-text-secondary">
                             {targetCount > 0
-                              ? `${gradedCount} / ${targetCount} graded`
-                              : `${gradedCount} graded`}
+                              ? `${gradedCount} / ${targetCount} submissions graded`
+                              : `${gradedCount} submissions graded`}
                           </span>
+                          {targetCount > 0 &&
+                            (hasRemaining ? (
+                              <span className="inline-flex items-center rounded-full bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-[10px] font-bold text-amber-300 shrink-0">
+                                {remainingCount} left
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center rounded-full bg-sage-ghost border border-sage-border px-2 py-0.5 text-[10px] font-bold text-sage shrink-0">
+                                All graded
+                              </span>
+                            ))}
                         </div>
                         <div className="h-1.5 w-full rounded-full bg-surface-muted overflow-hidden">
                           <div
@@ -567,18 +628,39 @@ export default function TeacherDashboard() {
                     <div className="pt-2.5 border-t border-border-subtle flex items-center justify-between gap-2">
                       <Link
                         href="/teacher/scan"
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-border-default bg-surface-subtle/50 hover:bg-surface-subtle px-2.5 py-1 text-[11px] font-bold text-text-secondary hover:text-text-primary transition-colors"
+                        className={
+                          hasRemaining
+                            ? "inline-flex items-center gap-1.5 rounded-lg bg-steel hover:bg-steel-light px-3 py-1.5 text-[11px] font-bold text-white shadow-xs transition-all active:scale-95"
+                            : "inline-flex items-center gap-1.5 rounded-lg border border-border-default bg-surface-subtle/50 hover:bg-surface-subtle px-2.5 py-1.5 text-[11px] font-bold text-text-secondary hover:text-text-primary transition-colors"
+                        }
                       >
-                        <ScanLine className="h-3 w-3 shrink-0 text-sage" />
+                        <ScanLine className={`h-3 w-3 shrink-0 ${hasRemaining ? "text-white" : "text-sage"}`} />
                         <span>Grade Sheets</span>
                       </Link>
-                      <Link
-                        href="/teacher/exams"
-                        className="inline-flex items-center gap-1 rounded-lg bg-steel hover:bg-steel-light px-3 py-1 text-[11px] font-bold text-white shadow-xs transition-all active:scale-95"
-                      >
-                        <span>Manage</span>
-                        <ChevronRight className="h-3 w-3 shrink-0" />
-                      </Link>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleExportExamCsv(exam)}
+                          disabled={exportingExamId === exam.id}
+                          className="inline-flex items-center justify-center rounded-lg border border-border-default bg-surface-subtle/50 hover:bg-surface-subtle p-1.5 text-text-muted hover:text-text-primary transition-colors cursor-pointer disabled:opacity-50"
+                          title="Export CSV"
+                          aria-label="Export CSV"
+                        >
+                          {exportingExamId === exam.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin text-tan" />
+                          ) : (
+                            <Download className="h-3.5 w-3.5 text-tan" />
+                          )}
+                        </button>
+                        <Link
+                          href="/teacher/exams"
+                          className="inline-flex items-center gap-1 rounded-lg border border-border-default bg-surface-subtle/50 hover:bg-surface-subtle px-2.5 py-1.5 text-[11px] font-bold text-text-secondary hover:text-text-primary transition-colors"
+                        >
+                          <span>Manage</span>
+                          <ChevronRight className="h-3 w-3 shrink-0" />
+                        </Link>
+                      </div>
                     </div>
                   </div>
                 );

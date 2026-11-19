@@ -404,6 +404,8 @@ export const teacher = {
     teacher_id: string;
     created_at: string;
     student_count: number;
+    average_score_pct?: number | null;
+    last_exam_title?: string | null;
   }>>("/api/teacher/sections"),
 
   createSection: (data: { name: string; subject: string }) =>

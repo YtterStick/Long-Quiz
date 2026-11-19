@@ -125,8 +125,8 @@ export function WelcomeHero({
       <div className={`pointer-events-none absolute -right-20 -top-24 h-72 w-72 rounded-full blur-3xl ${t.heroGlowA}`} />
       <div className={`pointer-events-none absolute -left-16 -bottom-28 h-64 w-64 rounded-full blur-3xl ${t.heroGlowB}`} />
 
-      <div className={`relative z-10 ${compact ? "p-4 sm:px-7 sm:py-5" : "p-5 sm:p-8"}`}>
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-5">
+      <div className={`relative z-10 ${compact ? "p-3.5 sm:px-6 sm:py-4" : "p-5 sm:p-8"}`}>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3.5 sm:gap-5">
           {/* Header row on mobile: avatar + text side-by-side */}
           <div className="flex items-start gap-4 flex-1 min-w-0">
             {customIllustration && (
@@ -148,7 +148,9 @@ export function WelcomeHero({
 
               <h1
                 id="welcome-hero-title"
-                className="flex flex-wrap items-center gap-x-2 text-xl sm:text-3xl lg:text-4xl font-black tracking-tight text-text-primary"
+                className={`flex flex-wrap items-center gap-x-2 font-black tracking-tight text-text-primary ${
+                  compact ? "text-xl sm:text-2xl lg:text-3xl" : "text-xl sm:text-3xl lg:text-4xl"
+                }`}
               >
                 Welcome back,
                 {loading || !name ? (

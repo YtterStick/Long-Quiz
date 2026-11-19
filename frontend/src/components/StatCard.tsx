@@ -9,9 +9,10 @@ interface StatCardProps {
   subtitle?: string;
   icon: LucideIcon;
   color?: "tan" | "steel" | "sage" | "cream" | "burgundy";
+  compact?: boolean;
 }
 
-export function StatCard({ title, value, subtitle, icon: Icon, color = "steel" }: StatCardProps) {
+export function StatCard({ title, value, subtitle, icon: Icon, color = "steel", compact = false }: StatCardProps) {
   const colorMap = {
     tan: {
       bg: "bg-tan-ghost",
@@ -54,19 +55,31 @@ export function StatCard({ title, value, subtitle, icon: Icon, color = "steel" }
 
   return (
     <div
-      className={`relative overflow-hidden glass-card glass-card-hover flex items-center justify-between rounded-3xl p-5.5 border border-border-default transition-all duration-300 ${style.glow}`}
+      className={`relative overflow-hidden glass-card glass-card-hover flex items-center justify-between border border-border-default transition-all duration-300 ${style.glow} ${
+        compact ? "rounded-2xl p-3.5 sm:p-4" : "rounded-3xl p-5.5"
+      }`}
     >
       {/* Subtle decorative corner accent */}
       <div className={`pointer-events-none absolute -right-6 -bottom-6 h-20 w-20 rounded-full ${style.bg} blur-xl opacity-60`} />
 
-      <div className="relative z-10">
-        <p className="text-[11px] font-bold text-text-muted uppercase tracking-wider">{title}</p>
-        <h3 className="mt-1.5 text-2xl sm:text-3xl font-black tracking-tight text-text-primary">{value}</h3>
-        {subtitle && <p className="mt-1 text-xs text-text-muted font-medium">{subtitle}</p>}
+      <div className="relative z-10 min-w-0">
+        <p className="text-[11px] font-bold text-text-muted uppercase tracking-wider truncate">{title}</p>
+        <h3 className={`font-black tracking-tight text-text-primary ${compact ? "mt-0.5 text-xl sm:text-2xl" : "mt-1.5 text-2xl sm:text-3xl"}`}>
+          {value}
+        </h3>
+        {subtitle && (
+          <p className={`text-text-muted font-medium truncate ${compact ? "mt-0.5 text-[11px]" : "mt-1 text-xs"}`}>
+            {subtitle}
+          </p>
+        )}
       </div>
 
-      <div className={`relative z-10 flex h-13 w-13 shrink-0 items-center justify-center rounded-2xl border shadow-sm transition-transform duration-300 group-hover:scale-110 ${style.bg} ${style.text} ${style.border}`}>
-        <Icon className="h-6 w-6" />
+      <div
+        className={`relative z-10 flex shrink-0 items-center justify-center border shadow-sm transition-transform duration-300 group-hover:scale-110 ${style.bg} ${style.text} ${style.border} ${
+          compact ? "h-10 w-10 rounded-xl" : "h-13 w-13 rounded-2xl"
+        }`}
+      >
+        <Icon className={compact ? "h-5 w-5" : "h-6 w-6"} />
       </div>
     </div>
   );

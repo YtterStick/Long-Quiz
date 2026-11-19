@@ -93,6 +93,8 @@ class SectionOut(BaseModel):
     teacher_id: str
     created_at: datetime
     student_count: Optional[int] = 0
+    average_score_pct: Optional[float] = None
+    last_exam_title: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

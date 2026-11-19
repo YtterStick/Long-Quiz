@@ -138,14 +138,6 @@ export function DashboardBackdrop({ role }: { role: RoleKey }) {
         <Starburst x={176} y={88} size={44} className={t.star} pulse="4.2s" />
         <Starburst x={50} y={110} size={16} className="text-tan" pulse="5.5s" />
 
-        {/* "A+" grade pill */}
-        <g transform="translate(96, 268)">
-          <rect width="70" height="28" rx="14" className="fill-sage-ghost stroke-sage/50" strokeWidth="1.25" />
-          <text x="35" y="18.5" textAnchor="middle" className="fill-sage font-mono text-[12px] font-bold">
-            ✓ A+
-          </text>
-        </g>
-
         <Cross x={40} y={370} size={20} className={t.star} />
 
         {/* Floating bubble-sheet card */}
