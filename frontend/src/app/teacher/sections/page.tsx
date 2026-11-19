@@ -42,6 +42,11 @@ import {
   Table as TableIcon,
   List,
   Clock,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Download,
+  ChevronDown,
 } from "lucide-react";
 import Link from "next/link";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
@@ -55,6 +60,15 @@ import { CustomSelect } from "@/components/ui/CustomSelect";
 import { LiveExamMonitorModal } from "@/components/LiveExamMonitorModal";
 import { StudentAvatar } from "@/components/avatar/StudentAvatar";
 import { parseAvatarConfig } from "@/types/avatar";
+import { toTitleCaseName, formatCourseLabel } from "@/lib/format";
+
+const SECTION_BADGE_COLORS = [
+  "bg-steel-ghost text-steel border-steel-border hover:bg-steel/20",
+  "bg-sage-ghost text-sage border-sage-border hover:bg-sage/20",
+  "bg-tan-ghost text-tan border-tan-border hover:bg-tan/20",
+  "bg-cream-ghost text-cream border-cream-border hover:bg-cream/20",
+  "bg-burgundy-ghost text-burgundy-light border-burgundy-border hover:bg-burgundy/20",
+] as const;
 
 interface SectionItem {
   id: string;
@@ -158,14 +172,14 @@ export default function TeacherSectionsPage() {
   const [rosterPage, setRosterPage] = useState(1);
   const [rosterPageSize, setRosterPageSize] = useState(9);
   const [dirPage, setDirPage] = useState(1);
-  const [dirPageSize, setDirPageSize] = useState(9);
+  const [dirPageSize, setDirPageSize] = useState(12);
   const [secExamsPage, setSecExamsPage] = useState(1);
   const [secExamsPageSize, setSecExamsPageSize] = useState(6);
 
-  // View modes: "grid" (Cards, "like this") | "table" | "list"
+  // View modes: "grid" (Cards) | "table" | "list"
   const [rosterViewMode, setRosterViewMode] = useState<"grid" | "table" | "list">("grid");
   const [rosterSearch, setRosterSearch] = useState("");
-  const [directoryViewMode, setDirectoryViewMode] = useState<"grid" | "table" | "list">("grid");
+  const [directoryViewMode, setDirectoryViewMode] = useState<"grid" | "table" | "list">("table");
 
   // Persistence ref to restore exact user position across browser refreshes
   const navHydratedRef = useRef(false);
@@ -266,6 +280,24 @@ export default function TeacherSectionsPage() {
   const [directoryLoading, setDirectoryLoading] = useState(true);
   const [directorySearch, setDirectorySearch] = useState("");
   const [directoryFilter, setDirectoryFilter] = useState<"all" | "unassigned">("all");
+  const [directorySectionFilter, setDirectorySectionFilter] = useState<string>("all");
+  const [directorySort, setDirectorySort] = useState<{
+    field: "name" | "id" | "section" | "status";
+    dir: "asc" | "desc";
+  }>({ field: "name", dir: "asc" });
+  const [selectedDirIds, setSelectedDirIds] = useState<Set<string>>(new Set());
+  const [bulkTargetSectionId, setBulkTargetSectionId] = useState<string>("");
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [copiedStudentId, setCopiedStudentId] = useState<string | null>(null);
+  const [sectionPopoverStudentId, setSectionPopoverStudentId] = useState<string | null>(null);
+  const [popoverUpdatingKey, setPopoverUpdatingKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!sectionPopoverStudentId) return;
+    const closePopover = () => setSectionPopoverStudentId(null);
+    document.addEventListener("click", closePopover);
+    return () => document.removeEventListener("click", closePopover);
+  }, [sectionPopoverStudentId]);
 
   // Student Info Detail Modal (Clicking any student in directory or roster)
   const [selectedStudentDetail, setSelectedStudentDetail] = useState<StudentItem | null>(null);
@@ -964,29 +996,193 @@ export default function TeacherSectionsPage() {
     }
   };
 
+  const sortedSections = useMemo(
+    () => [...sections].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true })),
+    [sections]
+  );
+
+  const getSectionBadgeClass = (sectionId?: string | null) => {
+    if (!sectionId) return SECTION_BADGE_COLORS[0];
+    const idx = sortedSections.findIndex((sec) => sec.id === sectionId);
+    return SECTION_BADGE_COLORS[(idx >= 0 ? idx : 0) % SECTION_BADGE_COLORS.length];
+  };
+
   // Filter students for Student Directory tab
-  const filteredDirectoryStudents = allStudents.filter((s) => {
-    const enrolledCount = s.enrolled_sections?.length ?? (s.section ? 1 : 0);
-    if (directoryFilter === "unassigned" && enrolledCount > 0) return false;
-    if (!directorySearch.trim()) return true;
-    const term = directorySearch.toLowerCase().trim();
-    const fullName = `${s.user.first_name} ${s.user.last_name}`.toLowerCase();
-    const idStr = `02000${String(s.student_number).padStart(6, "0")}`;
-    const rawId = String(s.student_number);
-    const userStr = s.user.username.toLowerCase();
-    return (
-      fullName.includes(term) ||
-      idStr.includes(term) ||
-      rawId.includes(term) ||
-      userStr.includes(term)
+  const filteredDirectoryStudents = useMemo(() => {
+    return allStudents.filter((s) => {
+      const enrolledCount = s.enrolled_sections?.length ?? (s.section ? 1 : 0);
+      if (directoryFilter === "unassigned" && enrolledCount > 0) return false;
+      if (directorySectionFilter !== "all") {
+        const inTargetSection =
+          s.enrolled_sections?.some((sec) => sec.id === directorySectionFilter) ||
+          s.section_id === directorySectionFilter;
+        if (!inTargetSection) return false;
+      }
+      if (!directorySearch.trim()) return true;
+      const term = directorySearch.toLowerCase().trim();
+      const fullName = `${s.user.first_name} ${s.user.last_name}`.toLowerCase();
+      const idStr = `02000${String(s.student_number).padStart(6, "0")}`;
+      const rawId = String(s.student_number);
+      const userStr = s.user.username.toLowerCase();
+      return (
+        fullName.includes(term) ||
+        idStr.includes(term) ||
+        rawId.includes(term) ||
+        userStr.includes(term)
+      );
+    });
+  }, [allStudents, directoryFilter, directorySectionFilter, directorySearch]);
+
+  const sortedDirectoryStudents = useMemo(() => {
+    const list = [...filteredDirectoryStudents];
+    const mult = directorySort.dir === "asc" ? 1 : -1;
+    list.sort((a, b) => {
+      if (directorySort.field === "id") {
+        return (a.student_number - b.student_number) * mult;
+      }
+      if (directorySort.field === "section") {
+        const secA = a.enrolled_sections?.[0]?.name || a.section?.name || "\uffff";
+        const secB = b.enrolled_sections?.[0]?.name || b.section?.name || "\uffff";
+        return secA.localeCompare(secB, undefined, { numeric: true }) * mult;
+      }
+      if (directorySort.field === "status") {
+        const stA = a.has_pending_reset_request ? 0 : 1;
+        const stB = b.has_pending_reset_request ? 0 : 1;
+        return (stA - stB) * mult;
+      }
+      const nameA = `${a.user.first_name} ${a.user.last_name}`.toLowerCase();
+      const nameB = `${b.user.first_name} ${b.user.last_name}`.toLowerCase();
+      return nameA.localeCompare(nameB) * mult;
+    });
+    return list;
+  }, [filteredDirectoryStudents, directorySort]);
+
+  const handleSortDirectory = (field: "name" | "id" | "section" | "status") => {
+    setDirectorySort((prev) =>
+      prev.field === field
+        ? { field, dir: prev.dir === "asc" ? "desc" : "asc" }
+        : { field, dir: "asc" }
     );
-  });
+  };
+
+  const handleCopyStudentId = (e: React.MouseEvent, studentId: string, fullId: string) => {
+    e.stopPropagation();
+    if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(fullId);
+    }
+    setCopiedStudentId(studentId);
+    setTimeout(() => {
+      setCopiedStudentId((curr) => (curr === studentId ? null : curr));
+    }, 1500);
+  };
+
+  const handleToggleSelectStudent = (e: React.MouseEvent | React.ChangeEvent, studentId: string) => {
+    e.stopPropagation();
+    setSelectedDirIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(studentId)) next.delete(studentId);
+      else next.add(studentId);
+      return next;
+    });
+  };
+
+  const handleQuickSectionToggle = async (
+    e: React.MouseEvent,
+    student: StudentItem,
+    sectionId: string,
+    isEnrolled: boolean
+  ) => {
+    e.stopPropagation();
+    const key = `${student.id}:${sectionId}`;
+    setPopoverUpdatingKey(key);
+    try {
+      if (isEnrolled) {
+        await teacherApi.unenrollStudent(sectionId, student.id);
+      } else {
+        await teacherApi.enrollStudent(sectionId, student.id);
+      }
+      await Promise.all([loadAllStudents(), loadSections()]);
+      setSectionPopoverStudentId(null);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to update section assignment");
+    } finally {
+      setPopoverUpdatingKey(null);
+    }
+  };
+
+  const handleBulkAssignSection = async () => {
+    if (!bulkTargetSectionId || selectedDirIds.size === 0) return;
+    setBulkProcessing(true);
+    try {
+      await Promise.allSettled(
+        Array.from(selectedDirIds).map((stuId) =>
+          teacherApi.enrollStudent(bulkTargetSectionId, stuId)
+        )
+      );
+      await Promise.all([loadAllStudents(), loadSections()]);
+      setSelectedDirIds(new Set());
+      setBulkTargetSectionId("");
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
+  const handleBulkRemoveFromRoster = async () => {
+    if (selectedDirIds.size === 0) return;
+    setBulkProcessing(true);
+    try {
+      const targetStudents = allStudents.filter((s) => selectedDirIds.has(s.id));
+      const tasks: Array<Promise<unknown>> = [];
+      for (const s of targetStudents) {
+        if (directorySectionFilter !== "all") {
+          tasks.push(teacherApi.unenrollStudent(directorySectionFilter, s.id));
+        } else {
+          const secIds = new Set<string>(
+            s.enrolled_sections?.map((sec) => sec.id) || (s.section_id ? [s.section_id] : [])
+          );
+          for (const secId of secIds) {
+            tasks.push(teacherApi.unenrollStudent(secId, s.id));
+          }
+        }
+      }
+      await Promise.allSettled(tasks);
+      await Promise.all([loadAllStudents(), loadSections()]);
+      setSelectedDirIds(new Set());
+    } finally {
+      setBulkProcessing(false);
+    }
+  };
+
+  const handleExportDirectoryCsv = (onlySelected = false) => {
+    const rowsSource = onlySelected
+      ? sortedDirectoryStudents.filter((s) => selectedDirIds.has(s.id))
+      : sortedDirectoryStudents;
+    if (rowsSource.length === 0) return;
+    const esc = (val: string) => `"${String(val).replace(/"/g, '""')}"`;
+    const header = ["Student ID", "OMR Code", "Full Name", "Username", "Sections", "Status"].join(",");
+    const lines = rowsSource.map((s) => {
+      const omr = String(s.student_number).padStart(6, "0");
+      const fullId = `02000${omr}`;
+      const name = toTitleCaseName(`${s.user.first_name} ${s.user.last_name}`);
+      const secs = (s.enrolled_sections || []).map((sec) => sec.name).join(" | ") || "Unassigned";
+      const status = s.has_pending_reset_request ? "Reset Requested" : "Active";
+      return [esc(fullId), esc(omr), esc(name), esc(s.user.username), esc(secs), esc(status)].join(",");
+    });
+    const csvContent = [header, ...lines].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = onlySelected ? "selected_students_omr.csv" : "student_directory_omr.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   // Reset pagination when search / active section changes (after initial hydration)
   useEffect(() => {
     if (!navHydratedRef.current) return;
     setDirPage(1);
-  }, [directorySearch, directoryFilter, dirPageSize]);
+  }, [directorySearch, directoryFilter, directorySectionFilter, dirPageSize]);
 
   // Filter students in current section roster
   const filteredRosterStudents = useMemo(() => {
@@ -1028,8 +1224,24 @@ export default function TeacherSectionsPage() {
 
   const paginatedDirectoryStudents = useMemo(() => {
     const start = (dirPage - 1) * dirPageSize;
-    return filteredDirectoryStudents.slice(start, start + dirPageSize);
-  }, [filteredDirectoryStudents, dirPage, dirPageSize]);
+    return sortedDirectoryStudents.slice(start, start + dirPageSize);
+  }, [sortedDirectoryStudents, dirPage, dirPageSize]);
+
+  const allVisibleSelected =
+    paginatedDirectoryStudents.length > 0 &&
+    paginatedDirectoryStudents.every((s) => selectedDirIds.has(s.id));
+
+  const handleToggleSelectAllVisible = () => {
+    setSelectedDirIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        paginatedDirectoryStudents.forEach((s) => next.delete(s.id));
+      } else {
+        paginatedDirectoryStudents.forEach((s) => next.add(s.id));
+      }
+      return next;
+    });
+  };
 
   const paginatedSectionExams = useMemo(() => {
     const start = (secExamsPage - 1) * secExamsPageSize;
@@ -2105,8 +2317,8 @@ export default function TeacherSectionsPage() {
                       >
                         <div>
                           <div className="flex items-center justify-between mb-3">
-                            <span className="rounded-full bg-tan-ghost px-2.5 py-0.5 text-xs font-semibold text-tan border border-tan-border">
-                              {sec.subject}
+                            <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold border ${getSectionBadgeClass(sec.id)}`}>
+                              {formatCourseLabel(sec.subject)}
                             </span>
                             <div className="flex items-center gap-1">
                               <button
@@ -2181,53 +2393,77 @@ export default function TeacherSectionsPage() {
               </div>
             )}
 
-            {/* Tab 2: Student Directory (Card-based interactive grid, Table, List) */}
+            {/* Tab 2: Student Directory (Table default, Card Grid, Compact List) */}
             {activeTab === "directory" && (
-              <div className="space-y-6">
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                  <div className="flex flex-wrap items-center gap-3">
+              <div className="space-y-4">
+                {/* Single Clean Horizontal Control Bar */}
+                <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
                     {/* Search Input */}
-                    <div className="relative min-w-64">
-                      <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" />
+                    <div className="relative w-full sm:w-56">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-text-muted" />
                       <input
                         type="text"
                         value={directorySearch}
                         onChange={(e) => setDirectorySearch(e.target.value)}
-                        placeholder="Search student ID, name, or username..."
-                        className="w-full rounded-xl border border-border-emphasis bg-surface-base pl-9 pr-3.5 py-2 text-xs text-text-primary focus:border-steel focus:outline-none"
+                        placeholder="Search ID, name, or @user..."
+                        className="w-full rounded-xl border border-border-emphasis bg-surface-base pl-8 pr-3 py-1.5 text-xs text-text-primary focus:border-steel focus:outline-none"
                       />
                     </div>
 
                     {/* Filter Pills */}
                     <div className="inline-flex rounded-xl bg-surface-subtle p-0.5 border border-border-emphasis">
                       <button
+                        type="button"
                         onClick={() => setDirectoryFilter("all")}
-                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+                        className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
                           directoryFilter === "all"
-                            ? "bg-steel text-white"
+                            ? "bg-steel text-white shadow-xs"
                             : "text-text-muted hover:text-text-primary"
                         }`}
                       >
                         All {directoryLoading ? "..." : `(${allStudents.length})`}
                       </button>
                       <button
+                        type="button"
                         onClick={() => setDirectoryFilter("unassigned")}
-                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all cursor-pointer ${
+                        className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all cursor-pointer whitespace-nowrap ${
                           directoryFilter === "unassigned"
-                            ? "bg-steel text-white"
+                            ? "bg-steel text-white shadow-xs"
                             : "text-text-muted hover:text-text-primary"
                         }`}
                       >
-                        Not in Roster {directoryLoading ? "..." : `(${allStudents.filter((s) => !s.section_id).length})`}
+                        Not in Roster{" "}
+                        {directoryLoading
+                          ? "..."
+                          : `(${allStudents.filter((s) => (s.enrolled_sections?.length ?? (s.section ? 1 : 0)) === 0).length})`}
                       </button>
                     </div>
 
+                    {/* Section Filter Dropdown */}
+                    <select
+                      aria-label="Filter by Section"
+                      value={directorySectionFilter}
+                      onChange={(e) => setDirectorySectionFilter(e.target.value)}
+                      className="rounded-xl border border-border-emphasis bg-surface-base px-3 py-1.5 text-xs font-semibold text-text-primary focus:border-steel focus:outline-none cursor-pointer"
+                    >
+                      <option value="all">All Sections</option>
+                      {sortedSections.map((sec) => (
+                        <option key={sec.id} value={sec.id}>
+                          {sec.name} ({sec.student_count})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Right Group: View Switcher + Export CSV + Register Student */}
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
                     {/* View Switcher: Cards | Table | List */}
-                    <div className="inline-flex rounded-xl bg-surface-base p-1 border border-border-default shadow-xs">
+                    <div className="inline-flex rounded-xl bg-surface-base p-0.5 border border-border-default shadow-xs">
                       <button
                         type="button"
                         onClick={() => handleDirectoryViewModeChange("grid")}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                           directoryViewMode === "grid"
                             ? "bg-steel text-white shadow-xs"
                             : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
@@ -2240,7 +2476,7 @@ export default function TeacherSectionsPage() {
                       <button
                         type="button"
                         onClick={() => handleDirectoryViewModeChange("table")}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                           directoryViewMode === "table"
                             ? "bg-steel text-white shadow-xs"
                             : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
@@ -2253,7 +2489,7 @@ export default function TeacherSectionsPage() {
                       <button
                         type="button"
                         onClick={() => handleDirectoryViewModeChange("list")}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                           directoryViewMode === "list"
                             ? "bg-steel text-white shadow-xs"
                             : "text-text-muted hover:text-text-primary hover:bg-surface-subtle"
@@ -2264,34 +2500,46 @@ export default function TeacherSectionsPage() {
                         <span>List</span>
                       </button>
                     </div>
-                  </div>
 
-                  <button
-                    onClick={() => {
-                      setNewStudentCredentials(null);
-                      setStudentTargetSection("");
-                      setIsAddStudentOpen(true);
-                    }}
-                    className="flex items-center justify-center gap-1.5 rounded-xl gradient-bg-primary px-4 py-2 text-xs font-semibold text-text-primary shadow-lg shadow-steel/20 hover:opacity-95 transition-all cursor-pointer"
-                  >
-                    <UserPlus className="h-4 w-4" />
-                    Register Student
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => handleExportDirectoryCsv(false)}
+                      disabled={sortedDirectoryStudents.length === 0}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-border-emphasis bg-surface-subtle/60 hover:bg-surface-subtle px-3 py-1.5 text-xs font-bold text-text-secondary hover:text-text-primary transition-colors cursor-pointer disabled:opacity-40"
+                      title="Export visible student directory & OMR codes to CSV"
+                    >
+                      <Download className="h-3.5 w-3.5 text-tan shrink-0" />
+                      <span>Export CSV</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewStudentCredentials(null);
+                        setStudentTargetSection("");
+                        setIsAddStudentOpen(true);
+                      }}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-steel hover:bg-steel-light px-3.5 py-1.5 text-xs font-bold text-white shadow-sm transition-all active:scale-95 cursor-pointer"
+                    >
+                      <UserPlus className="h-3.5 w-3.5 shrink-0" />
+                      <span>Register Student</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Directory Content */}
                 <div>
                   {directoryLoading ? (
                     directoryViewMode === "table" ? (
-                      <div className="rounded-2xl border border-border-default bg-surface-raised overflow-hidden p-4 space-y-3">
-                        {[1, 2, 3, 4, 5].map((i) => (
+                      <div className="rounded-2xl border border-border-default bg-surface-raised overflow-hidden p-4 space-y-2.5">
+                        {[1, 2, 3, 4, 5, 6].map((i) => (
                           <div key={i} className="animate-pulse h-10 bg-surface-subtle rounded-xl" />
                         ))}
                       </div>
                     ) : directoryViewMode === "list" ? (
-                      <div className="space-y-2.5">
-                        {[1, 2, 3, 4].map((i) => (
-                          <div key={i} className="animate-pulse h-16 bg-surface-subtle rounded-xl border border-border-default" />
+                      <div className="space-y-1.5">
+                        {[1, 2, 3, 4, 5, 6].map((i) => (
+                          <div key={i} className="animate-pulse h-12 bg-surface-subtle rounded-xl border border-border-default" />
                         ))}
                       </div>
                     ) : (
@@ -2308,13 +2556,13 @@ export default function TeacherSectionsPage() {
                         ))}
                       </div>
                     )
-                  ) : filteredDirectoryStudents.length === 0 ? (
+                  ) : sortedDirectoryStudents.length === 0 ? (
                     <div className="glass-card rounded-2xl p-12 text-center border border-border-default space-y-2">
                       <Users className="mx-auto h-10 w-10 text-text-faint" />
                       <p className="font-semibold text-text-secondary">No registered students found</p>
                       <p className="text-xs text-text-muted">
-                        {directorySearch
-                          ? "Try a different search query."
+                        {directorySearch || directorySectionFilter !== "all"
+                          ? "Try adjusting your search or section filter."
                           : "Register students into the application directory to use them across any class section."}
                       </p>
                     </div>
@@ -2323,201 +2571,414 @@ export default function TeacherSectionsPage() {
                       {/* ── DIRECTORY VIEW 1: CARD GRID ── */}
                       {directoryViewMode === "grid" && (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-                          {paginatedDirectoryStudents.map((s) => (
-                            <div
-                              key={s.id}
-                              onClick={() => openStudentDetail(s)}
-                              className="glass-card glass-card-hover rounded-2xl p-5 border border-border-default hover:border-steel/40 transition-all cursor-pointer flex flex-col justify-between group space-y-4 shadow-sm"
-                            >
-                              <div>
-                                <div className="flex items-center justify-between gap-2 mb-3">
-                                  {/* Full Student ID & Alert Badge */}
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-mono font-bold text-sm text-text-primary tracking-wide group-hover:text-steel-light transition-colors">
-                                      02000{String(s.student_number).padStart(6, "0")}
-                                    </span>
-                                    {s.has_pending_reset_request && (
-                                      <span className="inline-flex items-center gap-1 rounded-full bg-tan/15 px-2 py-0.5 text-[10px] font-bold text-tan border border-tan/30 animate-pulse">
-                                        <KeyRound className="h-2.5 w-2.5" />
-                                        Reset Requested
-                                      </span>
-                                    )}
+                          {paginatedDirectoryStudents.map((s) => {
+                            const omrCode = String(s.student_number).padStart(6, "0");
+                            const fullId = `02000${omrCode}`;
+                            const displayName = toTitleCaseName(`${s.user.first_name} ${s.user.last_name}`);
+                            const isSelected = selectedDirIds.has(s.id);
+                            const isPopoverOpen = sectionPopoverStudentId === s.id;
+
+                            return (
+                              <div
+                                key={s.id}
+                                onClick={() => openStudentDetail(s)}
+                                className={`glass-card glass-card-hover rounded-2xl p-4 border transition-all cursor-pointer flex flex-col justify-between group space-y-3 shadow-sm ${
+                                  isSelected
+                                    ? "border-steel ring-1 ring-steel/40 bg-steel-ghost/10"
+                                    : "border-border-default hover:border-steel/40"
+                                }`}
+                              >
+                                <div>
+                                  <div className="flex items-center justify-between gap-2 mb-2.5">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={(e) => handleToggleSelectStudent(e, s.id)}
+                                        onClick={(e) => e.stopPropagation()}
+                                        aria-label={`Select ${displayName}`}
+                                        className="h-3.5 w-3.5 rounded border-border-emphasis bg-surface-base accent-steel cursor-pointer shrink-0"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={(e) => handleCopyStudentId(e, s.id, fullId)}
+                                        className="inline-flex items-center gap-1 font-mono text-[11px] font-bold text-text-secondary hover:text-steel transition-colors cursor-pointer truncate"
+                                        title="Click to copy Student ID"
+                                      >
+                                        <span>ID: {fullId} · OMR: {omrCode}</span>
+                                        {copiedStudentId === s.id ? (
+                                          <Check className="h-3 w-3 text-sage shrink-0" />
+                                        ) : (
+                                          <Copy className="h-2.5 w-2.5 opacity-60 shrink-0" />
+                                        )}
+                                      </button>
+                                    </div>
+
+                                    {/* Interactive Color-Coded Section Badge */}
+                                    <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setSectionPopoverStudentId(isPopoverOpen ? null : s.id)
+                                        }
+                                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold border transition-colors cursor-pointer ${
+                                          s.enrolled_sections && s.enrolled_sections.length > 0
+                                            ? getSectionBadgeClass(s.enrolled_sections[0].id)
+                                            : "bg-cream-ghost text-cream border-cream-border hover:bg-cream/20"
+                                        }`}
+                                        title="Click to reassign section"
+                                      >
+                                        <span>
+                                          {s.enrolled_sections && s.enrolled_sections.length > 0
+                                            ? s.enrolled_sections[0].name
+                                            : "Unassigned"}
+                                        </span>
+                                        {s.enrolled_sections && s.enrolled_sections.length > 1 && (
+                                          <span>+{s.enrolled_sections.length - 1}</span>
+                                        )}
+                                        <ChevronDown className="h-2.5 w-2.5 opacity-75" />
+                                      </button>
+
+                                      {isPopoverOpen && (
+                                        <div className="absolute right-0 mt-1.5 w-52 rounded-xl border border-border-emphasis bg-surface-overlay p-1.5 shadow-2xl z-40 space-y-0.5">
+                                          <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                                            Assign Section
+                                          </p>
+                                          {sortedSections.map((sec) => {
+                                            const enrolled =
+                                              s.enrolled_sections?.some((es) => es.id === sec.id) || false;
+                                            const busy = popoverUpdatingKey === `${s.id}:${sec.id}`;
+                                            return (
+                                              <button
+                                                key={sec.id}
+                                                type="button"
+                                                disabled={busy}
+                                                onClick={(e) => handleQuickSectionToggle(e, s, sec.id, enrolled)}
+                                                className="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg text-xs hover:bg-surface-subtle transition-colors cursor-pointer text-left"
+                                              >
+                                                <span className="font-semibold text-text-primary truncate">
+                                                  {sec.name}
+                                                </span>
+                                                {busy ? (
+                                                  <Loader2 className="h-3 w-3 animate-spin text-steel shrink-0" />
+                                                ) : enrolled ? (
+                                                  <Check className="h-3.5 w-3.5 text-sage shrink-0" />
+                                                ) : null}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
 
-                                  {/* Course Membership Badge (Scoped to Teacher) */}
-                                  {(s.enrolled_sections && s.enrolled_sections.length > 0) ? (
-                                    <div className="flex items-center gap-1 flex-wrap justify-end">
-                                      <span className="inline-flex items-center rounded-full bg-steel/15 px-2.5 py-0.5 text-xs font-semibold text-steel-light border border-steel/30">
-                                        {s.enrolled_sections[0].name}
-                                      </span>
-                                      {s.enrolled_sections.length > 1 && (
-                                        <span className="inline-flex items-center rounded-full bg-surface-subtle px-2 py-0.5 text-[10px] font-bold text-text-secondary border border-border-default">
-                                          +{s.enrolled_sections.length - 1}
+                                  {/* Student Name & Username */}
+                                  <div className="flex items-center gap-3">
+                                    <div className="shrink-0">
+                                      <StudentAvatar config={parseAvatarConfig(s.avatar_config)} size={40} />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center gap-1.5 flex-wrap">
+                                        <h3 className="font-bold text-sm text-text-primary truncate group-hover:text-tan transition-colors">
+                                          {displayName}
+                                        </h3>
+                                        <span className="rounded-md bg-surface-subtle px-1.5 py-0.5 font-mono text-[10px] text-text-muted border border-border-default">
+                                          @{s.user.username}
+                                        </span>
+                                      </div>
+                                      {s.has_pending_reset_request && (
+                                        <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-tan/15 px-2 py-0.5 text-[10px] font-bold text-tan border border-tan/30">
+                                          <KeyRound className="h-2.5 w-2.5" />
+                                          Reset Requested
                                         </span>
                                       )}
                                     </div>
-                                  ) : (
-                                    <span className="inline-flex items-center rounded-full bg-cream-ghost px-2.5 py-0.5 text-xs font-semibold text-cream border border-cream-border">
-                                      Not in Your Courses
-                                    </span>
-                                  )}
-                                </div>
-
-                                {/* Student Name & Username */}
-                                <div className="flex items-center gap-3">
-                                  <div className="shrink-0">
-                                    <StudentAvatar
-                                      config={parseAvatarConfig(s.avatar_config)}
-                                      size={44}
-                                    />
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <h3 className="font-bold text-sm text-text-primary truncate group-hover:text-tan transition-colors">
-                                      {s.user.first_name} {s.user.last_name}
-                                    </h3>
-                                    <p className="font-mono text-xs text-text-muted truncate">
-                                      {s.user.username}
-                                    </p>
                                   </div>
                                 </div>
-                              </div>
 
-                              {/* Footer hint */}
-                              <div className="flex items-center justify-between pt-3 border-t border-border-default/60 text-[11px] text-text-muted group-hover:text-text-secondary transition-colors">
-                                <span className="truncate max-w-[180px]">
-                                  {s.enrolled_sections && s.enrolled_sections.length > 0
-                                    ? s.enrolled_sections.map((sec) => sec.subject || sec.name).join(" • ")
-                                    : "Global Student Account"}
-                                </span>
-                                <span className="font-semibold text-steel-light group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5 shrink-0">
-                                  View Info &rarr;
-                                </span>
+                                <div className="flex items-center justify-between pt-2.5 border-t border-border-default/60 text-[11px] text-text-muted">
+                                  <span className="truncate max-w-[190px]">
+                                    {s.enrolled_sections && s.enrolled_sections.length > 0
+                                      ? s.enrolled_sections
+                                          .map((sec) => formatCourseLabel(sec.subject || sec.name))
+                                          .join(" • ")
+                                      : "Global Student Account"}
+                                  </span>
+                                  <span className="font-semibold text-steel-light shrink-0">
+                                    View Info &rarr;
+                                  </span>
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
 
-                      {/* ── DIRECTORY VIEW 2: TABLE VIEW ── */}
+                      {/* ── DIRECTORY VIEW 2: TABLE VIEW (DEFAULT) ── */}
                       {directoryViewMode === "table" && (
-                        <div className="rounded-2xl border border-border-default bg-surface-raised shadow-xs overflow-hidden">
+                        <div className="rounded-2xl border border-border-default bg-surface-raised shadow-xs overflow-visible">
                           <div className="overflow-x-auto">
                             <table className="w-full text-left text-xs">
                               <thead>
                                 <tr className="border-b border-border-default bg-surface-base/80 text-[11px] uppercase font-bold text-text-muted tracking-wider">
-                                  <th className="py-3.5 px-4">Student ID</th>
-                                  <th className="py-3.5 px-4">OMR Code</th>
-                                  <th className="py-3.5 px-4">Student Name</th>
-                                  <th className="py-3.5 px-4">Username</th>
-                                  <th className="py-3.5 px-4">Your Courses</th>
-                                  <th className="py-3.5 px-4">Status</th>
-                                  <th className="py-3.5 px-4 text-right">Actions</th>
+                                  <th className="py-3 px-3.5 w-10">
+                                    <input
+                                      type="checkbox"
+                                      checked={allVisibleSelected}
+                                      onChange={handleToggleSelectAllVisible}
+                                      aria-label="Select all visible students"
+                                      className="h-3.5 w-3.5 rounded border-border-emphasis bg-surface-base accent-steel cursor-pointer"
+                                    />
+                                  </th>
+                                  <th className="py-3 px-3.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSortDirectory("name")}
+                                      className="inline-flex items-center gap-1 hover:text-text-primary transition-colors cursor-pointer uppercase"
+                                    >
+                                      <span>Student Name</span>
+                                      {directorySort.field === "name" ? (
+                                        directorySort.dir === "asc" ? (
+                                          <ArrowUp className="h-3 w-3 text-steel" />
+                                        ) : (
+                                          <ArrowDown className="h-3 w-3 text-steel" />
+                                        )
+                                      ) : (
+                                        <ArrowUpDown className="h-3 w-3 opacity-50" />
+                                      )}
+                                    </button>
+                                  </th>
+                                  <th className="py-3 px-3.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSortDirectory("id")}
+                                      className="inline-flex items-center gap-1 hover:text-text-primary transition-colors cursor-pointer uppercase"
+                                    >
+                                      <span>Student / OMR ID</span>
+                                      {directorySort.field === "id" ? (
+                                        directorySort.dir === "asc" ? (
+                                          <ArrowUp className="h-3 w-3 text-steel" />
+                                        ) : (
+                                          <ArrowDown className="h-3 w-3 text-steel" />
+                                        )
+                                      ) : (
+                                        <ArrowUpDown className="h-3 w-3 opacity-50" />
+                                      )}
+                                    </button>
+                                  </th>
+                                  <th className="py-3 px-3.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSortDirectory("section")}
+                                      className="inline-flex items-center gap-1 hover:text-text-primary transition-colors cursor-pointer uppercase"
+                                    >
+                                      <span>Section</span>
+                                      {directorySort.field === "section" ? (
+                                        directorySort.dir === "asc" ? (
+                                          <ArrowUp className="h-3 w-3 text-steel" />
+                                        ) : (
+                                          <ArrowDown className="h-3 w-3 text-steel" />
+                                        )
+                                      ) : (
+                                        <ArrowUpDown className="h-3 w-3 opacity-50" />
+                                      )}
+                                    </button>
+                                  </th>
+                                  <th className="py-3 px-3.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSortDirectory("status")}
+                                      className="inline-flex items-center gap-1 hover:text-text-primary transition-colors cursor-pointer uppercase"
+                                    >
+                                      <span>Status</span>
+                                      {directorySort.field === "status" ? (
+                                        directorySort.dir === "asc" ? (
+                                          <ArrowUp className="h-3 w-3 text-steel" />
+                                        ) : (
+                                          <ArrowDown className="h-3 w-3 text-steel" />
+                                        )
+                                      ) : (
+                                        <ArrowUpDown className="h-3 w-3 opacity-50" />
+                                      )}
+                                    </button>
+                                  </th>
+                                  <th className="py-3 px-3.5 text-right">Actions</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-border-default/60">
-                                {paginatedDirectoryStudents.map((s) => (
-                                  <tr
-                                    key={s.id}
-                                    onClick={() => openStudentDetail(s)}
-                                    className="hover:bg-surface-subtle/70 transition-colors cursor-pointer group"
-                                  >
-                                    {/* ID */}
-                                    <td className="py-3.5 px-4 font-mono font-bold text-text-primary group-hover:text-steel transition-colors whitespace-nowrap">
-                                      02000{String(s.student_number).padStart(6, "0")}
-                                    </td>
+                                {paginatedDirectoryStudents.map((s) => {
+                                  const omrCode = String(s.student_number).padStart(6, "0");
+                                  const fullId = `02000${omrCode}`;
+                                  const displayName = toTitleCaseName(`${s.user.first_name} ${s.user.last_name}`);
+                                  const isSelected = selectedDirIds.has(s.id);
+                                  const isPopoverOpen = sectionPopoverStudentId === s.id;
 
-                                    {/* OMR */}
-                                    <td className="py-3.5 px-4 font-mono whitespace-nowrap">
-                                      <span className="rounded-md bg-surface-subtle px-2 py-0.5 border border-border-default text-[11px] text-text-secondary">
-                                        {String(s.student_number).padStart(6, "0")}
-                                      </span>
-                                    </td>
+                                  return (
+                                    <tr
+                                      key={s.id}
+                                      onClick={() => openStudentDetail(s)}
+                                      className={`transition-colors cursor-pointer group ${
+                                        isSelected ? "bg-steel-ghost/15" : "hover:bg-surface-subtle/60"
+                                      }`}
+                                    >
+                                      {/* Checkbox */}
+                                      <td className="py-2.5 px-3.5" onClick={(e) => e.stopPropagation()}>
+                                        <input
+                                          type="checkbox"
+                                          checked={isSelected}
+                                          onChange={(e) => handleToggleSelectStudent(e, s.id)}
+                                          aria-label={`Select ${displayName}`}
+                                          className="h-3.5 w-3.5 rounded border-border-emphasis bg-surface-base accent-steel cursor-pointer"
+                                        />
+                                      </td>
 
-                                    {/* Name */}
-                                    <td className="py-3.5 px-4 whitespace-nowrap">
-                                      <div className="flex items-center gap-2.5">
-                                        <div className="shrink-0">
-                                          <StudentAvatar
-                                            config={parseAvatarConfig(s.avatar_config)}
-                                            size={32}
-                                          />
-                                        </div>
-                                        <span className="font-bold text-text-primary group-hover:text-tan transition-colors">
-                                          {s.user.first_name} {s.user.last_name}
-                                        </span>
-                                      </div>
-                                    </td>
-
-                                    {/* Username */}
-                                    <td className="py-3.5 px-4 font-mono text-steel whitespace-nowrap">
-                                      {s.user.username}
-                                    </td>
-
-                                    {/* Courses */}
-                                    <td className="py-3.5 px-4 whitespace-nowrap">
-                                      {s.enrolled_sections && s.enrolled_sections.length > 0 ? (
-                                        <div className="flex items-center gap-1 flex-wrap">
-                                          {s.enrolled_sections.map((sec) => (
-                                            <span
-                                              key={sec.id}
-                                              className="inline-flex items-center rounded-full bg-steel/15 px-2.5 py-0.5 text-xs font-semibold text-steel-light border border-steel/30"
-                                              title={sec.subject}
-                                            >
-                                              {sec.name}
+                                      {/* Student Name & Muted Username Badge */}
+                                      <td className="py-2.5 px-3.5 whitespace-nowrap">
+                                        <div className="flex items-center gap-2.5">
+                                          <div className="shrink-0">
+                                            <StudentAvatar config={parseAvatarConfig(s.avatar_config)} size={30} />
+                                          </div>
+                                          <div className="flex items-center gap-2">
+                                            <span className="font-bold text-text-primary group-hover:text-tan transition-colors">
+                                              {displayName}
                                             </span>
-                                          ))}
+                                            <span className="rounded-md bg-surface-subtle px-1.5 py-0.5 font-mono text-[10px] text-text-muted border border-border-default/70">
+                                              @{s.user.username}
+                                            </span>
+                                          </div>
                                         </div>
-                                      ) : (
-                                        <span className="inline-flex items-center rounded-full bg-cream-ghost px-2.5 py-0.5 text-xs font-semibold text-cream border border-cream-border">
-                                          Not in Your Courses
-                                        </span>
-                                      )}
-                                    </td>
+                                      </td>
 
-                                    {/* Status */}
-                                    <td className="py-3.5 px-4 whitespace-nowrap">
-                                      {s.has_pending_reset_request ? (
-                                        <span className="inline-flex items-center gap-1 rounded-full bg-tan/15 px-2.5 py-0.5 text-[10px] font-bold text-tan border border-tan/30 animate-pulse">
-                                          <KeyRound className="h-2.5 w-2.5" />
-                                          Reset Requested
-                                        </span>
-                                      ) : (
-                                        <span className="inline-flex items-center gap-1.5 text-[11px] text-text-muted">
-                                          Active
-                                        </span>
-                                      )}
-                                    </td>
-
-                                    {/* Actions */}
-                                    <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                                      <div className="inline-flex items-center gap-1.5">
+                                      {/* Combined Student / OMR ID with Click-to-Copy */}
+                                      <td className="py-2.5 px-3.5 font-mono whitespace-nowrap">
                                         <button
                                           type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            openEditStudentModal(s);
-                                          }}
-                                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-text-muted hover:text-steel hover:bg-steel-ghost border border-transparent hover:border-steel-border transition-colors cursor-pointer"
-                                          title="Edit Student Info"
+                                          onClick={(e) => handleCopyStudentId(e, s.id, fullId)}
+                                          className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[11px] text-text-secondary hover:text-steel hover:bg-steel-ghost/40 transition-colors cursor-pointer"
+                                          title="Click to copy Student ID"
                                         >
-                                          <Pencil className="h-3.5 w-3.5" />
-                                          <span className="hidden sm:inline">Edit</span>
+                                          <span className="font-semibold text-text-primary">ID: {fullId}</span>
+                                          <span className="text-text-faint">·</span>
+                                          <span className="text-text-muted">OMR: {omrCode}</span>
+                                          {copiedStudentId === s.id ? (
+                                            <Check className="h-3 w-3 text-sage shrink-0" />
+                                          ) : (
+                                            <Copy className="h-3 w-3 opacity-50 group-hover:opacity-100 shrink-0" />
+                                          )}
                                         </button>
-                                        <button
-                                          type="button"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            openStudentDetail(s);
-                                          }}
-                                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-steel-light hover:bg-steel-ghost border border-transparent hover:border-steel-border transition-colors cursor-pointer"
-                                          title="View Student Info"
-                                        >
-                                          <span>Manage &rarr;</span>
-                                        </button>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                ))}
+                                      </td>
+
+                                      {/* Color-Coded Interactive Section Badges */}
+                                      <td className="py-2.5 px-3.5 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                        <div className="relative inline-flex items-center gap-1 flex-wrap">
+                                          {s.enrolled_sections && s.enrolled_sections.length > 0 ? (
+                                            s.enrolled_sections.map((sec) => (
+                                              <button
+                                                key={sec.id}
+                                                type="button"
+                                                onClick={() =>
+                                                  setSectionPopoverStudentId(isPopoverOpen ? null : s.id)
+                                                }
+                                                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold border transition-colors cursor-pointer ${getSectionBadgeClass(sec.id)}`}
+                                                title={`${formatCourseLabel(sec.subject)} — Click to reassign`}
+                                              >
+                                                <span>{sec.name}</span>
+                                                <ChevronDown className="h-2.5 w-2.5 opacity-75" />
+                                              </button>
+                                            ))
+                                          ) : (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                setSectionPopoverStudentId(isPopoverOpen ? null : s.id)
+                                              }
+                                              className="inline-flex items-center gap-1 rounded-full bg-cream-ghost px-2.5 py-0.5 text-[11px] font-semibold text-cream border border-cream-border hover:bg-cream/20 transition-colors cursor-pointer"
+                                              title="Click to assign section"
+                                            >
+                                              <span>Unassigned</span>
+                                              <ChevronDown className="h-2.5 w-2.5 opacity-75" />
+                                            </button>
+                                          )}
+
+                                          {isPopoverOpen && (
+                                            <div className="absolute left-0 top-full mt-1.5 w-52 rounded-xl border border-border-emphasis bg-surface-overlay p-1.5 shadow-2xl z-40 space-y-0.5">
+                                              <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                                                Reassign Section
+                                              </p>
+                                              {sortedSections.map((sec) => {
+                                                const enrolled =
+                                                  s.enrolled_sections?.some((es) => es.id === sec.id) || false;
+                                                const busy = popoverUpdatingKey === `${s.id}:${sec.id}`;
+                                                return (
+                                                  <button
+                                                    key={sec.id}
+                                                    type="button"
+                                                    disabled={busy}
+                                                    onClick={(e) => handleQuickSectionToggle(e, s, sec.id, enrolled)}
+                                                    className="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg text-xs hover:bg-surface-subtle transition-colors cursor-pointer text-left"
+                                                  >
+                                                    <span className="font-semibold text-text-primary truncate">
+                                                      {sec.name}
+                                                    </span>
+                                                    {busy ? (
+                                                      <Loader2 className="h-3 w-3 animate-spin text-steel shrink-0" />
+                                                    ) : enrolled ? (
+                                                      <Check className="h-3.5 w-3.5 text-sage shrink-0" />
+                                                    ) : null}
+                                                  </button>
+                                                );
+                                              })}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </td>
+
+                                      {/* Status */}
+                                      <td className="py-2.5 px-3.5 whitespace-nowrap">
+                                        {s.has_pending_reset_request ? (
+                                          <span className="inline-flex items-center gap-1 rounded-full bg-tan/15 px-2.5 py-0.5 text-[10px] font-bold text-tan border border-tan/30 animate-pulse">
+                                            <KeyRound className="h-2.5 w-2.5" />
+                                            Reset Requested
+                                          </span>
+                                        ) : (
+                                          <span className="inline-flex items-center gap-1.5 text-[11px] text-sage font-medium">
+                                            <span className="h-1.5 w-1.5 rounded-full bg-sage" />
+                                            Active
+                                          </span>
+                                        )}
+                                      </td>
+
+                                      {/* Actions */}
+                                      <td className="py-2.5 px-3.5 text-right whitespace-nowrap">
+                                        <div className="inline-flex items-center gap-1">
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              openEditStudentModal(s);
+                                            }}
+                                            className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold text-text-muted hover:text-steel hover:bg-steel-ghost border border-transparent hover:border-steel-border transition-colors cursor-pointer"
+                                            title="Edit Student Info"
+                                          >
+                                            <Pencil className="h-3.5 w-3.5" />
+                                            <span className="hidden sm:inline">Edit</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              openStudentDetail(s);
+                                            }}
+                                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-steel-light hover:bg-steel-ghost border border-transparent hover:border-steel-border transition-colors cursor-pointer"
+                                            title="View Student Info"
+                                          >
+                                            <span>Manage &rarr;</span>
+                                          </button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
                               </tbody>
                             </table>
                           </div>
@@ -2526,109 +2987,244 @@ export default function TeacherSectionsPage() {
 
                       {/* ── DIRECTORY VIEW 3: COMPACT LIST VIEW ── */}
                       {directoryViewMode === "list" && (
-                        <div className="space-y-2">
-                          {paginatedDirectoryStudents.map((s) => (
-                            <div
-                              key={s.id}
-                              onClick={() => openStudentDetail(s)}
-                              className="glass-card glass-card-hover rounded-xl p-3 sm:px-4 sm:py-3 border border-border-default hover:border-steel/40 transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 group shadow-xs"
-                            >
-                              {/* Left: Avatar + Names */}
-                              <div className="flex items-center gap-3 min-w-0 flex-1">
-                                <div className="shrink-0">
-                                  <StudentAvatar
-                                    config={parseAvatarConfig(s.avatar_config)}
-                                    size={44}
+                        <div className="space-y-1.5">
+                          {paginatedDirectoryStudents.map((s) => {
+                            const omrCode = String(s.student_number).padStart(6, "0");
+                            const fullId = `02000${omrCode}`;
+                            const displayName = toTitleCaseName(`${s.user.first_name} ${s.user.last_name}`);
+                            const isSelected = selectedDirIds.has(s.id);
+                            const isPopoverOpen = sectionPopoverStudentId === s.id;
+
+                            return (
+                              <div
+                                key={s.id}
+                                onClick={() => openStudentDetail(s)}
+                                className={`glass-card glass-card-hover rounded-xl px-3.5 py-2 border transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 group shadow-xs ${
+                                  isSelected
+                                    ? "border-steel ring-1 ring-steel/40 bg-steel-ghost/10"
+                                    : "border-border-default hover:border-steel/40"
+                                }`}
+                              >
+                                {/* Left: Checkbox + Avatar + Names & Combined IDs */}
+                                <div className="flex items-center gap-3 min-w-0 flex-1">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={(e) => handleToggleSelectStudent(e, s.id)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    aria-label={`Select ${displayName}`}
+                                    className="h-3.5 w-3.5 rounded border-border-emphasis bg-surface-base accent-steel cursor-pointer shrink-0"
                                   />
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <h3 className="font-bold text-sm text-text-primary truncate group-hover:text-tan transition-colors">
-                                      {s.user.first_name} {s.user.last_name}
-                                    </h3>
-                                    <span className="font-mono text-xs text-text-muted">
-                                      {s.user.username}
-                                    </span>
+                                  <div className="shrink-0">
+                                    <StudentAvatar config={parseAvatarConfig(s.avatar_config)} size={34} />
                                   </div>
-                                  <div className="flex items-center gap-2 mt-0.5 text-[11px] text-text-muted">
-                                    <span className="font-mono font-semibold text-text-secondary">
-                                      02000{String(s.student_number).padStart(6, "0")}
-                                    </span>
-                                    <span>•</span>
-                                    <span>OMR: {String(s.student_number).padStart(6, "0")}</span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              {/* Courses & Status */}
-                              <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                                {s.enrolled_sections && s.enrolled_sections.length > 0 ? (
-                                  s.enrolled_sections.map((sec) => (
-                                    <span
-                                      key={sec.id}
-                                      className="inline-flex items-center rounded-full bg-steel/15 px-2.5 py-0.5 text-xs font-semibold text-steel-light border border-steel/30"
-                                      title={sec.subject}
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <h3 className="font-bold text-sm text-text-primary truncate group-hover:text-tan transition-colors">
+                                        {displayName}
+                                      </h3>
+                                      <span className="rounded-md bg-surface-subtle px-1.5 py-0.5 font-mono text-[10px] text-text-muted border border-border-default/70">
+                                        @{s.user.username}
+                                      </span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => handleCopyStudentId(e, s.id, fullId)}
+                                      className="inline-flex items-center gap-1.5 mt-0.5 font-mono text-[11px] text-text-muted hover:text-steel transition-colors cursor-pointer"
+                                      title="Click to copy Student ID"
                                     >
-                                      {sec.name}
+                                      <span className="font-semibold text-text-secondary">ID: {fullId}</span>
+                                      <span>·</span>
+                                      <span>OMR: {omrCode}</span>
+                                      {copiedStudentId === s.id ? (
+                                        <Check className="h-3 w-3 text-sage shrink-0" />
+                                      ) : (
+                                        <Copy className="h-2.5 w-2.5 opacity-60 shrink-0" />
+                                      )}
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Interactive Color-Coded Section Badges & Status */}
+                                <div
+                                  className="relative flex items-center gap-1.5 shrink-0 flex-wrap"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {s.enrolled_sections && s.enrolled_sections.length > 0 ? (
+                                    s.enrolled_sections.map((sec) => (
+                                      <button
+                                        key={sec.id}
+                                        type="button"
+                                        onClick={() =>
+                                          setSectionPopoverStudentId(isPopoverOpen ? null : s.id)
+                                        }
+                                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold border transition-colors cursor-pointer ${getSectionBadgeClass(sec.id)}`}
+                                        title={`${formatCourseLabel(sec.subject)} — Click to reassign`}
+                                      >
+                                        <span>{sec.name}</span>
+                                        <ChevronDown className="h-2.5 w-2.5 opacity-75" />
+                                      </button>
+                                    ))
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setSectionPopoverStudentId(isPopoverOpen ? null : s.id)
+                                      }
+                                      className="inline-flex items-center gap-1 rounded-full bg-cream-ghost px-2.5 py-0.5 text-[11px] font-semibold text-cream border border-cream-border hover:bg-cream/20 transition-colors cursor-pointer"
+                                    >
+                                      <span>Unassigned</span>
+                                      <ChevronDown className="h-2.5 w-2.5 opacity-75" />
+                                    </button>
+                                  )}
+
+                                  {isPopoverOpen && (
+                                    <div className="absolute right-0 top-full mt-1.5 w-52 rounded-xl border border-border-emphasis bg-surface-overlay p-1.5 shadow-2xl z-40 space-y-0.5">
+                                      <p className="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                                        Reassign Section
+                                      </p>
+                                      {sortedSections.map((sec) => {
+                                        const enrolled =
+                                          s.enrolled_sections?.some((es) => es.id === sec.id) || false;
+                                        const busy = popoverUpdatingKey === `${s.id}:${sec.id}`;
+                                        return (
+                                          <button
+                                            key={sec.id}
+                                            type="button"
+                                            disabled={busy}
+                                            onClick={(e) => handleQuickSectionToggle(e, s, sec.id, enrolled)}
+                                            className="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg text-xs hover:bg-surface-subtle transition-colors cursor-pointer text-left"
+                                          >
+                                            <span className="font-semibold text-text-primary truncate">
+                                              {sec.name}
+                                            </span>
+                                            {busy ? (
+                                              <Loader2 className="h-3 w-3 animate-spin text-steel shrink-0" />
+                                            ) : enrolled ? (
+                                              <Check className="h-3.5 w-3.5 text-sage shrink-0" />
+                                            ) : null}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+
+                                  {s.has_pending_reset_request && (
+                                    <span className="inline-flex items-center gap-1 rounded-full bg-tan/15 px-2 py-0.5 text-[10px] font-bold text-tan border border-tan/30 animate-pulse">
+                                      <KeyRound className="h-2.5 w-2.5" />
+                                      Reset
                                     </span>
-                                  ))
-                                ) : (
-                                  <span className="inline-flex items-center rounded-full bg-cream-ghost px-2.5 py-0.5 text-xs font-semibold text-cream border border-cream-border">
-                                    Not in Your Courses
-                                  </span>
-                                )}
+                                  )}
+                                </div>
 
-                                {s.has_pending_reset_request && (
-                                  <span className="inline-flex items-center gap-1 rounded-full bg-tan/15 px-2.5 py-0.5 text-[10px] font-bold text-tan border border-tan/30 animate-pulse">
-                                    <KeyRound className="h-2.5 w-2.5" />
-                                    Reset
-                                  </span>
-                                )}
+                                {/* Right: Actions */}
+                                <div className="flex items-center gap-1.5 shrink-0 justify-end pt-1.5 sm:pt-0 border-t sm:border-t-0 border-border-default/50">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openEditStudentModal(s);
+                                    }}
+                                    className="rounded-lg bg-surface-subtle p-1.5 text-text-muted hover:text-steel hover:bg-steel-ghost transition-colors cursor-pointer"
+                                    title="Edit Student Info"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openStudentDetail(s);
+                                    }}
+                                    className="flex items-center gap-1 rounded-lg bg-surface-subtle px-2.5 py-1 text-xs font-semibold text-steel-light hover:bg-steel-ghost hover:text-white transition-colors cursor-pointer"
+                                  >
+                                    <span>Manage</span>
+                                    <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
+                                  </button>
+                                </div>
                               </div>
-
-                              {/* Right: Actions */}
-                              <div className="flex items-center gap-1.5 shrink-0 justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-border-default/50">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openEditStudentModal(s);
-                                  }}
-                                  className="rounded-lg bg-surface-subtle p-2 text-text-muted hover:text-steel hover:bg-steel-ghost transition-colors cursor-pointer"
-                                  title="Edit Student Info"
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openStudentDetail(s);
-                                  }}
-                                  className="flex items-center gap-1 rounded-lg bg-surface-subtle px-2.5 py-1.5 text-xs font-semibold text-steel-light hover:bg-steel-ghost hover:text-white transition-colors cursor-pointer"
-                                >
-                                  <span>Manage</span>
-                                  <ArrowRight className="h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
-                                </button>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
 
                       <Pagination
                         currentPage={dirPage}
-                        totalPages={Math.ceil(filteredDirectoryStudents.length / dirPageSize)}
-                        totalItems={filteredDirectoryStudents.length}
+                        totalPages={Math.ceil(sortedDirectoryStudents.length / dirPageSize)}
+                        totalItems={sortedDirectoryStudents.length}
                         pageSize={dirPageSize}
                         onPageChange={setDirPage}
                         onPageSizeChange={setDirPageSize}
-                        pageSizeOptions={[9, 18, 36]}
+                        pageSizeOptions={[12, 24, 48]}
                         itemLabel="registered students"
                       />
                     </div>
                   )}
                 </div>
+
+                {/* Floating Bulk-Action Bar */}
+                {selectedDirIds.size > 0 && (
+                  <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-1.5rem)] max-w-3xl rounded-2xl border border-border-emphasis bg-surface-overlay/95 backdrop-blur-xl px-4 py-2.5 shadow-2xl flex flex-wrap items-center justify-between gap-2.5 animate-in fade-in slide-in-from-bottom-3">
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full bg-steel text-white px-2.5 py-0.5 text-xs font-bold">
+                        {selectedDirIds.size} selected
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDirIds(new Set())}
+                        className="text-xs font-semibold text-text-muted hover:text-text-primary transition-colors cursor-pointer"
+                      >
+                        Clear
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          aria-label="Target section for bulk assign"
+                          value={bulkTargetSectionId}
+                          onChange={(e) => setBulkTargetSectionId(e.target.value)}
+                          className="rounded-xl border border-border-default bg-surface-base px-2.5 py-1.5 text-xs text-text-primary focus:border-steel focus:outline-none cursor-pointer"
+                        >
+                          <option value="">Assign Section...</option>
+                          {sortedSections.map((sec) => (
+                            <option key={sec.id} value={sec.id}>
+                              {sec.name}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          disabled={!bulkTargetSectionId || bulkProcessing}
+                          onClick={handleBulkAssignSection}
+                          className="inline-flex items-center gap-1 rounded-xl bg-steel hover:bg-steel-light px-3 py-1.5 text-xs font-bold text-white transition-all disabled:opacity-40 cursor-pointer"
+                        >
+                          {bulkProcessing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                          <span>Assign</span>
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleExportDirectoryCsv(true)}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-border-default bg-surface-subtle hover:bg-surface-muted px-3 py-1.5 text-xs font-bold text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+                      >
+                        <Download className="h-3.5 w-3.5 text-tan" />
+                        <span>Export CSV/OMR</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={bulkProcessing}
+                        onClick={handleBulkRemoveFromRoster}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-burgundy-border bg-burgundy-ghost hover:bg-burgundy/25 px-3 py-1.5 text-xs font-bold text-burgundy-light transition-colors disabled:opacity-40 cursor-pointer"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        <span>Remove from Roster</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
