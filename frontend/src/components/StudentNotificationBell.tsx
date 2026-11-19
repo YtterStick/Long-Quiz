@@ -281,7 +281,7 @@ export function StudentNotificationBell() {
       >
         <Bell className="h-4 w-4" />
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-burgundy-light text-[10px] font-bold text-white shadow ring-2 ring-surface-raised animate-pulse">
+          <span className="absolute -top-1 -right-1 flex h-4.5 w-4.5 items-center justify-center rounded-full bg-burgundy-light text-[10px] font-bold text-white shadow ring-2 ring-surface-raised dark:ring-[#0f1419] animate-pulse">
             {unreadCount > 9 ? "9+" : unreadCount}
           </span>
         )}
@@ -319,7 +319,7 @@ export function StudentNotificationBell() {
                   title="Mark all as read"
                 >
                   <CheckCheck className="h-3 w-3" />
-                  <span>Mark read</span>
+                  <span>Mark all as read</span>
                 </button>
               )}
               {activeNotifications.length > 0 && (

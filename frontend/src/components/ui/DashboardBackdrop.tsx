@@ -94,9 +94,6 @@ export function DashboardBackdrop({ role }: { role: RoleKey }) {
           <rect width="9" height="7" rx="1" className="fill-burgundy stroke-text-primary/70" strokeWidth="1.1" />
         </g>
 
-        {/* Dot matrix */}
-        <DotGrid x={36} y={730} cols={4} rows={3} className="fill-steel/50" />
-
         <Starburst x={176} y={800} size={22} className="text-tan" pulse="4.6s" />
 
         {/* Scattered constellation dots */}
@@ -184,13 +181,10 @@ export function DashboardBackdrop({ role }: { role: RoleKey }) {
           <line x1="52" y1="26" x2="70" y2="24" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" className="text-text-muted/40" />
         </g>
 
-        <DotGrid x={164} y={730} cols={4} rows={3} className="fill-tan/50" />
-
         <Starburst x={50} y={800} size={24} className="text-steel" pulse="5s" />
 
         {/* Scattered constellation dots */}
         <circle cx="130" cy="70" r="3" fill="currentColor" className="text-steel/80" />
-        <circle cx="200" cy="300" r="2.5" fill="currentColor" className="text-tan/70" />
         <circle cx="30" cy="470" r="3" fill="currentColor" className="text-cream" />
         <circle cx="120" cy="540" r="2.5" fill="currentColor" className="text-sage/70" />
         <circle cx="110" cy="840" r="3" fill="currentColor" className="text-text-muted/50" />

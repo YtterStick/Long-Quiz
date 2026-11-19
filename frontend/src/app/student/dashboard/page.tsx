@@ -43,6 +43,7 @@ import {
   Sparkles,
   ListOrdered,
   Copy,
+  Upload,
 } from "lucide-react";
 import { PasswordChangeModal } from "@/components/PasswordChangeModal";
 import {
@@ -1688,11 +1689,12 @@ export default function StudentDashboard() {
               actions={
                 <button
                   type="button"
-                  onClick={() => setClosetModalOpen(true)}
+                  onClick={() => router.push("/student/reviewer")}
                   className="group inline-flex items-center gap-2 rounded-2xl bg-sage hover:bg-sage-light text-white px-4 py-2 text-xs font-black shadow-lg shadow-sage/25 hover:shadow-sage/35 transition-all active:scale-95 cursor-pointer"
                 >
-                  <Shirt className="h-4 w-4" />
-                  Open Wardrobe Studio
+                  <BookOpen className="h-4 w-4 shrink-0" />
+                  <span>Open Reviewer Studio</span>
+                  <ArrowRight className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-0.5" />
                 </button>
               }
               customIllustration={
@@ -1756,8 +1758,8 @@ export default function StudentDashboard() {
                     <PenTool className="h-4.5 w-4.5" />
                   </div>
                 </div>
-                <div className="mt-3 flex items-baseline justify-between gap-2">
-                  <span className="text-2xl sm:text-3xl font-black text-text-primary font-mono">{availableExams.length}</span>
+                <div className="mt-3 h-10 flex items-center justify-between gap-2">
+                  <span className="text-2xl sm:text-3xl font-black text-text-primary font-mono leading-none">{availableExams.length}</span>
                   <span className="text-[11px] font-bold text-sage inline-flex items-center gap-0.5 whitespace-nowrap shrink-0">
                     Take now <ArrowRight className="h-3 w-3 shrink-0" />
                   </span>
@@ -1774,7 +1776,7 @@ export default function StudentDashboard() {
                     <Award className="h-4.5 w-4.5" />
                   </div>
                 </div>
-                <div className="mt-3 flex items-baseline justify-between gap-2">
+                <div className="mt-3 h-10 flex items-center justify-between gap-2">
                   <AntiTamperScore
                     score={averageScoreDisplay}
                     variant="card"
@@ -1796,8 +1798,8 @@ export default function StudentDashboard() {
                     <CheckCircle2 className="h-4.5 w-4.5" />
                   </div>
                 </div>
-                <div className="mt-3 flex items-baseline justify-between gap-2">
-                  <span className="text-2xl sm:text-3xl font-black text-text-primary font-mono">{grades.length}</span>
+                <div className="mt-3 h-10 flex items-center justify-between gap-2">
+                  <span className="text-2xl sm:text-3xl font-black text-text-primary font-mono leading-none">{grades.length}</span>
                   <span className="text-[11px] font-bold text-cream inline-flex items-center gap-0.5 whitespace-nowrap shrink-0">
                     History <ArrowRight className="h-3 w-3 shrink-0" />
                   </span>
@@ -1814,8 +1816,8 @@ export default function StudentDashboard() {
                     <Users className="h-4.5 w-4.5" />
                   </div>
                 </div>
-                <div className="mt-3 flex items-baseline justify-between gap-2">
-                  <span className="text-2xl sm:text-3xl font-black text-text-primary font-mono">{friendCount}</span>
+                <div className="mt-3 h-10 flex items-center justify-between gap-2">
+                  <span className="text-2xl sm:text-3xl font-black text-text-primary font-mono leading-none">{friendCount}</span>
                   <span className="text-[11px] font-bold text-tan inline-flex items-center gap-0.5 whitespace-nowrap shrink-0">
                     Circle <ArrowRight className="h-3 w-3 shrink-0" />
                   </span>
@@ -2052,15 +2054,23 @@ export default function StudentDashboard() {
                   </p>
                 </div>
 
-                <div className="pt-2">
+                <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
                   <button
                     type="button"
                     onClick={() => router.push("/student/reviewer")}
-                    className="inline-flex items-center justify-center gap-2 w-full py-2.5 px-4 rounded-xl bg-steel hover:bg-steel-light text-white text-xs font-bold shadow-md shadow-steel/25 transition cursor-pointer"
+                    className="flex-1 inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-steel hover:bg-steel-light text-white text-xs font-bold shadow-md shadow-steel/25 transition cursor-pointer"
                   >
-                    <BookOpen className="h-4 w-4" />
+                    <BookOpen className="h-4 w-4 shrink-0" />
                     <span>Open Reviewer Studio</span>
-                    <ArrowRight className="h-3.5 w-3.5" />
+                    <ArrowRight className="h-3.5 w-3.5 shrink-0" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/student/reviewer?upload=true")}
+                    className="inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border border-steel-border bg-steel-ghost hover:bg-steel/20 text-steel text-xs font-bold transition cursor-pointer shrink-0"
+                  >
+                    <Upload className="h-4 w-4 shrink-0" />
+                    <span>Upload Handout (PDF)</span>
                   </button>
                 </div>
               </div>
